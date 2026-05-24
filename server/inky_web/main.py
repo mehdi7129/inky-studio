@@ -1,6 +1,7 @@
 """Entry point for the Inky Studio FastAPI app."""
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -12,18 +13,31 @@ from fastapi.staticfiles import StaticFiles
 
 from inky_web import __version__
 from inky_web.api import router as api_router
+from inky_web.db import init_db
+from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
+from inky_web.services.scheduler import Scheduler
+from inky_web.services.settings import get as get_settings
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 CLIENT_DIST = Path(__file__).resolve().parents[2] / "client" / "dist"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_db()
+    app.state.bus = EventBus()
     app.state.display = DisplayController()
     app.state.display.initialize()
-    yield
-    app.state.display.shutdown()
+    app.state.display.set_color_mode(get_settings().color_mode.value)
+    app.state.scheduler = Scheduler(app.state.display, app.state.bus)
+    await app.state.scheduler.start()
+    try:
+        yield
+    finally:
+        await app.state.scheduler.stop()
+        app.state.display.shutdown()
 
 
 app = FastAPI(
