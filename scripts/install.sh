@@ -142,12 +142,9 @@ else
 fi
 
 # ── 10. Welcome screen ───────────────────────────────────────────────────────
-echo "→ Pushing welcome screen to the Inky display (takes ~40s)…"
-# We have to stop the service briefly to claim the SPI bus from the same process.
-sudo systemctl stop "${SERVICE_NAME}"
-INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${INSTALL_DIR}/server/.venv/bin/python" -m inky_web.welcome || \
-  echo "  ⚠️  Welcome screen failed — service will still start normally."
-sudo systemctl start "${SERVICE_NAME}"
+# The service itself pushes the welcome screen on first boot (when no history
+# exists), so we don't need to wrestle the SPI bus from outside the service.
+echo "→ Welcome screen will be pushed by the service on first boot (~40s)."
 
 # ── 11. Report ───────────────────────────────────────────────────────────────
 IP=$(hostname -I | awk '{print $1}' || echo "<your-pi-ip>")

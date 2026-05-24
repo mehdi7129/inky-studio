@@ -66,10 +66,10 @@ class DisplayController:
             self._impl = auto(ask_user=False, verbose=False)
             self._is_mock = False
             self._spec = DisplaySpec(
-                model=getattr(self._impl, "name", "Inky Impression"),
+                model=_detect_model_name(self._impl),
                 width=self._impl.width,
                 height=self._impl.height,
-                colors=getattr(self._impl, "colour_count", 7),
+                colors=_detect_color_count(self._impl),
             )
             logger.info("Detected display: %s", self._spec)
         except Exception as exc:  # noqa: BLE001 — hardware errors vary
@@ -106,7 +106,11 @@ class DisplayController:
             "is_mock": self._is_mock,
         }
 
-    def display_image(self, path: Path) -> None:
+    def display_image(self, path: Path) -> None:  # noqa: D401
+        # See class docstring.
+        self._display_image_impl(path)
+
+    def _display_image_impl(self, path: Path) -> None:
         """Push the image at ``path`` to the e-ink. Blocking; takes ~30s on real hardware.
 
         The image must already be at the display's native resolution and palette —
@@ -120,3 +124,32 @@ class DisplayController:
             self._impl.set_image(img)
         self._impl.show()
         logger.info("Displayed %s", path)
+
+
+def _detect_model_name(impl: Any) -> str:
+    name = getattr(impl, "name", None)
+    if name:
+        return name
+    cls = type(impl).__name__
+    module = type(impl).__module__.lower()
+    if "ac073tc1a" in module:
+        # Pimoroni's 6-color Spectra chip — used by both 7.3" 2025 and 13.3" 2025
+        if impl.width == 1600:
+            return 'Inky Impression 13.3" (Spectra 6)'
+        return 'Inky Impression 7.3" (Spectra 6)'
+    if "uc8159" in module:
+        return 'Inky Impression 7.3" (7-color)'
+    return f"Inky Impression ({cls})"
+
+
+def _detect_color_count(impl: Any) -> int:
+    # Newer inky lib drops ``colour_count`` — fall back to module sniffing.
+    explicit = getattr(impl, "colour_count", None)
+    if isinstance(explicit, int) and explicit > 0:
+        return explicit
+    module = type(impl).__module__.lower()
+    if "ac073tc1a" in module:
+        return 6  # Spectra 6
+    if "uc8159" in module:
+        return 7  # Classic 7-color Inky Impression
+    return 7
