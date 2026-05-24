@@ -5,6 +5,17 @@ Versionnement [SemVer](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+### Added — Phase 2.5 (Polish + perf depuis test E2E navigateur)
+- **Perf majeure : cache de la bitmap décodée** (3 169 ms → 56 ms sur HEIC, 60× plus rapide). Re-conversions instantanées au moindre tweak de mode couleur ou slider.
+- `convertBitmap()` séparé de `convert(file)` : la décode coûteuse ne se refait plus à chaque changement
+- `originalImage` retourné par `convertBitmap` : plus de double décode pour la preview originale
+- UX post-upload : le panel reste visible avec "✓ Ajoutée à la file · 195 Ko envoyés" et un bouton "Envoyer une autre photo" — l'utilisateur voit le succès au lieu d'être renvoyé brutalement à l'écran d'accueil
+- WebSocket auto-refresh : `useWebSocket` hook se connecte à `/api/ws`, queue se met à jour live sur `queue_updated` / `photo_uploaded`. Backoff exponentiel pour reconnect (500ms → 30s).
+- Hint dimensions source : "4032×3024 → 800×480" affiché à côté du nom du fichier
+- États visibles pendant la conversion : "Décodage HEIC (1ère fois ~1-2 s)…" / "Conversion (resize + dither)…" / "Mise à jour du rendu…" — l'utilisateur ne se demande plus si ça plante
+- vitest.config.ts dédié avec `isolate: false` (les workers Vitest 4 timeout sur boot froid de jsdom — singleton context boot en 620ms au lieu de 60+ s)
+- Tests vitest : 7/7 toujours OK après refactor
+
 ### Added — Phase 2 (Conversion image dans le navigateur)
 - **Pipeline conversion client-side** : decode (HEIC/JPEG/PNG/WebP) → resize+cover-crop → optional warmth → Floyd-Steinberg dithering → PNG. Le serveur reçoit du déjà-prêt.
 - `lib/converter/palettes.ts` : typage strict + import de `@shared/palettes.json` (source unique avec le backend)
