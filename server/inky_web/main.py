@@ -62,6 +62,7 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = Scheduler(app.state.display, app.state.bus)
     await app.state.scheduler.start()
 
+    credentials_existed = (data_dir() / "credentials.json").is_file()
     app.state.credentials = auth.load_or_create_credentials(data_dir())
     app.state.sessions = auth.SessionStore()
     app.state.login_limiter = auth.LoginRateLimiter()
@@ -72,6 +73,25 @@ async def lifespan(app: FastAPI):
             app.state.credentials.path,
             app.state.credentials.password,
         )
+
+    # On first boot (credentials freshly generated AND nothing ever displayed),
+    # push the welcome screen so the user sees the URL + password on the Inky.
+    if not credentials_existed and not auth.auth_disabled():
+        try:
+            from inky_web import history as _history_module  # noqa: F401
+        except ImportError:
+            pass
+        # No history yet → show welcome. Run in a thread so lifespan stays snappy.
+        import asyncio
+
+        from inky_web.services import history as history_service
+        from inky_web.welcome import show_welcome
+
+        if history_service.count() == 0:
+            logging.getLogger(__name__).info(
+                "First boot detected — pushing welcome screen to the Inky"
+            )
+            asyncio.create_task(asyncio.to_thread(show_welcome, app.state.display))
 
     try:
         yield
