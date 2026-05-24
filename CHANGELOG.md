@@ -5,6 +5,16 @@ Versionnement [SemVer](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+### Added — Phase 3+4+5 (Dashboard, Queue mgmt, Settings, Historique)
+- **Layout à onglets** : Tableau de bord / File d'attente / Paramètres / Historique. Header sticky avec specs écran + badge de queue count.
+- **Dashboard** : hero card avec l'image actuellement affichée (à grande taille) + métadonnées (nom, date, source, taille). Panneau latéral avec specs écran (modèle, résolution, couleurs, mode, queue, prochain changement). Boutons globaux ← Précédente / Suivante →. Aperçu de la file (6 premières photos).
+- **Queue panel** : liste réordonnable par **drag & drop** (@dnd-kit), suppression par photo, vue numérotée. Optimistic UI sur le reorder (rollback si l'API échoue).
+- **Settings panel** : 3 radios mode couleur (Spectra recommandé / Warmth boost / Pimoroni 7c) + 3 radios fréquence (Quotidien avec heure, Intervalle avec minutes, Manuel). Save automatique au moindre changement.
+- **Historique** : galerie paginée des photos affichées avec date relative ("il y a 2 min"), source (next/prev/auto/recycle/upload), bouton "Remettre en file" qui re-poste le PNG via /api/queue.
+- **WebSocket-driven refresh** : tous les changements backend (queue_updated, display_changed, settings_changed, photo_uploaded, photo_deleted) déclenchent un refetch automatique des states. Fix : proxy Vite `/api/ws` configuré spécifiquement comme WebSocket (avant, le matcher `/api` HTTP attrapait /api/ws en HTTP).
+- **Helpers UI** : `formatRelative`, `formatAbsolute`, `formatBytes` — labels lisibles ("il y a 2 min", "24 mai, 18:19", "131 Ko").
+- Refresh toutes les minutes pour garder les labels relatifs frais.
+
 ### Added — Phase 2.5 (Polish + perf depuis test E2E navigateur)
 - **Perf majeure : cache de la bitmap décodée** (3 169 ms → 56 ms sur HEIC, 60× plus rapide). Re-conversions instantanées au moindre tweak de mode couleur ou slider.
 - `convertBitmap()` séparé de `convert(file)` : la décode coûteuse ne se refait plus à chaque changement
