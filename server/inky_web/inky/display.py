@@ -10,7 +10,10 @@ from __future__ import annotations
 import logging
 import platform
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +81,21 @@ class DisplayController:
     def shutdown(self) -> None:
         self._impl = None
 
+    @property
+    def color_mode(self) -> str:
+        return self._color_mode
+
+    def set_color_mode(self, mode: str) -> None:
+        self._color_mode = mode
+
+    @property
+    def spec(self) -> DisplaySpec:
+        return self._spec
+
+    @property
+    def is_mock(self) -> bool:
+        return self._is_mock
+
     def info(self) -> dict[str, Any]:
         return {
             "model": self._spec.model,
@@ -87,3 +105,18 @@ class DisplayController:
             "color_mode": self._color_mode,
             "is_mock": self._is_mock,
         }
+
+    def display_image(self, path: Path) -> None:
+        """Push the image at ``path`` to the e-ink. Blocking; takes ~30s on real hardware.
+
+        The image must already be at the display's native resolution and palette —
+        all heavy processing happens in the browser before upload.
+        """
+        if self._is_mock or self._impl is None:
+            logger.info("[mock] Would display %s", path)
+            return
+
+        with Image.open(path) as img:
+            self._impl.set_image(img)
+        self._impl.show()
+        logger.info("Displayed %s", path)
