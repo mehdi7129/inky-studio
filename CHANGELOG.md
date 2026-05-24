@@ -5,6 +5,24 @@ Versionnement [SemVer](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+### Added — Phase 2 (Conversion image dans le navigateur)
+- **Pipeline conversion client-side** : decode (HEIC/JPEG/PNG/WebP) → resize+cover-crop → optional warmth → Floyd-Steinberg dithering → PNG. Le serveur reçoit du déjà-prêt.
+- `lib/converter/palettes.ts` : typage strict + import de `@shared/palettes.json` (source unique avec le backend)
+- `lib/converter/decode.ts` : HEIC via `heic2any` lazy-loaded (WASM 1.35 Mo seulement quand HEIC est uploadé)
+- `lib/converter/transform.ts` : resize + center crop "cover" avec décalage configurable (-1 à +1 sur X et Y)
+- `lib/converter/dither.ts` : Floyd-Steinberg custom (~140 lignes), nearest-color avec distance Euclidean RGB + applyWarmth pour le mode `warmth_boost`
+- `lib/converter/encode.ts` : PNG via OffscreenCanvas (avec fallback `<canvas>`)
+- `lib/converter/worker.ts` : Web Worker qui exécute le dither hors du main thread (préserve la fluidité UI sur 1.9 MP / 13.3")
+- `lib/converter/pipeline.ts` : orchestre tout, instantie le Worker une fois, mesure la durée totale
+- **UI** :
+  - `Uploader` : drag & drop + file picker (JPEG/PNG/HEIC/WebP)
+  - `PreviewCanvas` : affichage ImageData avec image-rendering pixelated
+  - `ConverterPanel` : side-by-side original vs rendu e-ink, slider décalage X/Y, switch mode couleur, bouton Envoyer
+  - `App` : refonte avec dashboard minimal (modèle + résolution + file d'attente avec thumbnails)
+- Vite : alias `@shared`, proxy `/api` + `/ws`, format ES pour worker
+- Tests : 7 tests vitest sur `dither` (snap noir/blanc, palette-only, préservation tons moyens, alpha, applyWarmth)
+- Build : main bundle 66 Ko gzip · heic2any code-split en chunk séparé (344 Ko gzip, lazy-loaded)
+
 ### Added — Phase 1 (Backend coeur)
 - Schéma SQLite : tables `photos`, `queue`, `history`, `settings` avec FK cascade et indexes
 - `db.py` : connection helpers, init idempotent, support de `INKY_STUDIO_DATA_DIR` pour les tests

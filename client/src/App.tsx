@@ -1,22 +1,31 @@
 import { useEffect, useState } from 'react'
-import { fetchHealth, fetchDisplayState } from './lib/api'
-import type { DisplayState, HealthResponse } from './lib/api'
+import { Uploader } from './components/Uploader'
+import { ConverterPanel } from './components/ConverterPanel'
+import { fetchDisplayState, fetchHealth, fetchQueue } from './lib/api'
+import type { DisplayState, HealthResponse, QueueEntry } from './lib/api'
 
-type Status = 'loading' | 'ok' | 'error'
+type BootStatus = 'loading' | 'ok' | 'error'
 
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [display, setDisplay] = useState<DisplayState | null>(null)
-  const [status, setStatus] = useState<Status>('loading')
+  const [queue, setQueue] = useState<QueueEntry[]>([])
+  const [status, setStatus] = useState<BootStatus>('loading')
   const [error, setError] = useState<string | null>(null)
+  const [pickedFile, setPickedFile] = useState<File | null>(null)
+
+  const refreshQueue = () => {
+    void fetchQueue().then(setQueue).catch(() => {})
+  }
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([fetchHealth(), fetchDisplayState()])
-      .then(([h, d]) => {
+    Promise.all([fetchHealth(), fetchDisplayState(), fetchQueue()])
+      .then(([h, d, q]) => {
         if (cancelled) return
         setHealth(h)
         setDisplay(d)
+        setQueue(q)
         setStatus('ok')
       })
       .catch((err: Error) => {
@@ -30,61 +39,88 @@ function App() {
   }, [])
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-8">
-      <div className="max-w-2xl w-full">
-        <header className="mb-8 text-center">
-          <h1 className="text-4xl font-semibold tracking-tight mb-2">Inky Studio</h1>
-          <p className="text-neutral-500 dark:text-neutral-400">
-            Phase 0 — scaffolding. La vraie UI arrive en Phase 2.
+    <main className="min-h-screen p-6 md:p-10 max-w-5xl mx-auto">
+      <header className="mb-8">
+        <h1 className="text-3xl font-semibold tracking-tight">Inky Studio</h1>
+        {status === 'ok' && display && health && (
+          <p className="text-sm text-neutral-500 mt-1">
+            {display.model} · {display.width}×{display.height} · {display.colors} couleurs
+            {display.is_mock && (
+              <span className="ml-2 px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs">
+                MOCK
+              </span>
+            )}
+            <span className="ml-3 opacity-60">backend v{health.version}</span>
           </p>
-        </header>
+        )}
+      </header>
 
-        <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-6 bg-white/50 dark:bg-neutral-900/50 backdrop-blur">
-          <h2 className="font-medium text-sm uppercase tracking-wider text-neutral-500 mb-4">
-            État du backend
-          </h2>
+      {status === 'loading' && <p className="text-neutral-500">Connexion à l'API…</p>}
 
-          {status === 'loading' && (
-            <p className="text-neutral-500">Connexion à l'API…</p>
+      {status === 'error' && (
+        <div className="rounded-lg border border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30 p-4">
+          <p className="font-medium text-red-700 dark:text-red-300">Backend injoignable</p>
+          <p className="text-sm text-red-600 dark:text-red-400 mt-1">{error}</p>
+          <p className="text-xs text-red-500 mt-2">
+            Démarre le backend : <code>cd server && .venv/bin/inky-studio-server</code>
+          </p>
+        </div>
+      )}
+
+      {status === 'ok' && display && (
+        <>
+          {!pickedFile && (
+            <Uploader onFile={setPickedFile} />
           )}
 
-          {status === 'error' && (
-            <div className="text-red-600 dark:text-red-400">
-              <p className="font-medium">Backend injoignable</p>
-              <p className="text-sm mt-1 opacity-80">{error}</p>
-              <p className="text-xs mt-2 opacity-60">
-                Démarre le backend : <code className="px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800">cd server &amp;&amp; inky-studio-server</code>
+          {pickedFile && (
+            <ConverterPanel
+              file={pickedFile}
+              display={display}
+              onUploaded={() => {
+                refreshQueue()
+                setPickedFile(null)
+              }}
+              onReset={() => setPickedFile(null)}
+            />
+          )}
+
+          <section className="mt-10">
+            <h2 className="text-sm uppercase tracking-wider text-neutral-500 mb-3">
+              File d'attente ({queue.length})
+            </h2>
+            {queue.length === 0 ? (
+              <p className="text-sm text-neutral-500">
+                Aucune photo en attente. Ajoutes-en une ci-dessus.
               </p>
-            </div>
-          )}
-
-          {status === 'ok' && health && display && (
-            <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
-              <dt className="text-neutral-500">Backend</dt>
-              <dd className="font-medium">v{health.version} · {health.status}</dd>
-
-              <dt className="text-neutral-500">Modèle écran</dt>
-              <dd className="font-medium">
-                {display.model}{' '}
-                {display.is_mock && (
-                  <span className="ml-2 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                    MOCK
-                  </span>
-                )}
-              </dd>
-
-              <dt className="text-neutral-500">Résolution</dt>
-              <dd className="font-medium">{display.width} × {display.height}</dd>
-
-              <dt className="text-neutral-500">Couleurs</dt>
-              <dd className="font-medium">{display.colors}</dd>
-
-              <dt className="text-neutral-500">Mode couleur</dt>
-              <dd className="font-medium">{display.color_mode}</dd>
-            </dl>
-          )}
-        </section>
-      </div>
+            ) : (
+              <ul className="flex flex-wrap gap-3">
+                {queue.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden bg-white dark:bg-neutral-900"
+                  >
+                    <img
+                      src={`/api/photos/${entry.photo.id}`}
+                      alt={entry.photo.original_filename}
+                      className="w-28 h-auto block"
+                      style={{ imageRendering: 'pixelated' }}
+                    />
+                    <div className="p-2 text-xs">
+                      <p className="font-medium truncate w-28" title={entry.photo.original_filename}>
+                        {entry.photo.original_filename}
+                      </p>
+                      <p className="text-neutral-500">
+                        {Math.round(entry.photo.size_bytes / 1024)} Ko
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
     </main>
   )
 }
