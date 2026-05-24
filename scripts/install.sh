@@ -46,9 +46,23 @@ echo "→ Installing system packages (apt)…"
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
   git python3 python3-venv python3-pip \
-  nodejs npm \
   fonts-dejavu fonts-dejavu-core \
-  curl
+  curl ca-certificates gnupg
+
+# Node 22 (LTS) — Debian bookworm ships Node 18 which is too old for Vite 8.
+NEED_NODE=1
+if command -v node >/dev/null 2>&1; then
+  NODE_MAJOR=$(node -v | sed -E 's/^v([0-9]+)\..*/\1/')
+  if [[ "${NODE_MAJOR}" -ge 20 ]]; then
+    NEED_NODE=0
+    echo "  Node $(node -v) already meets the Vite 8 requirement (>= 20)."
+  fi
+fi
+if [[ "${NEED_NODE}" -eq 1 ]]; then
+  echo "  Installing Node 22 from the NodeSource repo…"
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+  sudo apt-get install -y nodejs
+fi
 
 # ── 3. Disable the older v2.0 service if present ─────────────────────────────
 if systemctl list-unit-files --type=service | grep -q "^${LEGACY_SERVICE_NAME}"; then
