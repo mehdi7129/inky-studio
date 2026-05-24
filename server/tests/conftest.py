@@ -1,8 +1,8 @@
 """Shared fixtures.
 
-Each test gets a fresh data directory under tmp_path so SQLite state and
-saved photos can't leak between tests. The INKY_STUDIO_DATA_DIR env var is the
-single source of truth for db.py — overriding it is enough.
+Auto-applied isolation: every test gets a fresh tmp data dir AND auth is
+disabled by default. Opt out by overriding the ``inky_env`` fixture in a
+specific test if you want to exercise the auth path directly.
 """
 from __future__ import annotations
 
@@ -13,23 +13,30 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 
-@pytest.fixture
-def data_dir(tmp_path, monkeypatch):
+@pytest.fixture(autouse=True)
+def inky_env(tmp_path, monkeypatch):
+    """Isolate every test: fresh data dir, auth off, DB initialized."""
     monkeypatch.setenv("INKY_STUDIO_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("INKY_STUDIO_DISABLE_AUTH", "1")
     from inky_web.db import init_db
     init_db()
     yield tmp_path
 
 
 @pytest.fixture
-def client(data_dir) -> TestClient:
+def data_dir(inky_env):
+    """Backwards-compatible alias — most tests reference ``data_dir``."""
+    return inky_env
+
+
+@pytest.fixture
+def client(inky_env) -> TestClient:
     from inky_web.main import app
     with TestClient(app) as test_client:
         yield test_client
 
 
 def make_png(width: int = 800, height: int = 480, color=(255, 0, 0)) -> bytes:
-    """Build a valid PNG of the given size — used to feed upload endpoints."""
     img = Image.new("RGB", (width, height), color)
     buf = BytesIO()
     img.save(buf, format="PNG")

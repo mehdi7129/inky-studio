@@ -81,6 +81,23 @@ async function sendJSON<T>(method: string, path: string, body?: unknown): Promis
   return response.json() as Promise<T>
 }
 
+export interface AuthStatus {
+  authenticated: boolean
+  auth_required: boolean
+}
+
+export function fetchAuthStatus(): Promise<AuthStatus> {
+  return getJSON('/api/auth/status')
+}
+
+export function login(password: string): Promise<AuthStatus> {
+  return sendJSON('POST', '/api/auth/login', { password })
+}
+
+export function logout(): Promise<AuthStatus> {
+  return sendJSON('POST', '/api/auth/logout')
+}
+
 export function fetchHealth(): Promise<HealthResponse> {
   return getJSON('/api/health')
 }

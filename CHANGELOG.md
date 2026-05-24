@@ -5,6 +5,21 @@ Versionnement [SemVer](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+### Added — Phase 6 (Auth + Welcome + Installer)
+- **Auth backend** : `auth.py` + `api/auth.py`. Password 10 chars alphanumériques généré à la première init et persisté dans `<data>/credentials.json` (mode 600). Session in-memory avec cookie HttpOnly SameSite=Strict (TTL 30 jours). Rate limiting login : 5 tentatives / IP / minute. `AuthMiddleware` bloque `/api/*` sauf `/api/health`, `/api/auth/status`, `/api/auth/login`. `INKY_STUDIO_DISABLE_AUTH=1` pour les tests.
+- **Frontend login** : `LoginScreen` avec mot de passe, gestion erreurs, redirect post-login. Bouton "Déconnexion" dans le header. Bootstrap : check /api/auth/status au load → login screen ou app selon état.
+- **Welcome screen** : `welcome.py` rend une image PIL avec titre "Inky Studio" + URL `http://<ip>:8000` + mot de passe + hint. Polices DejaVu (Linux) avec fallback macOS. Couleurs Spectra-friendly (bleu `#2040b8`, rouge `#a02020`). Mock mode sauve un preview PNG dans le data dir au lieu de pousser sur l'écran.
+- **Installer Pi** (`scripts/install.sh`) :
+  - Idempotent (clone OU update), désactive proprement `inky-photo-frame.service` (conflit SPI)
+  - apt install : git, python3-venv, nodejs, npm, fonts-dejavu
+  - Clone repo → /home/pi/inky-studio, venv .[pi], npm install + build
+  - Data dir `/var/lib/inky-studio` (chown pi:pi)
+  - systemd unit `inky-studio.service` (Type=simple, User=pi, Restart=on-failure)
+  - Pousse le welcome screen sur l'Inky une fois en place
+  - Affiche URL + password à la fin
+- **CLI** `inky-studio` (status / logs / restart / welcome / password / reset-password / update / info / help) installé dans `/usr/local/bin/`
+- **Uninstaller** (`scripts/uninstall.sh`) : stop + disable le service, restaure l'ancien service v2.0 si présent, préserve photos et credentials
+
 ### Added — Phase 3+4+5 (Dashboard, Queue mgmt, Settings, Historique)
 - **Layout à onglets** : Tableau de bord / File d'attente / Paramètres / Historique. Header sticky avec specs écran + badge de queue count.
 - **Dashboard** : hero card avec l'image actuellement affichée (à grande taille) + métadonnées (nom, date, source, taille). Panneau latéral avec specs écran (modèle, résolution, couleurs, mode, queue, prochain changement). Boutons globaux ← Précédente / Suivante →. Aperçu de la file (6 premières photos).
