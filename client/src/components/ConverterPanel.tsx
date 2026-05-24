@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
-import { convert, type ConvertResult } from '../lib/converter/pipeline'
-import { decode } from '../lib/converter/decode'
-import { transformToImageData } from '../lib/converter/transform'
+import { convertBitmap, decode, type ConvertResult } from '../lib/converter/pipeline'
 import type { ColorMode } from '../lib/converter/palettes'
 import type { DisplayState } from '../lib/api'
 import { uploadToQueue } from '../lib/api'
@@ -15,28 +13,77 @@ interface ConverterPanelProps {
 }
 
 type Status =
-  | { kind: 'idle' }
-  | { kind: 'converting' }
+  | { kind: 'decoding'; wasHeic: boolean }
+  | { kind: 'converting'; firstRun: boolean }
   | { kind: 'ready'; result: ConvertResult }
   | { kind: 'uploading' }
-  | { kind: 'done'; result: ConvertResult; sizeKb: number }
+  | { kind: 'done'; sizeKb: number; durationMs: number }
   | { kind: 'error'; message: string }
+
+interface DecodedSource {
+  bitmap: ImageBitmap
+  wasHeic: boolean
+  /** Source dimensions, useful in the UI for "5184×3888 → 800×480" hints. */
+  sourceWidth: number
+  sourceHeight: number
+}
 
 export function ConverterPanel({ file, display, onUploaded, onReset }: ConverterPanelProps) {
   const [colorMode, setColorMode] = useState<ColorMode>(display.color_mode)
   const [offsetX, setOffsetX] = useState(0)
   const [offsetY, setOffsetY] = useState(0)
-  const [originalPreview, setOriginalPreview] = useState<ImageData | null>(null)
-  const [status, setStatus] = useState<Status>({ kind: 'idle' })
+  const [source, setSource] = useState<DecodedSource | null>(null)
+  const [lastResult, setLastResult] = useState<ConvertResult | null>(null)
+  const [status, setStatus] = useState<Status>({ kind: 'decoding', wasHeic: isLikelyHeic(file) })
 
+  // Effect 1 — decode the file once. HEIC may take 1-2s via WASM; everything else is near-instant.
   useEffect(() => {
     let cancelled = false
-    setStatus({ kind: 'converting' })
+    let acquiredBitmap: ImageBitmap | null = null
+
+    setStatus({ kind: 'decoding', wasHeic: isLikelyHeic(file) })
 
     void (async () => {
       try {
-        const result = await convert({
-          file,
+        const decoded = await decode(file)
+        acquiredBitmap = decoded.bitmap
+        if (cancelled) {
+          decoded.bitmap.close?.()
+          return
+        }
+        setSource({
+          bitmap: decoded.bitmap,
+          wasHeic: decoded.wasHeic,
+          sourceWidth: decoded.bitmap.width,
+          sourceHeight: decoded.bitmap.height,
+        })
+      } catch (err) {
+        if (cancelled) return
+        setStatus({
+          kind: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        })
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      acquiredBitmap?.close?.()
+    }
+  }, [file])
+
+  // Effect 2 — convert (transform + dither + encode) whenever the cached source or settings change.
+  // Re-runs in 100-400ms because the costly decode has already happened in Effect 1.
+  useEffect(() => {
+    if (!source) return
+    let cancelled = false
+    const firstRun = lastResult === null
+    setStatus({ kind: 'converting', firstRun })
+
+    void (async () => {
+      try {
+        const result = await convertBitmap({
+          bitmap: source.bitmap,
           targetWidth: display.width,
           targetHeight: display.height,
           colorMode,
@@ -44,10 +91,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
           offsetY,
         })
         if (cancelled) return
-
-        const original = await renderOriginalPreview(file, display.width, display.height)
-        if (cancelled) return
-        setOriginalPreview(original)
+        setLastResult(result)
         setStatus({ kind: 'ready', result })
       } catch (err) {
         if (cancelled) return
@@ -61,20 +105,24 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
     return () => {
       cancelled = true
     }
-  }, [file, display.width, display.height, colorMode, offsetX, offsetY])
+    // lastResult is intentionally omitted — it's a derived signal, not an input
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, display.width, display.height, colorMode, offsetX, offsetY])
 
   const handleUpload = async () => {
     if (status.kind !== 'ready') return
-    const readyResult = status.result
-    const blob = readyResult.pngBlob
+    const blob = status.result.pngBlob
+    const durationMs = status.result.durationMs
     setStatus({ kind: 'uploading' })
     try {
       await uploadToQueue(blob, file.name.replace(/\.[^.]+$/, '') + '.png')
       setStatus({
         kind: 'done',
-        result: readyResult,
         sizeKb: Math.round(blob.size / 1024),
+        durationMs,
       })
+      // Tell the parent to refresh the queue, but keep this panel mounted so
+      // the success message is visible until the user explicitly picks another.
       onUploaded()
     } catch (err) {
       setStatus({
@@ -84,13 +132,13 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
     }
   }
 
-  const previewImage =
-    status.kind === 'ready' || status.kind === 'done' ? status.result.previewImage : null
+  const displayedOriginal = lastResult?.originalImage ?? null
+  const displayedPreview = lastResult?.previewImage ?? null
+  const pngSizeKb = lastResult ? Math.round(lastResult.pngBlob.size / 1024) : null
 
-  const pngSizeKb =
-    status.kind === 'ready' || status.kind === 'done'
-      ? Math.round(status.result.pngBlob.size / 1024)
-      : null
+  const dimensionsHint = source
+    ? `${source.sourceWidth}×${source.sourceHeight} → ${display.width}×${display.height}`
+    : null
 
   return (
     <section className="space-y-6">
@@ -98,7 +146,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
         <div>
           <h2 className="text-xl font-semibold">{file.name}</h2>
           <p className="text-sm text-neutral-500">
-            Cible : {display.width} × {display.height} · {display.colors} couleurs
+            {dimensionsHint ?? `Cible : ${display.width} × ${display.height}`} · {display.colors} couleurs
           </p>
         </div>
         <button
@@ -111,8 +159,8 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
       </header>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <PreviewCanvas image={originalPreview} label="Original (centre crop)" />
-        <PreviewCanvas image={previewImage} label="Rendu e-ink (palette + dither)" />
+        <PreviewCanvas image={displayedOriginal} label="Original (centre crop)" />
+        <PreviewCanvas image={displayedPreview} label="Rendu e-ink (palette + dither)" />
       </div>
 
       <fieldset className="space-y-4 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4">
@@ -122,16 +170,16 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
 
         <div>
           <label className="block text-sm font-medium mb-2">Mode couleur</label>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {(['pimoroni', 'spectra_palette', 'warmth_boost'] as const).map((mode) => (
               <button
                 key={mode}
                 type="button"
                 onClick={() => setColorMode(mode)}
                 className={[
-                  'px-3 py-1.5 rounded-md text-sm border',
+                  'px-3 py-1.5 rounded-md text-sm border transition',
                   colorMode === mode
-                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                     : 'border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800',
                 ].join(' ')}
               >
@@ -169,47 +217,70 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
         </div>
       </fieldset>
 
-      <footer className="flex items-center justify-between gap-4">
-        <div className="text-sm text-neutral-500 min-h-[1.5rem]">
-          {status.kind === 'converting' && 'Conversion…'}
-          {status.kind === 'uploading' && 'Envoi au Pi…'}
+      <footer className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="text-sm min-h-[1.5rem] flex-1">
+          {status.kind === 'decoding' && (
+            <span className="text-neutral-500">
+              {status.wasHeic
+                ? 'Décodage HEIC (1ère fois ~1-2 s)…'
+                : 'Décodage…'}
+            </span>
+          )}
+          {status.kind === 'converting' && (
+            <span className="text-neutral-500">
+              {status.firstRun
+                ? 'Conversion (resize + dither)…'
+                : 'Mise à jour du rendu…'}
+            </span>
+          )}
           {status.kind === 'ready' && pngSizeKb !== null && (
-            <>PNG prêt · {pngSizeKb} Ko · {status.result.durationMs.toFixed(0)} ms</>
+            <span className="text-neutral-500">
+              PNG prêt · <span className="font-medium text-neutral-700 dark:text-neutral-200">{pngSizeKb} Ko</span>{' '}
+              · {status.result.durationMs.toFixed(0)} ms
+            </span>
+          )}
+          {status.kind === 'uploading' && (
+            <span className="text-neutral-500">Envoi au Pi…</span>
           )}
           {status.kind === 'done' && (
-            <span className="text-green-600 dark:text-green-400">
-              ✓ Ajouté à la file · {status.sizeKb} Ko envoyés
+            <span className="text-green-600 dark:text-green-400 font-medium">
+              ✓ Ajoutée à la file · {status.sizeKb} Ko envoyés
             </span>
           )}
           {status.kind === 'error' && (
             <span className="text-red-600 dark:text-red-400">Erreur : {status.message}</span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={handleUpload}
-          disabled={status.kind !== 'ready'}
-          className={[
-            'px-4 py-2 rounded-md font-medium transition',
-            status.kind === 'ready'
-              ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-              : 'bg-neutral-300 text-neutral-500 dark:bg-neutral-700 cursor-not-allowed',
-          ].join(' ')}
-        >
-          Envoyer à l'écran
-        </button>
+        {status.kind === 'done' ? (
+          <button
+            type="button"
+            onClick={onReset}
+            className="px-4 py-2 rounded-md font-medium bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-white transition"
+          >
+            Envoyer une autre photo
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleUpload}
+            disabled={status.kind !== 'ready'}
+            className={[
+              'px-4 py-2 rounded-md font-medium transition',
+              status.kind === 'ready'
+                ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                : 'bg-neutral-300 text-neutral-500 dark:bg-neutral-700 cursor-not-allowed',
+            ].join(' ')}
+          >
+            Envoyer à l'écran
+          </button>
+        )}
       </footer>
     </section>
   )
 }
 
-async function renderOriginalPreview(
-  file: File,
-  targetWidth: number,
-  targetHeight: number,
-): Promise<ImageData> {
-  const decoded = await decode(file)
-  const data = transformToImageData(decoded.bitmap, { targetWidth, targetHeight })
-  decoded.bitmap.close?.()
-  return data
+function isLikelyHeic(file: File): boolean {
+  if (file.type === 'image/heic' || file.type === 'image/heif') return true
+  const lower = file.name.toLowerCase()
+  return lower.endsWith('.heic') || lower.endsWith('.heif')
 }

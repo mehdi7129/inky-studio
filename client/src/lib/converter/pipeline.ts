@@ -27,8 +27,20 @@ export interface ConvertOptions {
   forceInline?: boolean
 }
 
+export interface ConvertBitmapOptions {
+  bitmap: ImageBitmap
+  targetWidth: number
+  targetHeight: number
+  colorMode: ColorMode
+  offsetX?: number
+  offsetY?: number
+  forceInline?: boolean
+}
+
 export interface ConvertResult {
-  /** ImageData ready to draw to a <canvas> for preview. */
+  /** Source image cropped to display dimensions, before palette/dither. */
+  originalImage: ImageData
+  /** Dithered output ready to draw to <canvas> for the e-ink preview. */
   previewImage: ImageData
   /** PNG Blob ready to POST to /api/queue. */
   pngBlob: Blob
@@ -91,20 +103,53 @@ function ditherInWorker(
   })
 }
 
+/**
+ * High-level entry: decode the file, then run the full conversion pipeline.
+ * Convenient for one-shot conversions (e.g. tests). For interactive UIs, prefer
+ * caching the decoded bitmap and calling `convertBitmap` directly so that
+ * HEIC decode (~1.5s) doesn't happen on every slider/mode tweak.
+ */
 export async function convert(options: ConvertOptions): Promise<ConvertResult> {
-  const t0 = performance.now()
-
   const decoded = await decode(options.file)
-  const imageData = transformToImageData(decoded.bitmap, {
-    targetWidth: options.targetWidth,
-    targetHeight: options.targetHeight,
+  try {
+    const result = await convertBitmap({
+      bitmap: decoded.bitmap,
+      targetWidth: options.targetWidth,
+      targetHeight: options.targetHeight,
+      colorMode: options.colorMode,
+      offsetX: options.offsetX,
+      offsetY: options.offsetY,
+      forceInline: options.forceInline,
+    })
+    return { ...result, wasHeic: decoded.wasHeic }
+  } finally {
+    decoded.bitmap.close?.()
+  }
+}
+
+export async function convertBitmap(options: ConvertBitmapOptions): Promise<ConvertResult> {
+  const t0 = performance.now()
+  const { bitmap, targetWidth, targetHeight, colorMode } = options
+
+  // Two passes through the resize: one we keep as the "original" preview, one
+  // we mutate (warmth) and dither. Re-running transformToImageData is cheap
+  // (~5-20ms on 800×480) compared to a HEIC decode (~1500ms).
+  const originalImage = transformToImageData(bitmap, {
+    targetWidth,
+    targetHeight,
+    offsetX: options.offsetX,
+    offsetY: options.offsetY,
+  })
+  const working = transformToImageData(bitmap, {
+    targetWidth,
+    targetHeight,
     offsetX: options.offsetX,
     offsetY: options.offsetY,
   })
 
-  if (options.colorMode === 'warmth_boost') {
+  if (colorMode === 'warmth_boost') {
     applyWarmth(
-      imageData.data,
+      working.data,
       WARMTH_ADJUSTMENTS.red_gain,
       WARMTH_ADJUSTMENTS.green_gain,
       WARMTH_ADJUSTMENTS.blue_gain,
@@ -113,34 +158,32 @@ export async function convert(options: ConvertOptions): Promise<ConvertResult> {
     )
   }
 
-  // 'pimoroni' mode uses a 7-color palette; 'spectra_palette' and 'warmth_boost' both
-  // use the calibrated 6-color palette (warmth_boost has already adjusted the pixels above).
-  const paletteFlat = paletteFlatFor(options.colorMode)
+  const paletteFlat = paletteFlatFor(colorMode)
 
   let ditheredPixels: Uint8ClampedArray
   if (options.forceInline) {
     ditheredPixels = dither({
-      width: imageData.width,
-      height: imageData.height,
-      pixels: imageData.data,
+      width: working.width,
+      height: working.height,
+      pixels: working.data,
       paletteFlat,
     }).pixels
   } else {
-    ditheredPixels = await ditherInWorker(imageData, paletteFlat)
+    ditheredPixels = await ditherInWorker(working, paletteFlat)
   }
 
-  // Copy into a guaranteed-non-shared buffer so ImageData's strict typing is happy.
   const previewBuffer = new Uint8ClampedArray(ditheredPixels.length)
   previewBuffer.set(ditheredPixels)
-  const previewImage = new ImageData(previewBuffer, imageData.width, imageData.height)
+  const previewImage = new ImageData(previewBuffer, working.width, working.height)
   const pngBlob = await imageDataToPng(previewImage)
 
-  decoded.bitmap.close?.()
-
   return {
+    originalImage,
     previewImage,
     pngBlob,
     durationMs: performance.now() - t0,
-    wasHeic: decoded.wasHeic,
+    wasHeic: false,
   }
 }
+
+export { decode } from './decode'

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Uploader } from './components/Uploader'
 import { ConverterPanel } from './components/ConverterPanel'
 import { fetchDisplayState, fetchHealth, fetchQueue } from './lib/api'
 import type { DisplayState, HealthResponse, QueueEntry } from './lib/api'
+import { useWebSocket } from './lib/useWebSocket'
 
 type BootStatus = 'loading' | 'ok' | 'error'
 
@@ -14,9 +15,9 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [pickedFile, setPickedFile] = useState<File | null>(null)
 
-  const refreshQueue = () => {
+  const refreshQueue = useCallback(() => {
     void fetchQueue().then(setQueue).catch(() => {})
-  }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -37,6 +38,17 @@ function App() {
       cancelled = true
     }
   }, [])
+
+  useWebSocket(
+    useCallback(
+      (event) => {
+        if (event.type === 'queue_updated' || event.type === 'photo_uploaded') {
+          refreshQueue()
+        }
+      },
+      [refreshQueue],
+    ),
+  )
 
   return (
     <main className="min-h-screen p-6 md:p-10 max-w-5xl mx-auto">
@@ -69,18 +81,13 @@ function App() {
 
       {status === 'ok' && display && (
         <>
-          {!pickedFile && (
+          {!pickedFile ? (
             <Uploader onFile={setPickedFile} />
-          )}
-
-          {pickedFile && (
+          ) : (
             <ConverterPanel
               file={pickedFile}
               display={display}
-              onUploaded={() => {
-                refreshQueue()
-                setPickedFile(null)
-              }}
+              onUploaded={refreshQueue}
               onReset={() => setPickedFile(null)}
             />
           )}
