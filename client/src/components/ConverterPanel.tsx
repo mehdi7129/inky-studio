@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { convertBitmap, decode, type ConvertResult } from '../lib/converter/pipeline'
 import type { ColorMode } from '../lib/converter/palettes'
-import type { DisplayState } from '../lib/api'
+import type { DisplayInfo } from '../lib/api'
 import { uploadToQueue } from '../lib/api'
 import { PreviewCanvas } from './PreviewCanvas'
 
 interface ConverterPanelProps {
   file: File
-  display: DisplayState
+  display: DisplayInfo
   onUploaded: () => void
   onReset: () => void
 }

@@ -1,14 +1,17 @@
+export type ColorModeApi = 'pimoroni' | 'spectra_palette' | 'warmth_boost'
+export type ChangeModeApi = 'daily' | 'interval' | 'manual'
+
 export interface HealthResponse {
   status: string
   version: string
 }
 
-export interface DisplayState {
+export interface DisplayInfo {
   model: string
   width: number
   height: number
   colors: number
-  color_mode: 'pimoroni' | 'spectra_palette' | 'warmth_boost'
+  color_mode: ColorModeApi
   is_mock: boolean
 }
 
@@ -30,6 +33,27 @@ export interface QueueEntry {
   photo: Photo
 }
 
+export interface HistoryEntry {
+  id: number
+  displayed_at: number
+  source: 'auto' | 'manual_next' | 'manual_previous' | 'recycle' | 'upload'
+  photo: Photo
+}
+
+export interface Settings {
+  color_mode: ColorModeApi
+  change_mode: ChangeModeApi
+  change_hour: number
+  change_interval_minutes: number
+}
+
+export interface DisplayState {
+  display: DisplayInfo
+  current: HistoryEntry | null
+  queue_count: number
+  next_change_at: number | null
+}
+
 export interface UploadResponse {
   photo: Photo
   queue_entry: QueueEntry
@@ -38,22 +62,67 @@ export interface UploadResponse {
 
 async function getJSON<T>(path: string): Promise<T> {
   const response = await fetch(path, { credentials: 'include' })
+  if (!response.ok) throw new Error(`HTTP ${response.status} on ${path}`)
+  return response.json() as Promise<T>
+}
+
+async function sendJSON<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method,
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status} on ${path}`)
+    const detail = await response.text().catch(() => '')
+    throw new Error(`${method} ${path} → ${response.status}: ${detail}`)
   }
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
 export function fetchHealth(): Promise<HealthResponse> {
-  return getJSON<HealthResponse>('/api/health')
+  return getJSON('/api/health')
 }
 
-export function fetchDisplayState(): Promise<DisplayState> {
-  return getJSON<DisplayState>('/api/display')
+export function fetchDisplayInfo(): Promise<DisplayInfo> {
+  return getJSON('/api/display')
+}
+
+export function fetchState(): Promise<DisplayState> {
+  return getJSON('/api/state')
 }
 
 export function fetchQueue(): Promise<QueueEntry[]> {
-  return getJSON<QueueEntry[]>('/api/queue')
+  return getJSON('/api/queue')
+}
+
+export function fetchHistory(limit = 100, offset = 0): Promise<HistoryEntry[]> {
+  return getJSON(`/api/history?limit=${limit}&offset=${offset}`)
+}
+
+export function fetchSettings(): Promise<Settings> {
+  return getJSON('/api/settings')
+}
+
+export function updateSettings(patch: Partial<Settings>): Promise<Settings> {
+  return sendJSON('POST', '/api/settings', patch)
+}
+
+export function reorderQueue(photoIds: string[]): Promise<QueueEntry[]> {
+  return sendJSON('POST', '/api/queue/reorder', { photo_ids: photoIds })
+}
+
+export function removeFromQueue(photoId: string): Promise<void> {
+  return sendJSON('DELETE', `/api/queue/${photoId}`)
+}
+
+export function triggerNext(): Promise<void> {
+  return sendJSON('POST', '/api/display/next')
+}
+
+export function triggerPrevious(): Promise<void> {
+  return sendJSON('POST', '/api/display/previous')
 }
 
 export async function uploadToQueue(pngBlob: Blob, filename: string): Promise<UploadResponse> {
@@ -69,4 +138,8 @@ export async function uploadToQueue(pngBlob: Blob, filename: string): Promise<Up
     throw new Error(`Upload failed (${response.status}): ${detail}`)
   }
   return response.json() as Promise<UploadResponse>
+}
+
+export function photoFileUrl(photoId: string): string {
+  return `/api/photos/${photoId}`
 }

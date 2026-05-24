@@ -18,8 +18,10 @@ export default defineConfig({
     port: 5273,
     strictPort: true,
     proxy: {
+      // Order matters: most specific first. /api/ws needs the ws upgrade,
+      // /api/* is plain HTTP.
+      '/api/ws': { target: 'ws://localhost:8000', ws: true, rewriteWsOrigin: true },
       '/api': 'http://localhost:8000',
-      '/ws': { target: 'ws://localhost:8000', ws: true },
     },
   },
   worker: {
