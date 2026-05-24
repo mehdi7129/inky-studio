@@ -26,10 +26,10 @@ class DisplaySpec:
 
 
 MOCK_SPEC = DisplaySpec(
-    model="Mock Inky Impression 7.3\"",
+    model="Mock Inky Impression 7.3\" (Spectra 6)",
     width=800,
     height=480,
-    colors=7,
+    colors=6,
 )
 
 
@@ -44,7 +44,7 @@ class DisplayController:
         self._impl: Any | None = None
         self._is_mock: bool = True
         self._spec: DisplaySpec = MOCK_SPEC
-        self._color_mode: str = "pimoroni"
+        self._color_mode: str = "spectra_palette"
 
     def initialize(self) -> None:
         if platform.system() != "Linux":

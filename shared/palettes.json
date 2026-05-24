@@ -1,0 +1,30 @@
+{
+  "$schema": "Palette definitions for the Inky displays Inky Studio supports.",
+  "$source": "Spectra 6 RGB values measured against an sRGB monitor by Mehdi (calibration from inky-photo-frame v2.0).",
+  "spectra_palette": {
+    "description": "Calibrated 6-color palette used by both the 7.3\" 2025 and 13.3\" 2025 Inky displays (chip ac073tc1a).",
+    "models": ["inky-7.3-2025", "inky-13.3-2025"],
+    "colors": [
+      { "name": "black",  "rgb": [0,   0,   0  ] },
+      { "name": "white",  "rgb": [255, 255, 255] },
+      { "name": "red",    "rgb": [160, 32,  32 ] },
+      { "name": "yellow", "rgb": [240, 224, 80 ] },
+      { "name": "green",  "rgb": [96,  128, 80 ] },
+      { "name": "blue",   "rgb": [80,  128, 184] }
+    ]
+  },
+  "pimoroni": {
+    "description": "Pimoroni library defaults — relies on the inky library's internal palette, no client-side processing. Use as a reference when COLOR_MODE='pimoroni'.",
+    "saturation": 0.5
+  },
+  "warmth_boost": {
+    "description": "Aggressive warmth adjustments before applying spectra_palette. Best for portraits and skin tones.",
+    "adjustments": {
+      "red_gain": 1.15,
+      "green_gain": 0.92,
+      "blue_gain": 0.75,
+      "brightness": 1.12,
+      "saturation": 0.3
+    }
+  }
+}
