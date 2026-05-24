@@ -139,6 +139,24 @@ Détail des 7 phases qui mènent au MVP. Chaque phase produit un livrable testab
 
 ---
 
+## 🔍 Contraintes matérielles confirmées (recon Pi 2026-05-24)
+
+Validées en lisant l'environnement du Pi de prod :
+
+| Contrainte | Valeur | Conséquence sur le plan |
+|---|---|---|
+| Hardware | Raspberry Pi Zero 2 W (aarch64) | RAM limitée — éviter tout process Python lourd côté serveur |
+| RAM totale | 416 Mo (200 Mo libres avec service actuel en marche) | FastAPI + Uvicorn + SQLite doivent rester < 100 Mo. Pas de modèle ML, pas de cache image en RAM > 20 Mo. |
+| Python | 3.11.2 (système, OK) | Compatible avec `requires-python = ">=3.11"` |
+| Inky lib | v2.3.0 | Pin dans `pyproject.toml [pi]` |
+| Écran réel | Inky Impression 7.3" (2025 Spectra 6) — 800×480 | Mock backend ajusté à ce modèle. Le 13.3" reste supporté mais non testé en prod. |
+| Port 8000 | Libre | OK pour FastAPI |
+| Samba (139, 445) | Actif | Sera désactivé par l'installer en Phase 6 (option), ou laissé tourner si l'utilisateur veut le garder |
+| Service systemd actuel | `inky-photo-frame.service` actif | **Conflit hardware** : un seul process peut piloter l'Inky. L'installer Phase 6 DOIT `systemctl disable --now inky-photo-frame` avant d'activer `inky-studio.service`. À documenter dans les release notes. |
+| Code déployé | Pas de `.git` (curl via update.sh) | L'installer Phase 6 fera pareil : `git clone --depth=1` puis `npm install && npm run build` |
+| Photos actuelles | `/home/pi/Images/` (gérées par v2.0) | Phase 6 : option "importer la queue existante" pour migration douce |
+| Credentials Samba | `/home/pi/.inky_credentials` | Phase 6 réutilise ce pattern : `/etc/inky-studio/credentials` (mode 600) |
+
 ## Hors-scope v1.0 (peut-être v1.1+)
 
 - Multi-écrans (plusieurs Pi pilotés depuis une UI centrale)
