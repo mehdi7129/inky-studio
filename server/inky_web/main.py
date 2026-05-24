@@ -6,14 +6,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from inky_web import __version__
+from inky_web import __version__, auth
 from inky_web.api import router as api_router
-from inky_web.db import init_db
+from inky_web.db import data_dir, init_db
 from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
 from inky_web.services.scheduler import Scheduler
@@ -22,6 +23,33 @@ from inky_web.services.settings import get as get_settings
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 CLIENT_DIST = Path(__file__).resolve().parents[2] / "client" / "dist"
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Block unauthenticated requests to /api/* (with a few public exceptions)."""
+
+    async def dispatch(self, request: Request, call_next):
+        if auth.auth_disabled():
+            return await call_next(request)
+
+        path = request.url.path
+        if not path.startswith("/api"):
+            return await call_next(request)
+        if path in auth.PUBLIC_PATHS:
+            return await call_next(request)
+        # WebSocket auth is checked separately inside the route — Starlette doesn't
+        # pass WS through HTTP middleware uniformly across versions, so we no-op here.
+        if path == "/api/ws":
+            return await call_next(request)
+
+        sessions = request.app.state.sessions
+        token = auth.get_session_token(request)
+        if not sessions.validate(token):
+            return JSONResponse(
+                {"detail": "Authentification requise"},
+                status_code=401,
+            )
+        return await call_next(request)
 
 
 @asynccontextmanager
@@ -33,6 +61,18 @@ async def lifespan(app: FastAPI):
     app.state.display.set_color_mode(get_settings().color_mode.value)
     app.state.scheduler = Scheduler(app.state.display, app.state.bus)
     await app.state.scheduler.start()
+
+    app.state.credentials = auth.load_or_create_credentials(data_dir())
+    app.state.sessions = auth.SessionStore()
+    app.state.login_limiter = auth.LoginRateLimiter()
+    if not auth.auth_disabled():
+        logger = logging.getLogger(__name__)
+        logger.info(
+            "Auth enabled. Password (also persisted in %s) : %s",
+            app.state.credentials.path,
+            app.state.credentials.password,
+        )
+
     try:
         yield
     finally:
@@ -47,6 +87,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(AuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

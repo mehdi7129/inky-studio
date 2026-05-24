@@ -9,6 +9,8 @@ interface LayoutProps {
   display: DisplayInfo | null
   health: HealthResponse | null
   queueCount: number
+  authRequired: boolean
+  onLogout: () => void
   children: ReactNode
 }
 
@@ -19,7 +21,16 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'history', label: 'Historique' },
 ]
 
-export function Layout({ activeTab, onTabChange, display, health, queueCount, children }: LayoutProps) {
+export function Layout({
+  activeTab,
+  onTabChange,
+  display,
+  health,
+  queueCount,
+  authRequired,
+  onLogout,
+  children,
+}: LayoutProps) {
   return (
     <div className="min-h-screen">
       <header className="border-b border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-950/70 backdrop-blur sticky top-0 z-10">
@@ -38,7 +49,7 @@ export function Layout({ activeTab, onTabChange, display, health, queueCount, ch
               </p>
             )}
           </div>
-          <nav className="flex gap-1 text-sm" aria-label="Sections principales">
+          <nav className="flex gap-1 text-sm items-center" aria-label="Sections principales">
             {TABS.map((tab) => {
               const isActive = activeTab === tab.id
               const isQueue = tab.id === 'queue'
@@ -70,6 +81,16 @@ export function Layout({ activeTab, onTabChange, display, health, queueCount, ch
                 </button>
               )
             })}
+            {authRequired && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="ml-2 px-3 py-1.5 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+                title="Se déconnecter"
+              >
+                Déconnexion
+              </button>
+            )}
           </nav>
         </div>
       </header>

@@ -1,9 +1,10 @@
 """Aggregated API router."""
 from fastapi import APIRouter
 
-from inky_web.api import display, history, photos, queue, settings, state, ws
+from inky_web.api import auth, display, history, photos, queue, settings, state, ws
 
 router = APIRouter()
+router.include_router(auth.router)
 router.include_router(state.router)
 router.include_router(queue.router)
 router.include_router(display.router)
