@@ -38,11 +38,19 @@ export interface ConvertBitmapOptions {
 }
 
 export interface ConvertResult {
-  /** Source image cropped to display dimensions, before palette/dither. */
+  /** Source image cropped to display dimensions (no palette/dither) — what we upload. */
   originalImage: ImageData
-  /** Dithered output ready to draw to <canvas> for the e-ink preview. */
+  /**
+   * JS-dithered approximation for in-browser preview only.
+   * The server re-applies Pillow Floyd-Steinberg at display time, so the actual
+   * quality on the e-ink will be better than this canvas preview.
+   */
   previewImage: ImageData
-  /** PNG Blob ready to POST to /api/queue. */
+  /**
+   * Undithered RGB PNG ready to POST to /api/queue.
+   * The server does the final palette conversion with Pillow (much better quality
+   * than the in-browser dithering shown in the preview canvas).
+   */
   pngBlob: Blob
   /** Total milliseconds spent in the pipeline. */
   durationMs: number
@@ -175,7 +183,10 @@ export async function convertBitmap(options: ConvertBitmapOptions): Promise<Conv
   const previewBuffer = new Uint8ClampedArray(ditheredPixels.length)
   previewBuffer.set(ditheredPixels)
   const previewImage = new ImageData(previewBuffer, working.width, working.height)
-  const pngBlob = await imageDataToPng(previewImage)
+
+  // Upload the ORIGINAL (undithered) crop — the server applies Pillow Floyd-Steinberg
+  // which is far superior to our JS approximation. The browser preview is indicative only.
+  const pngBlob = await imageDataToPng(originalImage)
 
   return {
     originalImage,

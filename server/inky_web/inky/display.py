@@ -106,24 +106,32 @@ class DisplayController:
             "is_mock": self._is_mock,
         }
 
-    def display_image(self, path: Path) -> None:  # noqa: D401
-        # See class docstring.
-        self._display_image_impl(path)
+    def display_image(self, path: Path, color_mode: str | None = None) -> None:
+        """Push the image at ``path`` to the e-ink with server-side colour processing.
 
-    def _display_image_impl(self, path: Path) -> None:
-        """Push the image at ``path`` to the e-ink. Blocking; takes ~30s on real hardware.
-
-        The image must already be at the display's native resolution and palette —
-        all heavy processing happens in the browser before upload.
+        ``color_mode`` overrides the controller's current setting for this call,
+        which lets the scheduler pass the live settings value.
         """
+        effective_mode = color_mode if color_mode is not None else self._color_mode
         if self._is_mock or self._impl is None:
-            logger.info("[mock] Would display %s", path)
+            logger.info("[mock] Would display %s (mode=%s)", path, effective_mode)
             return
 
-        with Image.open(path) as img:
-            self._impl.set_image(img)
+        from inky_web.inky.image_processor import process  # lazy import avoids Pillow at startup
+
+        with Image.open(path) as raw:
+            img = raw.convert("RGB")
+
+        processed_img, saturation = process(img, effective_mode)
+
+        try:
+            self._impl.set_image(processed_img, saturation=saturation)
+        except TypeError:
+            # Older inky versions don't accept saturation kwarg
+            self._impl.set_image(processed_img)
+
         self._impl.show()
-        logger.info("Displayed %s", path)
+        logger.info("Displayed %s (mode=%s)", path, effective_mode)
 
 
 def _detect_model_name(impl: Any) -> str:
