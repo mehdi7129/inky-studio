@@ -160,7 +160,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
 
       <div className="grid md:grid-cols-2 gap-6">
         <PreviewCanvas image={displayedOriginal} label="Original (centre crop)" />
-        <PreviewCanvas image={displayedPreview} label="Rendu e-ink (palette + dither)" />
+        <PreviewCanvas image={displayedPreview} label="Aperçu e-ink (approx. — rendu réel meilleur)" />
       </div>
 
       <fieldset className="space-y-4 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4">
