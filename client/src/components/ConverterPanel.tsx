@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { convertBitmap, decode, type ConvertResult } from '../lib/converter/pipeline'
+import { fetchServerPreview } from '../lib/converter/serverPreview'
 import type { ColorMode } from '../lib/converter/palettes'
 import type { DisplayInfo } from '../lib/api'
 import { uploadToQueue } from '../lib/api'
@@ -35,6 +36,9 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
   const [source, setSource] = useState<DecodedSource | null>(null)
   const [lastResult, setLastResult] = useState<ConvertResult | null>(null)
   const [status, setStatus] = useState<Status>({ kind: 'decoding', wasHeic: isLikelyHeic(file) })
+  // Server-side Pillow preview — replaces the JS dither approximation when ready.
+  const [serverPreview, setServerPreview] = useState<ImageData | null>(null)
+  const serverPreviewAbort = useRef<AbortController | null>(null)
 
   // Effect 1 — decode the file once. HEIC may take 1-2s via WASM; everything else is near-instant.
   useEffect(() => {
@@ -109,6 +113,21 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, display.width, display.height, colorMode, offsetX, offsetY])
 
+  // Effect 3 — fetch the server-side Pillow preview whenever the upload-PNG changes.
+  // We cancel any in-flight request so rapid slider changes don't pile up.
+  useEffect(() => {
+    if (!lastResult) return
+    const blob = lastResult.pngBlob
+    serverPreviewAbort.current?.abort()
+    const ctrl = new AbortController()
+    serverPreviewAbort.current = ctrl
+    setServerPreview(null)
+    void fetchServerPreview(blob, colorMode, ctrl.signal).then((data) => {
+      if (data) setServerPreview(data)
+    })
+    return () => ctrl.abort()
+  }, [lastResult, colorMode])
+
   const handleUpload = async () => {
     if (status.kind !== 'ready') return
     const blob = status.result.pngBlob
@@ -133,7 +152,13 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
   }
 
   const displayedOriginal = lastResult?.originalImage ?? null
-  const displayedPreview = lastResult?.previewImage ?? null
+  // Show the server Pillow preview as soon as it arrives, fall back to JS dither
+  const displayedPreview = serverPreview ?? lastResult?.previewImage ?? null
+  const previewLabel = serverPreview
+    ? 'Rendu e-ink (exact)'
+    : lastResult?.previewImage
+      ? 'Rendu e-ink (approx. — chargement…)'
+      : 'Rendu e-ink'
   const pngSizeKb = lastResult ? Math.round(lastResult.pngBlob.size / 1024) : null
 
   const dimensionsHint = source
@@ -160,7 +185,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
 
       <div className="grid md:grid-cols-2 gap-6">
         <PreviewCanvas image={displayedOriginal} label="Original (centre crop)" />
-        <PreviewCanvas image={displayedPreview} label="Aperçu e-ink (approx. — rendu réel meilleur)" />
+        <PreviewCanvas image={displayedPreview} label={previewLabel} />
       </div>
 
       <fieldset className="space-y-4 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4">
