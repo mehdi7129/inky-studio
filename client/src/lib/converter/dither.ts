@@ -109,6 +109,46 @@ export function dither(params: DitherParams): DitherResult {
 }
 
 /**
+ * Boost contrast and colour saturation in-place.
+ *
+ * Matches v2.0's _apply_spectra_palette() preprocessing:
+ *   - contrast  +20% (factor 1.2)
+ *   - saturation +30% (factor 1.3)
+ *
+ * This step is essential before palette quantisation: it pushes colours apart,
+ * making the nearest-palette-colour mapping more accurate and reducing noise in
+ * dark regions.
+ */
+export function applyContrastAndSaturation(
+  pixels: Uint8ClampedArray,
+  contrastFactor: number,
+  saturationFactor: number,
+): void {
+  const total = pixels.length / 4
+  for (let i = 0; i < total; i++) {
+    const idx = i * 4
+    let r = pixels[idx]
+    let g = pixels[idx + 1]
+    let b = pixels[idx + 2]
+
+    // Contrast: scale around mid-grey (128)
+    r = clampByte((r - 128) * contrastFactor + 128)
+    g = clampByte((g - 128) * contrastFactor + 128)
+    b = clampByte((b - 128) * contrastFactor + 128)
+
+    // Saturation: lerp toward grey
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b
+    r = clampByte(gray + (r - gray) * saturationFactor)
+    g = clampByte(gray + (g - gray) * saturationFactor)
+    b = clampByte(gray + (b - gray) * saturationFactor)
+
+    pixels[idx] = r
+    pixels[idx + 1] = g
+    pixels[idx + 2] = b
+  }
+}
+
+/**
  * Apply RGB gain + brightness + saturation adjustments in-place. Used as the
  * pre-step for the "warmth_boost" color mode, matching the Pimoroni v2.0 config.
  */

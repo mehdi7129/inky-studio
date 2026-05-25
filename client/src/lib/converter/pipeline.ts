@@ -13,7 +13,7 @@ import {
   spectraPaletteFlat,
   type ColorMode,
 } from './palettes'
-import { applyWarmth, dither } from './dither'
+import { applyContrastAndSaturation, applyWarmth, dither } from './dither'
 import { imageDataToPng } from './encode'
 
 export interface ConvertOptions {
@@ -155,7 +155,12 @@ export async function convertBitmap(options: ConvertBitmapOptions): Promise<Conv
     offsetY: options.offsetY,
   })
 
-  if (colorMode === 'warmth_boost') {
+  // Apply the same preprocessing as the server-side image_processor.py so the
+  // preview canvas matches the actual e-ink output as closely as possible.
+  if (colorMode === 'spectra_palette') {
+    // v2.0 spectra mode: contrast +20%, saturation +30% (Python: enhance(1.2) / enhance(1.3))
+    applyContrastAndSaturation(working.data, 1.2, 1.3)
+  } else if (colorMode === 'warmth_boost') {
     applyWarmth(
       working.data,
       WARMTH_ADJUSTMENTS.red_gain,
@@ -164,6 +169,8 @@ export async function convertBitmap(options: ConvertBitmapOptions): Promise<Conv
       WARMTH_ADJUSTMENTS.brightness,
       WARMTH_ADJUSTMENTS.saturation,
     )
+    // warmth_boost also goes through spectra quantisation on the server
+    applyContrastAndSaturation(working.data, 1.2, 1.3)
   }
 
   const paletteFlat = paletteFlatFor(colorMode)
