@@ -65,11 +65,31 @@ if [[ "${NEED_NODE}" -eq 1 ]]; then
 fi
 
 # ── 3. Disable the older v2.0 service if present ─────────────────────────────
+# We have to be aggressive: `systemctl stop` only sends SIGTERM to the main PID
+# and then declares success after a few seconds, but the v2.0 service was
+# observed to leave the Python process alive holding the SPI/GPIO pins. That
+# zombie would then block inky-studio's first set_image() call indefinitely.
 if systemctl list-unit-files --type=service | grep -q "^${LEGACY_SERVICE_NAME}"; then
-  echo "→ Stopping legacy ${LEGACY_SERVICE_NAME}…"
+  echo "→ Stopping & disabling legacy ${LEGACY_SERVICE_NAME}…"
   sudo systemctl stop "${LEGACY_SERVICE_NAME}" || true
   sudo systemctl disable "${LEGACY_SERVICE_NAME}" || true
-  echo "  (disabled — re-enable with: sudo systemctl enable --now ${LEGACY_SERVICE_NAME})"
+  # Belt-and-braces: kill any Python process still holding /home/pi/inky-photo-frame
+  STRAYS=$(pgrep -f "inky-photo-frame/inky_photo_frame" || true)
+  if [[ -n "${STRAYS}" ]]; then
+    echo "  Killing stray v2.0 processes: ${STRAYS}"
+    sudo kill -TERM ${STRAYS} 2>/dev/null || true
+    sleep 2
+    STRAYS=$(pgrep -f "inky-photo-frame/inky_photo_frame" || true)
+    if [[ -n "${STRAYS}" ]]; then
+      sudo kill -KILL ${STRAYS} 2>/dev/null || true
+    fi
+  fi
+  # Confirm SPI/GPIO pins are free before we proceed.
+  if sudo cat /sys/kernel/debug/gpio 2>/dev/null | grep -E "GPIO(8|17|22|27).*inky" >/dev/null; then
+    echo "  ⚠️  GPIO pins are still claimed by 'inky' — a reboot may be required."
+    echo "      Try: sudo reboot, then re-run this installer."
+    exit 1
+  fi
 fi
 
 # ── 4. Clone or update the repo ──────────────────────────────────────────────
