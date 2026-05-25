@@ -90,13 +90,49 @@ def _apply_warmth(img: Image.Image) -> Image.Image:
     return _quantise_to_spectra(img)
 
 
+# Pimoroni palette for the ac073tc1a (Spectra 6 / 7-color Inky Impression) blended
+# at the default saturation=0.5 — values from _palette_blend(0.5) on real hardware.
+# Order: black, white, green, blue, red, yellow, orange, clear
+_PIMORONI_PALETTE_BLENDED = [
+    0, 0, 0,        # black
+    236, 248, 255,  # white (blended)
+    1, 189, 38,     # green (blended)
+    13, 23, 226,    # blue (blended)
+    250, 40, 17,    # red (blended)
+    255, 255, 34,   # yellow (blended)
+    247, 130, 22,   # orange (blended)
+    255, 255, 255,  # clear / white
+]
+
+_PIMORONI_PALETTE_IMAGE: Image.Image | None = None
+
+
+def _get_pimoroni_palette_image() -> Image.Image:
+    global _PIMORONI_PALETTE_IMAGE
+    if _PIMORONI_PALETTE_IMAGE is None:
+        flat = list(_PIMORONI_PALETTE_BLENDED) + [0, 0, 0] * (256 - len(_PIMORONI_PALETTE_BLENDED) // 3)
+        p = Image.new("P", (1, 1))
+        p.putpalette(flat)
+        _PIMORONI_PALETTE_IMAGE = p
+    return _PIMORONI_PALETTE_IMAGE
+
+
+def _apply_pimoroni(img: Image.Image) -> Image.Image:
+    """Simulate Inky's set_image(saturation=0.5) quantisation for preview."""
+    q = img.quantize(palette=_get_pimoroni_palette_image(), dither=Image.Dither.FLOYDSTEINBERG)
+    return q.convert("RGB")
+
+
 def process(img: Image.Image, color_mode: str) -> tuple[Image.Image, float]:
     """Apply colour-mode processing to an RGB image.
 
     Returns ``(processed_image, saturation_hint)`` where ``saturation_hint``
     is the value to pass to ``inky.set_image(img, saturation=...)``:
-      - 0.5  for pimoroni mode (Inky handles everything)
+      - 0.5  for pimoroni mode (Inky handles everything at display time)
       - 1.0  for the Spectra modes (we already quantised; pass through as-is)
+
+    The returned image IS already quantised and can be used directly as a
+    pixel-accurate preview even for pimoroni mode.
     """
     if img.mode != "RGB":
         img = img.convert("RGB")
@@ -109,6 +145,8 @@ def process(img: Image.Image, color_mode: str) -> tuple[Image.Image, float]:
         logger.info("Applying warmth_boost (warmth adjustments + Spectra palette)")
         return _apply_warmth(img), 1.0
 
-    # pimoroni / unknown — let Inky library handle quantisation at saturation=0.5
-    logger.info("Applying pimoroni mode (Inky default saturation=0.5)")
-    return img, 0.5
+    # pimoroni — simulate the blended palette that inky.set_image(saturation=0.5) produces.
+    # The actual display call still lets the Inky library handle it (returns saturation=0.5),
+    # but the preview now shows the dithered result instead of the raw image.
+    logger.info("Applying pimoroni mode (simulating inky _palette_blend at saturation=0.5)")
+    return _apply_pimoroni(img), 0.5
