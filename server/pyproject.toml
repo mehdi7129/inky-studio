@@ -18,7 +18,10 @@ dependencies = [
 
 [project.optional-dependencies]
 pi = [
-    "inky>=2.3",
+    # inky 2.4.0 regression: inky_ac073tc1a.py calls setup() on every show(),
+    # which re-claims the SPI/GPIO pins and aborts with SystemExit. 2.3.0 was
+    # what the v2.0 deployment used successfully on the same hardware.
+    "inky==2.3.0",
     "gpiod>=2.2",
     "RPi.GPIO>=0.7",
 ]
