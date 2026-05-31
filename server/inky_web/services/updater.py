@@ -259,7 +259,11 @@ async def perform_update(emit: EmitFn, *, install_dir: Path | None = None) -> bo
             stderr=asyncio.subprocess.STDOUT,
         )
         out, _ = await proc.communicate()
-        if proc.returncode != 0:
+        # A *negative* return code means the process was killed by a signal —
+        # expected here, because the restart tears down our own cgroup and
+        # SIGTERMs the sudo child. Only a *positive* exit code (e.g. sudo denied
+        # = 1) is a genuine restart failure worth rolling back for.
+        if proc.returncode and proc.returncode > 0:
             raise RuntimeError(
                 f"service restart failed (exit {proc.returncode}): "
                 f"{(out or b'').decode('utf-8', 'replace').strip()}"
