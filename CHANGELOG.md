@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.2.2]
+
+### Changed
+- **"Check for updates" now bypasses the status cache** (`?refresh=1`), so a
+  newly published release is detected immediately instead of after the ~10 min
+  cache window. The passive page load still uses the cache.
+
 ## [0.2.1]
 
 ### Fixed
@@ -54,6 +61,7 @@ to [Semantic Versioning](https://semver.org/).
 - **Display support** — auto-detection of Inky Impression 7.3" (7-colour),
   7.3" 2025 and 13.3" 2025 (Spectra 6), with an off-Pi mock for development.
 
+[0.2.2]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.2.2
 [0.2.1]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.2.1
 [0.2.0]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.1.0

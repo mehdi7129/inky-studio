@@ -8,11 +8,13 @@ def test_get_update_status(client, monkeypatch):
     monkeypatch.setattr(
         updater,
         "get_status",
-        lambda: {"current": "0.2.0", "latest": "0.3.0", "update_available": True},
+        lambda **_: {"current": "0.2.0", "latest": "0.3.0", "update_available": True},
     )
     resp = client.get("/api/system/update")
     assert resp.status_code == 200
     assert resp.json() == {"current": "0.2.0", "latest": "0.3.0", "update_available": True}
+    # ?refresh=1 must also work (bypasses cache)
+    assert client.get("/api/system/update?refresh=1").status_code == 200
 
 
 def test_post_update_starts(client, monkeypatch):

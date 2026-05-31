@@ -17,8 +17,10 @@ router = APIRouter(prefix="/system", tags=["system"])
 
 
 @router.get("/update", response_model=UpdateStatus)
-async def update_status() -> UpdateStatus:
-    data = await asyncio.to_thread(updater.get_status)
+async def update_status(refresh: bool = False) -> UpdateStatus:
+    # ?refresh=1 bypasses the ~10 min cache (used by the explicit "check" button)
+    # so a freshly published release shows up immediately.
+    data = await asyncio.to_thread(updater.get_status, use_cache=not refresh)
     return UpdateStatus(**data)
 
 

@@ -156,7 +156,7 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
     setPhase('checking')
     setUpdateError(null)
     try {
-      setUpdateInfo(await fetchUpdateStatus())
+      setUpdateInfo(await fetchUpdateStatus(true)) // explicit check → bypass cache
     } catch (err) {
       setUpdateError(err instanceof Error ? err.message : String(err))
     } finally {

@@ -132,8 +132,8 @@ export interface UpdateStatus {
   update_available: boolean
 }
 
-export function fetchUpdateStatus(): Promise<UpdateStatus> {
-  return getJSON('/api/system/update')
+export function fetchUpdateStatus(refresh = false): Promise<UpdateStatus> {
+  return getJSON(`/api/system/update${refresh ? '?refresh=1' : ''}`)
 }
 
 export function startUpdate(): Promise<{ started: boolean }> {
