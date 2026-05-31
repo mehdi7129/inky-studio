@@ -6,7 +6,6 @@ from inky_web.api import (
     display,
     history,
     photos,
-    preview,
     queue,
     settings,
     state,
@@ -22,6 +21,5 @@ router.include_router(display.router)
 router.include_router(history.router)
 router.include_router(settings.router)
 router.include_router(photos.router)
-router.include_router(preview.router)
 router.include_router(system.router)
 router.include_router(ws.router)

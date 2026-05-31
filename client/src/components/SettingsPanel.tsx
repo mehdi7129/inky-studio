@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ChangeModeApi, ColorModeApi, HealthResponse, Settings, UpdateStatus } from '../lib/api'
+import type { ChangeModeApi, HealthResponse, Settings, UpdateStatus } from '../lib/api'
 import {
   fetchHealth,
   fetchSettings,
@@ -31,24 +31,6 @@ const STAGE_LABELS: Record<string, string> = {
   installing: 'Installation…',
   restarting: 'Redémarrage…',
 }
-
-const COLOR_MODES: { id: ColorModeApi; label: string; help: string }[] = [
-  {
-    id: 'spectra_palette',
-    label: 'Spectra',
-    help: 'Palette 6 couleurs calibrée pour les écrans Inky 2025 (recommandé).',
-  },
-  {
-    id: 'warmth_boost',
-    label: 'Warmth boost',
-    help: 'Ajustements RGB chauds avant dithering — bon pour les portraits.',
-  },
-  {
-    id: 'pimoroni',
-    label: 'Pimoroni 7 couleurs',
-    help: 'Palette des Inky 7.3" classique (7 couleurs). À éviter sur Spectra.',
-  },
-]
 
 const CHANGE_MODES: { id: ChangeModeApi; label: string; help: string }[] = [
   {
@@ -219,36 +201,6 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
           <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
         )}
       </section>
-
-      <fieldset className="space-y-3">
-        <legend className="text-sm font-medium mb-2">Mode couleur</legend>
-        <div className="space-y-2">
-          {COLOR_MODES.map((mode) => (
-            <label
-              key={mode.id}
-              className={[
-                'flex gap-3 rounded-lg border p-3 cursor-pointer transition',
-                settings.color_mode === mode.id
-                  ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/30'
-                  : 'border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-900',
-              ].join(' ')}
-            >
-              <input
-                type="radio"
-                name="color_mode"
-                value={mode.id}
-                checked={settings.color_mode === mode.id}
-                onChange={() => patch({ color_mode: mode.id })}
-                className="mt-1"
-              />
-              <div>
-                <p className="font-medium">{mode.label}</p>
-                <p className="text-xs text-neutral-500">{mode.help}</p>
-              </div>
-            </label>
-          ))}
-        </div>
-      </fieldset>
 
       <fieldset className="space-y-3">
         <legend className="text-sm font-medium mb-2">Fréquence de changement</legend>

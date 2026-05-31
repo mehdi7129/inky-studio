@@ -35,6 +35,12 @@ MOCK_SPEC = DisplaySpec(
     colors=6,
 )
 
+# Pimoroni's documented default. set_image() blends the panel's saturated and
+# desaturated palettes by this factor — the most faithful all-round value for
+# photos. We let the official library own all colour science (single pass, the
+# exact palette of the auto-detected panel), so there are no app-level modes.
+SATURATION = 0.5
+
 
 class DisplayController:
     """Owns the active display driver (real or mock).
@@ -47,7 +53,6 @@ class DisplayController:
         self._impl: Any | None = None
         self._is_mock: bool = True
         self._spec: DisplaySpec = MOCK_SPEC
-        self._color_mode: str = "spectra_palette"
 
     def initialize(self) -> None:
         if platform.system() != "Linux":
@@ -82,13 +87,6 @@ class DisplayController:
         self._impl = None
 
     @property
-    def color_mode(self) -> str:
-        return self._color_mode
-
-    def set_color_mode(self, mode: str) -> None:
-        self._color_mode = mode
-
-    @property
     def spec(self) -> DisplaySpec:
         return self._spec
 
@@ -102,36 +100,35 @@ class DisplayController:
             "width": self._spec.width,
             "height": self._spec.height,
             "colors": self._spec.colors,
-            "color_mode": self._color_mode,
             "is_mock": self._is_mock,
         }
 
-    def display_image(self, path: Path, color_mode: str | None = None) -> None:
-        """Push the image at ``path`` to the e-ink with server-side colour processing.
+    def display_image(self, path: Path) -> None:
+        """Push the image at ``path`` to the e-ink display.
 
-        ``color_mode`` overrides the controller's current setting for this call,
-        which lets the scheduler pass the live settings value.
+        The full-resolution RGB image (already cropped to the panel size by the
+        browser) is handed straight to the official Pimoroni ``set_image``, which
+        performs a single Floyd-Steinberg quantisation to the exact palette of
+        the auto-detected panel. No app-level palette/mode — the library owns the
+        colour science, for the most faithful result on each display.
         """
-        effective_mode = color_mode if color_mode is not None else self._color_mode
         if self._is_mock or self._impl is None:
-            logger.info("[mock] Would display %s (mode=%s)", path, effective_mode)
+            logger.info("[mock] Would display %s", path)
             return
-
-        from inky_web.inky.image_processor import process  # lazy import avoids Pillow at startup
 
         with Image.open(path) as raw:
             img = raw.convert("RGB")
-
-        processed_img, saturation = process(img, effective_mode)
+        if img.size != (self._spec.width, self._spec.height):
+            img = img.resize((self._spec.width, self._spec.height))
 
         try:
-            self._impl.set_image(processed_img, saturation=saturation)
+            self._impl.set_image(img, saturation=SATURATION)
         except TypeError:
-            # Older inky versions don't accept saturation kwarg
-            self._impl.set_image(processed_img)
+            # Older inky versions don't accept the saturation kwarg.
+            self._impl.set_image(img)
 
         self._impl.show()
-        logger.info("Displayed %s (mode=%s)", path, effective_mode)
+        logger.info("Displayed %s (saturation=%s)", path, SATURATION)
 
 
 def _detect_model_name(impl: Any) -> str:

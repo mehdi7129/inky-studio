@@ -1,4 +1,3 @@
-export type ColorModeApi = 'pimoroni' | 'spectra_palette' | 'warmth_boost'
 export type ChangeModeApi = 'daily' | 'interval' | 'manual'
 
 export interface HealthResponse {
@@ -11,7 +10,6 @@ export interface DisplayInfo {
   width: number
   height: number
   colors: number
-  color_mode: ColorModeApi
   is_mock: boolean
 }
 
@@ -41,7 +39,6 @@ export interface HistoryEntry {
 }
 
 export interface Settings {
-  color_mode: ColorModeApi
   change_mode: ChangeModeApi
   change_hour: number
   change_interval_minutes: number

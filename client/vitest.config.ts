@@ -14,6 +14,10 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // Colour science (and its unit tests) moved to the Pi's official Pimoroni
+    // library; the browser now only crops. UI is canvas-heavy and covered by
+    // tsc + lint + the e2e path, so there are no jsdom unit tests right now.
+    passWithNoTests: true,
     setupFiles: ['./src/test/setup.ts'],
     // Vitest 4 spawns a fresh node worker per test file by default. Boot of the
     // jsdom env + our setup file is slow enough on a cold cache that the 60 s

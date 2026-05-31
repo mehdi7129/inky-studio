@@ -109,8 +109,7 @@ class Scheduler:
         if not path.exists():
             logger.error("Photo file missing for %s — skipping", photo_id)
             return
-        color_mode = settings.get().color_mode.value
-        self._display.display_image(path, color_mode=color_mode)
+        self._display.display_image(path)
         entry = history.record(photo_id, source=source)  # type: ignore[arg-type]
         self._bus.broadcast(
             "display_changed",
@@ -180,8 +179,7 @@ def _show(display: DisplayController, bus: EventBus, photo_id: str, source: str)
     if not path.exists():
         logger.error("Photo file missing for %s — skipping", photo_id)
         return
-    color_mode = settings.get().color_mode.value
-    display.display_image(path, color_mode=color_mode)
+    display.display_image(path)
     entry = history.record(photo_id, source=source)  # type: ignore[arg-type]
     bus.broadcast(
         "display_changed",

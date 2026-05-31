@@ -18,7 +18,6 @@ from inky_web.db import data_dir, init_db
 from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
 from inky_web.services.scheduler import Scheduler
-from inky_web.services.settings import get as get_settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
@@ -58,7 +57,6 @@ async def lifespan(app: FastAPI):
     app.state.bus = EventBus()
     app.state.display = DisplayController()
     app.state.display.initialize()
-    app.state.display.set_color_mode(get_settings().color_mode.value)
     app.state.scheduler = Scheduler(app.state.display, app.state.bus)
     await app.state.scheduler.start()
 

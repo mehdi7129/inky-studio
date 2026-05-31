@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0]
+
+### Changed
+- **Faithful, automatic rendering — no more colour modes.** Images are now handed
+  straight to the official Pimoroni `inky.set_image(saturation=0.5)`, which does a
+  single Floyd-Steinberg quantisation to the exact palette of the auto-detected
+  panel. Previously the app pre-quantised to a custom palette and the library
+  re-quantised on top (a double pass that injected extra speckle/orange and
+  discarded the intended colours). The result is now exactly Pimoroni's reference
+  rendering for each display, with zero configuration.
+- The browser now only crops the photo to the panel resolution (full colour); all
+  colour science happens once, on the Pi.
+
+### Removed
+- The three colour modes (`spectra` / `warmth` / `pimoroni`) and the per-image
+  mode selector — rendering adapts automatically to the detected screen.
+- The in-browser e-ink preview simulation and the server-side preview endpoint.
+
 ## [0.2.3]
 
 ### Fixed
@@ -70,6 +88,7 @@ to [Semantic Versioning](https://semver.org/).
 - **Display support** — auto-detection of Inky Impression 7.3" (7-colour),
   7.3" 2025 and 13.3" 2025 (Spectra 6), with an off-Pi mock for development.
 
+[0.3.0]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.0
 [0.2.3]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.2.3
 [0.2.2]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.2.2
 [0.2.1]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.2.1

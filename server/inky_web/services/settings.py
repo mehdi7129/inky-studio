@@ -5,7 +5,7 @@ import json
 import logging
 
 from inky_web.db import connection
-from inky_web.models import ChangeMode, ColorMode, Settings, SettingsUpdate
+from inky_web.models import ChangeMode, Settings, SettingsUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def update(patch: SettingsUpdate) -> Settings:
     merged = current.model_copy(update={k: v for k, v in patch.model_dump(exclude_none=True).items()})
     with connection() as conn:
         for key, value in merged.model_dump().items():
-            if isinstance(value, (ColorMode, ChangeMode)):
+            if isinstance(value, ChangeMode):
                 value = value.value
             conn.execute(
                 """

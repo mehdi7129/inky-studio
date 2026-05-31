@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from inky_web import __version__
-from inky_web.models import ColorMode, DisplayInfo, DisplayState
+from inky_web.models import DisplayInfo, DisplayState
 from inky_web.services import history, queue
 
 router = APIRouter(tags=["state"])
@@ -30,7 +30,6 @@ async def display_info(request: Request) -> DisplayInfo:
         width=info["width"],
         height=info["height"],
         colors=info["colors"],
-        color_mode=ColorMode(info["color_mode"]),
         is_mock=info["is_mock"],
     )
 
@@ -46,7 +45,6 @@ async def display_state(request: Request) -> DisplayState:
             width=info["width"],
             height=info["height"],
             colors=info["colors"],
-            color_mode=ColorMode(info["color_mode"]),
             is_mock=info["is_mock"],
         ),
         current=history.current(),

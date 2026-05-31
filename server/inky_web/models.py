@@ -7,12 +7,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class ColorMode(StrEnum):
-    pimoroni = "pimoroni"
-    spectra_palette = "spectra_palette"
-    warmth_boost = "warmth_boost"
-
-
 class ChangeMode(StrEnum):
     daily = "daily"
     interval = "interval"
@@ -45,7 +39,6 @@ class HistoryEntry(BaseModel):
 
 
 class Settings(BaseModel):
-    color_mode: ColorMode = ColorMode.spectra_palette
     change_mode: ChangeMode = ChangeMode.daily
     change_hour: int = Field(default=5, ge=0, le=23)
     change_interval_minutes: int = Field(default=60, ge=1, le=1440)
@@ -56,7 +49,6 @@ class DisplayInfo(BaseModel):
     width: int
     height: int
     colors: int
-    color_mode: ColorMode
     is_mock: bool
 
 
@@ -78,7 +70,6 @@ class ReorderRequest(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    color_mode: ColorMode | None = None
     change_mode: ChangeMode | None = None
     change_hour: int | None = Field(default=None, ge=0, le=23)
     change_interval_minutes: int | None = Field(default=None, ge=1, le=1440)

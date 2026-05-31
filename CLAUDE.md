@@ -5,10 +5,11 @@ Guidance for Claude Code (and human contributors) working in this repository.
 ## What this is
 
 Inky Studio is a self-hosted web app that drives a Pimoroni Inky Impression
-e-ink display on a Raspberry Pi. Image conversion (HEIC decode, resize, palette
-mapping, dithering) happens **in the browser**; the Pi receives a small
-ready-to-display PNG and only handles storage, scheduling, and pushing to the
-panel.
+e-ink display on a Raspberry Pi. The browser only decodes (HEIC) and **crops** the
+photo to the panel resolution (full colour); all colour science is done **once on
+the Pi** by the official Pimoroni `inky.set_image(saturation=0.5)`, which quantises
+to the exact palette of the auto-detected panel. There are **no app-level colour
+modes** — rendering adapts to the detected screen automatically.
 
 ## Layout
 
@@ -21,17 +22,17 @@ server/                 FastAPI backend (Python 3.11+)
     db.py               SQLite init + data_dir()
     models.py           Pydantic schemas
     api/                one APIRouter per area (auth, state, queue, display,
-                        history, settings, photos, preview, system, ws)
+                        history, settings, photos, system, ws)
     services/           business logic (queue, history, scheduler, settings,
                         photos, updater)
-    inky/               display controller (+ mock) and image_processor
+    inky/               display controller (+ off-Pi mock); set_image passthrough
     welcome.py          renders the first-boot welcome screen
   tests/                pytest suite (display is mocked; no hardware needed)
 client/                 React 19 + TypeScript + Vite 8 + Tailwind 4 frontend
   src/lib/api.ts        fetch wrappers (cookie auth via credentials:'include')
   src/lib/useWebSocket.ts  auto-reconnecting WS hook
+  src/lib/converter/    decode (HEIC) + transform (crop) + encode (PNG) — no dither
   src/components/       Layout + Dashboard/Queue/Settings/History panels
-shared/palettes.json    palette data shared with the browser converter
 scripts/                inky-studio-cli (management CLI), uninstall.sh
 install.sh              one-line installer (repo root)
 .github/workflows/      ci.yml (lint/test/build), release.yml (tag → tarball)

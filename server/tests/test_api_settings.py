@@ -4,20 +4,20 @@ from __future__ import annotations
 
 def test_default_settings(client):
     payload = client.get("/api/settings").json()
-    assert payload["color_mode"] == "spectra_palette"
     assert payload["change_mode"] == "daily"
     assert payload["change_hour"] == 5
+    assert "color_mode" not in payload  # colour modes were removed (auto per panel)
 
 
 def test_partial_update(client):
-    response = client.post("/api/settings", json={"color_mode": "warmth_boost"})
+    response = client.post("/api/settings", json={"change_mode": "manual"})
     assert response.status_code == 200
     payload = response.json()
-    assert payload["color_mode"] == "warmth_boost"
+    assert payload["change_mode"] == "manual"
     assert payload["change_hour"] == 5
 
     # Confirms persistence across GET
-    assert client.get("/api/settings").json()["color_mode"] == "warmth_boost"
+    assert client.get("/api/settings").json()["change_mode"] == "manual"
 
 
 def test_validation_rejects_bad_hour(client):

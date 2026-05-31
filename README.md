@@ -6,21 +6,21 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform: Raspberry Pi](https://img.shields.io/badge/platform-Raspberry%20Pi-red)](https://www.raspberrypi.com/)
 
-**Inky Studio** turns a Raspberry Pi + a [Pimoroni Inky Impression](https://shop.pimoroni.com/products/inky-impression-7-3) display into a digital photo frame you manage entirely from your phone or laptop's browser. Images are converted **in the browser** (HEIC decode, resize, palette mapping, Floyd–Steinberg dithering), so the Pi only ever receives a small, ready-to-display PNG.
+**Inky Studio** turns a Raspberry Pi + a [Pimoroni Inky Impression](https://shop.pimoroni.com/products/inky-impression-7-3) display into a digital photo frame you manage entirely from your phone or laptop's browser. You just upload a photo — it's cropped to your screen and rendered with the official Pimoroni colour science for the **exact palette of your auto-detected panel**. No settings, no modes.
 
 ```
-┌─────────────────────────┐         ┌──────────────────────────────┐
-│  Browser (phone/laptop) │         │  Raspberry Pi                │
-│  • HEIC decode (WASM)    │  PNG    │  • FastAPI + Inky driver     │
-│  • palette + dithering   │ ──────► │  • SQLite (queue + history)  │
-│  • live e-ink preview    │ ~200 KB │  • serves the built web app  │
-└─────────────────────────┘         └──────────────────────────────┘
+┌─────────────────────────┐         ┌──────────────────────────────────┐
+│  Browser (phone/laptop) │         │  Raspberry Pi                    │
+│  • HEIC decode (WASM)    │  PNG    │  • FastAPI + official inky driver │
+│  • crop to panel size    │ ──────► │  • set_image() → faithful render  │
+│                          │         │  • SQLite (queue + history)       │
+└─────────────────────────┘         └──────────────────────────────────┘
 ```
 
 ## Highlights
 
-- 🖼️ **Browser-side conversion** with a **live preview** of the exact e-ink result before you upload.
-- 📥 Drag-and-drop **upload**, a reorderable **queue**, scheduled rotation (daily / interval / manual), and a browsable **history**.
+- 🖼️ **Zero-config rendering** — upload a photo and it displays at its best, automatically. The official Pimoroni `inky` library quantises to the exact palette of the detected panel (single faithful pass — no app-level colour modes).
+- 📥 Drag-and-drop **upload** with framing, a reorderable **queue**, scheduled rotation (daily / interval / manual), and a browsable **history**.
 - 🔄 **One-click in-app updates** — a button in Settings downloads the latest release and restarts the app for you.
 - 🔌 **One-line install** that handles SPI, dependencies, the service, and first-boot setup.
 - 🔒 Single-password auth (the password is shown right on the e-ink screen on first boot). Runs entirely on your LAN — no account, no cloud.

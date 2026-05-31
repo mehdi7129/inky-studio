@@ -5,9 +5,9 @@ per-release history, see [CHANGELOG.md](CHANGELOG.md).
 
 ## Shipped
 
-- **Browser-side conversion** — HEIC decode, resize, palette mapping and
-  Floyd–Steinberg dithering in the browser, with a live preview of the exact
-  e-ink result before upload.
+- **Zero-config faithful rendering** — upload a photo; it's cropped to the panel
+  and rendered by the official Pimoroni `inky` library to the exact palette of the
+  auto-detected screen (single faithful pass, no colour modes).
 - **Library management** — drag-and-drop upload, a reorderable queue, scheduled
   rotation (daily / interval / manual), and a browsable history.
 - **Real-time UI** — WebSocket-driven updates across all panels.

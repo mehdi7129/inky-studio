@@ -131,8 +131,6 @@ export function Dashboard({ state, queue, onChange }: DashboardProps) {
             <dd className="font-medium">{display.width} × {display.height}</dd>
             <dt className="text-neutral-500">Couleurs</dt>
             <dd className="font-medium">{display.colors}</dd>
-            <dt className="text-neutral-500">Mode</dt>
-            <dd className="font-medium">{display.color_mode}</dd>
           </dl>
 
           <hr className="border-neutral-200 dark:border-neutral-800" />
