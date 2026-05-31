@@ -1,0 +1,58 @@
+name: Release
+
+# Tag a version (e.g. `git tag v0.2.0 && git push origin v0.2.0`) to build the
+# frontend, bundle a prebuilt tarball, and publish a GitHub Release. The Pi's
+# installer and the in-app updater download this tarball — no build on-device.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Build frontend
+        run: |
+          cd client
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Stage release payload
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          STAGE="staging"
+          mkdir -p "$STAGE/client"
+          # Server source, minus the venv / caches / tests.
+          rsync -a \
+            --exclude '.venv' \
+            --exclude '__pycache__' \
+            --exclude '*.egg-info' \
+            --exclude 'tests' \
+            server "$STAGE/"
+          cp -a client/dist "$STAGE/client/dist"
+          cp -a shared "$STAGE/shared"
+          cp -a scripts "$STAGE/scripts"
+          cp install.sh "$STAGE/install.sh"
+          cp README.md LICENSE CHANGELOG.md "$STAGE/" 2>/dev/null || true
+          echo "$TAG" > "$STAGE/VERSION"
+          # Flat tarball: server/, client/dist/, shared/, scripts/, install.sh, …
+          tar -czf "inky-studio-${TAG}.tar.gz" -C "$STAGE" .
+          ls -la inky-studio-*.tar.gz
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: inky-studio-*.tar.gz
+          generate_release_notes: true

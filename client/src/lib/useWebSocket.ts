@@ -14,7 +14,11 @@ export interface EventMessage {
 
 export function useWebSocket(onEvent: (event: EventMessage) => void) {
   const handlerRef = useRef(onEvent)
-  handlerRef.current = onEvent
+
+  // Keep the latest handler without re-opening the socket on every render.
+  useEffect(() => {
+    handlerRef.current = onEvent
+  })
 
   useEffect(() => {
     let socket: WebSocket | null = null

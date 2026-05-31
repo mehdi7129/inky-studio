@@ -126,6 +126,20 @@ export function updateSettings(patch: Partial<Settings>): Promise<Settings> {
   return sendJSON('POST', '/api/settings', patch)
 }
 
+export interface UpdateStatus {
+  current: string
+  latest: string | null
+  update_available: boolean
+}
+
+export function fetchUpdateStatus(): Promise<UpdateStatus> {
+  return getJSON('/api/system/update')
+}
+
+export function startUpdate(): Promise<{ started: boolean }> {
+  return sendJSON('POST', '/api/system/update')
+}
+
 export function reorderQueue(photoIds: string[]): Promise<QueueEntry[]> {
   return sendJSON('POST', '/api/queue/reorder', { photo_ids: photoIds })
 }

@@ -16,6 +16,7 @@ Three modes (matching v2.0):
 from __future__ import annotations
 
 import logging
+
 from PIL import Image, ImageEnhance
 
 logger = logging.getLogger(__name__)
