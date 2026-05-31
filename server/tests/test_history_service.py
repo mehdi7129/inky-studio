@@ -72,3 +72,28 @@ def test_list_recent_paginates(data_dir, png_factory):
     page2 = history.list_recent(limit=2, offset=2)
     assert len(page1) == 2 and len(page2) == 2
     assert page1[0].displayed_at > page2[0].displayed_at
+
+
+def test_delete_single_entry(data_dir, png_factory):
+    from inky_web.services import history
+
+    p1 = _save(png_factory, color=(30, 0, 0))
+    p2 = _save(png_factory, color=(31, 0, 0))
+    e1 = history.record(p1.id, source="auto")
+    history.record(p2.id, source="auto")
+
+    assert history.delete(e1.id) is True
+    assert history.delete(e1.id) is False  # already gone
+    assert history.count() == 1
+
+
+def test_clear_all(data_dir, png_factory):
+    from inky_web.services import history
+
+    for i in range(3):
+        p = _save(png_factory, color=(40 + i, 0, 0))
+        history.record(p.id, source="auto")
+
+    assert history.clear() == 3
+    assert history.count() == 0
+    assert history.current() is None

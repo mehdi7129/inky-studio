@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageEnhance
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +35,9 @@ MOCK_SPEC = DisplaySpec(
     colors=6,
 )
 
-# Pimoroni's documented default. set_image() blends the panel's saturated and
-# desaturated palettes by this factor — the most faithful all-round value for
-# photos. We let the official library own all colour science (single pass, the
-# exact palette of the auto-detected panel), so there are no app-level modes.
-SATURATION = 0.5
+# Default when no per-call value is given (e.g. the welcome screen). 1.0 hands
+# set_image() the panel's measured (most faithful) palette.
+SATURATION = 1.0
 
 
 class DisplayController:
@@ -106,31 +104,38 @@ class DisplayController:
     def display_image(self, path: Path, saturation: float | None = None) -> None:
         """Push the image at ``path`` to the e-ink display.
 
-        The full-resolution RGB image (already cropped to the panel size by the
-        browser) is handed straight to the official Pimoroni ``set_image``, which
-        performs a single Floyd-Steinberg quantisation to the exact palette of
-        the auto-detected panel. ``saturation`` (0 = muted, 1 = vivid) is the
-        user-configurable knob; everything else is owned by the library, for the
-        most faithful result on each display.
+        ``saturation`` (0..2) drives two stages:
+          * 0..1  → Pimoroni ``set_image(saturation=…)`` (1.0 = the panel's
+            faithful measured palette);
+          * 1..2  → set_image stays at 1.0 and we apply a source-image vibrance
+            boost (PIL ``ImageEnhance.Color``) on top for extra punch. The panel
+            gamut caps how vivid this can actually get.
+
+        Otherwise the official library owns all colour science (single faithful
+        quantisation to the auto-detected panel's exact palette).
         """
-        sat = SATURATION if saturation is None else max(0.0, min(1.0, saturation))
+        value = SATURATION if saturation is None else max(0.0, min(2.0, saturation))
+        pimoroni_sat = min(value, 1.0)
+        color_factor = max(1.0, value)  # 1.0 = no boost; up to 2.0 = strong boost
         if self._is_mock or self._impl is None:
-            logger.info("[mock] Would display %s (saturation=%s)", path, sat)
+            logger.info("[mock] Would display %s (sat=%s, boost=%s)", path, pimoroni_sat, color_factor)
             return
 
         with Image.open(path) as raw:
             img = raw.convert("RGB")
         if img.size != (self._spec.width, self._spec.height):
             img = img.resize((self._spec.width, self._spec.height))
+        if color_factor > 1.0:
+            img = ImageEnhance.Color(img).enhance(color_factor)
 
         try:
-            self._impl.set_image(img, saturation=sat)
+            self._impl.set_image(img, saturation=pimoroni_sat)
         except TypeError:
             # Older inky versions don't accept the saturation kwarg.
             self._impl.set_image(img)
 
         self._impl.show()
-        logger.info("Displayed %s (saturation=%s)", path, sat)
+        logger.info("Displayed %s (sat=%s, boost=%s)", path, pimoroni_sat, color_factor)
 
 
 def _detect_model_name(impl: Any) -> str:

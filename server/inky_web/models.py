@@ -42,8 +42,10 @@ class Settings(BaseModel):
     change_mode: ChangeMode = ChangeMode.daily
     change_hour: int = Field(default=5, ge=0, le=23)
     change_interval_minutes: int = Field(default=60, ge=1, le=1440)
-    # Passed straight to Pimoroni's inky.set_image(): 0 = muted, 1 = vivid.
-    saturation: float = Field(default=0.5, ge=0.0, le=1.0)
+    # 0..1 → Pimoroni inky.set_image() saturation (1.0 = faithful, the panel's
+    # measured palette). 1..2 → keep set_image at 1.0 and apply a source-image
+    # vibrance boost on top for extra punch (gamut-limited by the panel).
+    saturation: float = Field(default=1.0, ge=0.0, le=2.0)
 
 
 class DisplayInfo(BaseModel):
@@ -75,7 +77,7 @@ class SettingsUpdate(BaseModel):
     change_mode: ChangeMode | None = None
     change_hour: int | None = Field(default=None, ge=0, le=23)
     change_interval_minutes: int | None = Field(default=None, ge=1, le=1440)
-    saturation: float | None = Field(default=None, ge=0.0, le=1.0)
+    saturation: float | None = Field(default=None, ge=0.0, le=2.0)
 
 
 class UpdateStatus(BaseModel):

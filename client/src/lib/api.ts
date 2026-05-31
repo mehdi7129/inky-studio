@@ -116,6 +116,14 @@ export function fetchHistory(limit = 100, offset = 0): Promise<HistoryEntry[]> {
   return getJSON(`/api/history?limit=${limit}&offset=${offset}`)
 }
 
+export function deleteHistoryEntry(historyId: number): Promise<void> {
+  return sendJSON('DELETE', `/api/history/${historyId}`)
+}
+
+export function clearHistory(): Promise<void> {
+  return sendJSON('DELETE', '/api/history')
+}
+
 export function fetchSettings(): Promise<Settings> {
   return getJSON('/api/settings')
 }

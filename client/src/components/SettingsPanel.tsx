@@ -280,7 +280,7 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
         <input
           type="range"
           min={0}
-          max={1}
+          max={2}
           step={0.05}
           value={satLocal ?? settings.saturation}
           onChange={(e) => setSatLocal(parseFloat(e.target.value))}
@@ -290,13 +290,15 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
         />
         <div className="flex justify-between text-xs text-neutral-500">
           <span>Doux</span>
+          <span>Fidèle (1.0)</span>
           <span className="font-medium text-neutral-700 dark:text-neutral-200">
             {(satLocal ?? settings.saturation).toFixed(2)}
           </span>
-          <span>Vif</span>
+          <span>Punchy</span>
         </div>
         <p className="text-xs text-neutral-500">
-          Ajuste l'intensité des couleurs sur l'écran (défaut : 0.50). S'applique à la
+          <strong>1.0</strong> = couleurs les plus fidèles (recommandé). Au-delà, un boost
+          progressif rend l'image plus punchy (limité par l'écran). S'applique à la
           prochaine photo affichée.
         </p>
       </fieldset>

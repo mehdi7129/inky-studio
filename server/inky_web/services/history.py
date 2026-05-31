@@ -96,3 +96,17 @@ def oldest_unique_photo_id_excluding(exclude_photo_id: str | None) -> str | None
 def count() -> int:
     with connection() as conn:
         return int(conn.execute("SELECT COUNT(*) AS n FROM history").fetchone()["n"])
+
+
+def delete(history_id: int) -> bool:
+    """Remove a single history log entry. Returns True if a row was deleted."""
+    with connection() as conn:
+        cursor = conn.execute("DELETE FROM history WHERE id = ?", (history_id,))
+        return cursor.rowcount > 0
+
+
+def clear() -> int:
+    """Remove all history log entries. Returns how many were deleted."""
+    with connection() as conn:
+        cursor = conn.execute("DELETE FROM history")
+        return cursor.rowcount

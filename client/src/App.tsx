@@ -69,7 +69,8 @@ function App() {
           event.type === 'photo_uploaded' ||
           event.type === 'display_changed' ||
           event.type === 'settings_changed' ||
-          event.type === 'photo_deleted'
+          event.type === 'photo_deleted' ||
+          event.type === 'history_changed'
         ) {
           refresh()
         }

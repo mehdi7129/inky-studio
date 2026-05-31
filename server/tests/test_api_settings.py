@@ -6,18 +6,20 @@ def test_default_settings(client):
     payload = client.get("/api/settings").json()
     assert payload["change_mode"] == "daily"
     assert payload["change_hour"] == 5
-    assert payload["saturation"] == 0.5
+    assert payload["saturation"] == 1.0  # 1.0 = faithful (panel's measured palette)
     assert "color_mode" not in payload  # colour modes were removed (auto per panel)
 
 
 def test_update_saturation(client):
-    payload = client.post("/api/settings", json={"saturation": 0.8}).json()
-    assert payload["saturation"] == 0.8
-    assert client.get("/api/settings").json()["saturation"] == 0.8
+    # 0..2: <=1 drives Pimoroni saturation, >1 adds a source vibrance boost.
+    for value in (0.8, 1.5, 2.0):
+        payload = client.post("/api/settings", json={"saturation": value}).json()
+        assert payload["saturation"] == value
+    assert client.get("/api/settings").json()["saturation"] == 2.0
 
 
 def test_validation_rejects_bad_saturation(client):
-    assert client.post("/api/settings", json={"saturation": 1.5}).status_code == 422
+    assert client.post("/api/settings", json={"saturation": 2.5}).status_code == 422
     assert client.post("/api/settings", json={"saturation": -0.1}).status_code == 422
 
 

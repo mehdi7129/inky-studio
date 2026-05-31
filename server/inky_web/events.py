@@ -19,6 +19,7 @@ EventType = Literal[
     "settings_changed",
     "photo_uploaded",
     "photo_deleted",
+    "history_changed",
     "system_update",
 ]
 
