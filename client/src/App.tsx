@@ -150,7 +150,7 @@ function App() {
     >
       {tab === 'dashboard' && <Dashboard state={state} queue={queue} onChange={refresh} />}
       {tab === 'queue' && <QueuePanel queue={queue} onChange={refresh} />}
-      {tab === 'settings' && <SettingsPanel onChange={refresh} />}
+      {tab === 'settings' && <SettingsPanel onChange={refresh} health={health} />}
       {tab === 'history' && <HistoryPanel onChange={refresh} />}
     </Layout>
   )

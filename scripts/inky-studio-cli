@@ -47,12 +47,9 @@ case "${cmd}" in
     sudo cat "${DATA_DIR}/credentials.json" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])'
     ;;
   update)
-    git -C "${INSTALL_DIR}" fetch --depth=1 origin main
-    git -C "${INSTALL_DIR}" reset --hard origin/main
-    "${INSTALL_DIR}/server/.venv/bin/pip" install --quiet -e "${INSTALL_DIR}/server[pi]"
-    cd "${INSTALL_DIR}/client" && npm install --silent --no-audit && npm run build --silent
-    sudo systemctl restart "${SERVICE_NAME}"
-    echo "Updated and restarted."
+    # Download the latest prebuilt release, swap it in, refresh deps, restart.
+    # Same code path as the in-app one-click update (inky_web.services.updater).
+    INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${PYTHON}" -m inky_web.updater
     ;;
   info)
     echo "Install dir : ${INSTALL_DIR}"
@@ -75,7 +72,7 @@ Commands:
   welcome             Re-show the welcome screen on the Inky
   password            Print the current login password
   reset-password      Generate a new password (restarts the service)
-  update              git pull + rebuild + restart
+  update              Download & install the latest release, then restart
   info                Show install paths and URL
   help                This message
 EOF

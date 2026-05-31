@@ -1,100 +1,120 @@
 # Inky Studio
 
-> Web UI pour piloter un cadre photo e-ink Inky depuis n'importe quel navigateur — local, sans cloud.
+> A self-hosted web UI to run an Inky e-ink photo frame from any browser — local, no cloud.
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-Phase%200%20%28scaffolding%29-orange)]()
-[![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi-red)](https://www.raspberrypi.org/)
+[![CI](https://github.com/mehdi7129/inky-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/mehdi7129/inky-studio/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform: Raspberry Pi](https://img.shields.io/badge/platform-Raspberry%20Pi-red)](https://www.raspberrypi.com/)
 
-**Inky Studio** est une interface web auto-hébergée sur le Raspberry Pi qui pilote un écran [Inky Impression](https://shop.pimoroni.com/products/inky-impression-7-3). Conçue pour remplacer le partage Samba par une UX moderne avec **conversion d'image côté navigateur**.
+**Inky Studio** turns a Raspberry Pi + a [Pimoroni Inky Impression](https://shop.pimoroni.com/products/inky-impression-7-3) display into a digital photo frame you manage entirely from your phone or laptop's browser. Images are converted **in the browser** (HEIC decode, resize, palette mapping, Floyd–Steinberg dithering), so the Pi only ever receives a small, ready-to-display PNG.
 
-## ✨ Ce qui change par rapport à l'approche Samba
+```
+┌─────────────────────────┐         ┌──────────────────────────────┐
+│  Browser (phone/laptop) │         │  Raspberry Pi                │
+│  • HEIC decode (WASM)    │  PNG    │  • FastAPI + Inky driver     │
+│  • palette + dithering   │ ──────► │  • SQLite (queue + history)  │
+│  • live e-ink preview    │ ~200 KB │  • serves the built web app  │
+└─────────────────────────┘         └──────────────────────────────┘
+```
 
-| Avant (Samba) | Avec Inky Studio |
-|---|---|
-| Drag photo brute (5-20 Mo) | Photo convertie en navigateur (~200 Ko) |
-| Pi convertit à l'affichage | Pi reçoit du déjà-prêt |
-| Pas de preview | Preview live du rendu e-ink avant upload |
-| Config par SSH + restart | Tout depuis le navigateur |
-| iPhone : app Fichiers | iPhone : web app |
+## Highlights
 
-## 🎯 Écrans supportés
+- 🖼️ **Browser-side conversion** with a **live preview** of the exact e-ink result before you upload.
+- 📥 Drag-and-drop **upload**, a reorderable **queue**, scheduled rotation (daily / interval / manual), and a browsable **history**.
+- 🔄 **One-click in-app updates** — a button in Settings downloads the latest release and restarts the app for you.
+- 🔌 **One-line install** that handles SPI, dependencies, the service, and first-boot setup.
+- 🔒 Single-password auth (the password is shown right on the e-ink screen on first boot). Runs entirely on your LAN — no account, no cloud.
 
-Auto-détection via [`inky.auto`](https://github.com/pimoroni/inky) :
+## Supported hardware
 
-| Modèle | Résolution | Couleurs |
+Displays are auto-detected via [`inky`](https://github.com/pimoroni/inky):
+
+| Display | Resolution | Colours |
 |---|---|---|
 | Inky Impression 7.3" | 800×480 | 7 |
 | Inky Impression 7.3" (2025) | 800×480 | 6 (Spectra) |
 | Inky Impression 13.3" (2025) | 1600×1200 | 6 (Spectra) |
 
-## 🚧 Statut
+Tested on Raspberry Pi Zero 2 W, 3, 4 and 5 running Raspberry Pi OS (Debian Bookworm or Trixie, 64-bit).
 
-Le projet est en **Phase 0 — scaffolding**. La feuille de route complète est dans [ROADMAP.md](ROADMAP.md).
+## Install
 
-- [x] Phase 0 — Scaffolding repo (backend + frontend + doc)
-- [ ] Phase 1 — Backend coeur (API, queue, scheduler, WebSocket)
-- [ ] Phase 2 — Frontend coeur (HEIC decode + palette + dither + preview)
-- [ ] Phase 3 — Dashboard (image actuelle + specs)
-- [ ] Phase 4 — Gestion de file (réorder, next/prev)
-- [ ] Phase 5 — Settings avancés (color mode, schedule, historique)
-- [ ] Phase 6 — Auth + installer
-- [ ] Phase 7 — Polish + release v1.0
+On the Raspberry Pi:
 
-## 🏗️ Architecture
-
-```
-[ Browser ]                            [ Raspberry Pi ]
-React SPA                              FastAPI + Inky driver
-  • libheif-js (HEIC decode)             • REST + WebSocket
-  • Canvas palette + Floyd-Steinberg     • SQLite (queue + history)
-  • Preview live                         • Static files (React build)
-       │                                       ▲
-       └── upload PNG ~200 Ko ─── HTTP ────────┘
+```bash
+curl -fsSL https://raw.githubusercontent.com/mehdi7129/inky-studio/main/install.sh | bash
 ```
 
-La conversion image se fait **à 100% dans le navigateur**. Le Pi ne reçoit que des PNG déjà à la résolution finale, avec la palette du modèle déjà appliquée.
+The installer enables SPI/I²C, installs dependencies, downloads the latest prebuilt release, sets up a `systemd` service, and prints the URL + password. On the **first** install it reboots once (after a 10-second, cancellable countdown) so the SPI changes take effect — set `INKY_STUDIO_NO_REBOOT=1` to skip.
 
-## 🛠️ Développement
+When it comes back up, open **`http://<pi-ip>:8000`**. The login password is also rendered on the e-ink display itself on first boot, and stored in `/var/lib/inky-studio/credentials.json`.
 
-### Backend (Mac ou Linux)
+> The installer downloads a **prebuilt release** (the frontend is built in CI), so the Pi needs no Node.js and no on-device build. To build from the latest `main` instead, run it with `INKY_STUDIO_CHANNEL=source`.
+
+## Updating
+
+- **In the app:** open **Settings → Update** and click the button. Inky Studio downloads the latest release, swaps it in, and restarts — the page reloads automatically when it's back. Progress is shown live.
+- **From the CLI:** `inky-studio update`
+
+## Configuration
+
+Pass these as environment variables to the installer:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `INKY_STUDIO_CHANNEL` | `release` | `release` (prebuilt) or `source` (build from `main`) |
+| `INKY_STUDIO_USER` | `pi` | Service user |
+| `INKY_STUDIO_INSTALL_DIR` | `/home/<user>/inky-studio` | Install directory |
+| `INKY_STUDIO_DATA_DIR` | `/var/lib/inky-studio` | Photos + credentials |
+| `INKY_STUDIO_NO_REBOOT` | – | Set to `1` to never auto-reboot |
+
+## CLI
+
+A small management CLI is installed at `/usr/local/bin/inky-studio`:
+
+```
+inky-studio status          # service status
+inky-studio logs            # live logs
+inky-studio restart         # restart the service
+inky-studio welcome         # re-show the welcome screen on the Inky
+inky-studio password        # print the current login password
+inky-studio reset-password  # generate a new password
+inky-studio update          # download & install the latest release
+inky-studio info            # paths + URL
+```
+
+## Troubleshooting
+
+- **The display never refreshes / "pins in use".** SPI needs the `dtoverlay=spi0-0cs` overlay (the installer adds it) and a reboot. Run `sudo reboot`, then `inky-studio welcome` to test.
+- **Can't reach the web UI.** Check the service: `inky-studio status` and `inky-studio logs`. It listens on port `8000`.
+- **Forgot the password.** `inky-studio reset-password` prints a new one (and re-shows it on the display).
+- **Pi Zero 2 W (512 MB RAM).** The installer adds a 1 GB swap file automatically when needed.
+
+## Development
+
+The display driver auto-falls back to a **mock** off-Pi, so you can develop on macOS/Linux with no hardware.
+
+**Backend** (FastAPI):
 
 ```bash
 cd server
-python3.11 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 inky-studio-server          # http://localhost:8000
-pytest                      # tests
+ruff check . && pytest
 ```
 
-Sur Mac, le driver Inky se replie automatiquement sur un **mock** — pas besoin de matériel pour développer.
-
-### Frontend
+**Frontend** (React + Vite):
 
 ```bash
 cd client
 npm install
-npm run dev                 # http://localhost:5173
+npm run dev                 # http://localhost:5173 (talks to :8000 via CORS)
+npm run lint && npm test && npm run build
 ```
 
-Le frontend en dev parle au backend via CORS (origines autorisées : `http://localhost:5173`).
+See [CLAUDE.md](CLAUDE.md) for architecture, conventions, and the release process.
 
-### Build production
+## License
 
-```bash
-cd client && npm run build      # → client/dist/
-cd ../server && inky-studio-server   # FastAPI sert client/dist/ sur /
-```
-
-## 📦 Installation sur le Raspberry Pi
-
-> ⏳ Disponible à la Phase 6. En attendant, voir [ROADMAP.md](ROADMAP.md).
-
-## 🔗 Projet parent
-
-Inky Studio est la suite logique de [inky-photo-frame](https://github.com/mehdi7129/inky-photo-frame) (qui continue d'exister pour les utilisateurs de Samba).
-
-## 📄 Licence
-
-MIT — voir [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Successor to [inky-photo-frame](https://github.com/mehdi7129/inky-photo-frame).

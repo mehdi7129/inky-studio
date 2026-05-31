@@ -1,8 +1,6 @@
 """Unit tests for the queue service."""
 from __future__ import annotations
 
-import pytest
-
 
 def _save(png_factory, *, color):
     from inky_web.services import photos

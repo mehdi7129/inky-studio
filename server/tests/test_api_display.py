@@ -45,10 +45,10 @@ def test_next_recycles_history_when_queue_empty(client, png_factory):
 
 def test_previous_navigates_back(client, png_factory):
     p1 = _upload(client, png_factory, color=(5, 0, 0))["photo"]["id"]
-    p2 = _upload(client, png_factory, color=(6, 0, 0))["photo"]["id"]
+    _upload(client, png_factory, color=(6, 0, 0))  # second photo so "next" can advance
     client.post("/api/display/next")
     client.post("/api/display/next")
-    # current = p2
+    # current is now the second photo
 
     client.post("/api/display/previous")
     history = client.get("/api/history").json()

@@ -45,6 +45,8 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
     let cancelled = false
     let acquiredBitmap: ImageBitmap | null = null
 
+    // Intentional: reset to a loading state when the input file changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStatus({ kind: 'decoding', wasHeic: isLikelyHeic(file) })
 
     void (async () => {
@@ -82,6 +84,8 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
     if (!source) return
     let cancelled = false
     const firstRun = lastResult === null
+    // Intentional: show the converting state while the async pipeline runs.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStatus({ kind: 'converting', firstRun })
 
     void (async () => {
@@ -121,6 +125,8 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
     serverPreviewAbort.current?.abort()
     const ctrl = new AbortController()
     serverPreviewAbort.current = ctrl
+    // Intentional: clear the previous server preview before refetching.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setServerPreview(null)
     void fetchServerPreview(blob, colorMode, ctrl.signal).then((data) => {
       if (data) setServerPreview(data)

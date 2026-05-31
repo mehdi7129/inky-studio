@@ -15,6 +15,9 @@ sudo systemctl daemon-reload
 echo "→ Removing CLI wrapper /usr/local/bin/inky-studio…"
 sudo rm -f /usr/local/bin/inky-studio
 
+echo "→ Removing scoped sudo rule /etc/sudoers.d/inky-studio…"
+sudo rm -f /etc/sudoers.d/inky-studio
+
 if systemctl list-unit-files --type=service | grep -q "^${LEGACY_SERVICE_NAME}"; then
   echo "→ Re-enabling legacy ${LEGACY_SERVICE_NAME}…"
   sudo systemctl enable --now "${LEGACY_SERVICE_NAME}" || true

@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-import pytest
-
 from inky_web.models import ChangeMode, Settings
 from inky_web.services.scheduler import _compute_next_change
 

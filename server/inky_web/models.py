@@ -82,3 +82,11 @@ class SettingsUpdate(BaseModel):
     change_mode: ChangeMode | None = None
     change_hour: int | None = Field(default=None, ge=0, le=23)
     change_interval_minutes: int | None = Field(default=None, ge=1, le=1440)
+
+
+class UpdateStatus(BaseModel):
+    """Current installed version vs the latest published GitHub release."""
+
+    current: str
+    latest: str | None
+    update_available: bool

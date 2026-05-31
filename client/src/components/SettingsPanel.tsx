@@ -1,9 +1,35 @@
-import { useEffect, useState } from 'react'
-import type { ChangeModeApi, ColorModeApi, Settings } from '../lib/api'
-import { fetchSettings, updateSettings } from '../lib/api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ChangeModeApi, ColorModeApi, HealthResponse, Settings, UpdateStatus } from '../lib/api'
+import {
+  fetchHealth,
+  fetchSettings,
+  fetchUpdateStatus,
+  startUpdate,
+  updateSettings,
+} from '../lib/api'
+import { useWebSocket } from '../lib/useWebSocket'
 
 interface SettingsPanelProps {
   onChange: () => void
+  health: HealthResponse | null
+}
+
+type UpdatePhase = 'idle' | 'checking' | 'running' | 'restarting' | 'error'
+
+const STAGE_PCT: Record<string, number> = {
+  checking: 5,
+  downloading: 35,
+  extracting: 55,
+  installing: 75,
+  restarting: 95,
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  checking: 'Recherche de la dernière version…',
+  downloading: 'Téléchargement…',
+  extracting: 'Extraction de l\'archive…',
+  installing: 'Installation…',
+  restarting: 'Redémarrage…',
 }
 
 const COLOR_MODES: { id: ColorModeApi; label: string; help: string }[] = [
@@ -42,11 +68,22 @@ const CHANGE_MODES: { id: ChangeModeApi; label: string; help: string }[] = [
   },
 ]
 
-export function SettingsPanel({ onChange }: SettingsPanelProps) {
+export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  // ── Update feature state ──────────────────────────────────────────────────
+  const [updateInfo, setUpdateInfo] = useState<UpdateStatus | null>(null)
+  const [phase, setPhase] = useState<UpdatePhase>('idle')
+  const [stage, setStage] = useState<string>('')
+  const [log, setLog] = useState<string[]>([])
+  const [updateError, setUpdateError] = useState<string | null>(null)
+  const restartingRef = useRef(false)
+  const logEndRef = useRef<HTMLDivElement | null>(null)
+
+  const currentVersion = updateInfo?.current ?? health?.version ?? '?'
 
   useEffect(() => {
     let cancelled = false
@@ -57,19 +94,100 @@ export function SettingsPanel({ onChange }: SettingsPanelProps) {
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err))
       })
+    fetchUpdateStatus()
+      .then((u) => {
+        if (!cancelled) setUpdateInfo(u)
+      })
+      .catch(() => {
+        /* offline / GitHub unreachable — ignore, the button still lets you retry */
+      })
     return () => {
       cancelled = true
     }
   }, [])
 
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ block: 'end' })
+  }, [log])
+
+  const pollUntilBackThenReload = useCallback(async () => {
+    await new Promise((r) => setTimeout(r, 4000)) // let the service go down first
+    for (let i = 0; i < 90; i++) {
+      try {
+        await fetchHealth()
+        window.location.reload()
+        return
+      } catch {
+        await new Promise((r) => setTimeout(r, 2000))
+      }
+    }
+  }, [])
+
+  useWebSocket(
+    useCallback(
+      (event) => {
+        if (event.type !== 'system_update') return
+        const p = (event.payload ?? {}) as { stage?: string; message?: string }
+        const s = p.stage ?? ''
+        if (p.message) {
+          setLog((prev) => [...prev, p.message as string].slice(-80))
+        }
+        if (s === 'error') {
+          setPhase('error')
+          setUpdateError(p.message ?? 'Échec de la mise à jour')
+          return
+        }
+        setStage(s)
+        if (s === 'restarting') {
+          setPhase('restarting')
+          if (!restartingRef.current) {
+            restartingRef.current = true
+            void pollUntilBackThenReload()
+          }
+        } else {
+          setPhase('running')
+        }
+      },
+      [pollUntilBackThenReload],
+    ),
+  )
+
+  const checkForUpdates = async () => {
+    setPhase('checking')
+    setUpdateError(null)
+    try {
+      setUpdateInfo(await fetchUpdateStatus())
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPhase((cur) => (cur === 'checking' ? 'idle' : cur))
+    }
+  }
+
+  const launchUpdate = async () => {
+    setPhase('running')
+    setStage('checking')
+    setLog([])
+    setUpdateError(null)
+    try {
+      await startUpdate()
+    } catch (err) {
+      setPhase('error')
+      setUpdateError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const busy = phase === 'running' || phase === 'restarting'
+
   const patch = async (delta: Partial<Settings>) => {
     if (!settings) return
     setSaving(true)
+    setSaved(false)
     setError(null)
     try {
       const updated = await updateSettings(delta)
       setSettings(updated)
-      setSavedAt(Date.now())
+      setSaved(true)
       onChange()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -93,7 +211,7 @@ export function SettingsPanel({ onChange }: SettingsPanelProps) {
         <p className="text-sm text-neutral-500">
           Les changements sont enregistrés automatiquement.
           {saving && <span className="ml-2 text-indigo-600 dark:text-indigo-400">Enregistrement…</span>}
-          {!saving && savedAt && (
+          {!saving && saved && (
             <span className="ml-2 text-green-600 dark:text-green-400">✓ Enregistré</span>
           )}
         </p>
@@ -198,6 +316,73 @@ export function SettingsPanel({ onChange }: SettingsPanelProps) {
           ))}
         </div>
       </fieldset>
+
+      <section className="space-y-3 border-t border-neutral-200 dark:border-neutral-800 pt-6">
+        <div>
+          <h2 className="text-xl font-semibold mb-1">Mise à jour</h2>
+          <p className="text-sm text-neutral-500">
+            Version installée : <span className="font-mono">v{currentVersion}</span>
+            {updateInfo && !updateInfo.update_available && updateInfo.latest && (
+              <span className="ml-2 text-green-600 dark:text-green-400">✓ À jour</span>
+            )}
+            {updateInfo?.update_available && (
+              <span className="ml-2 text-indigo-600 dark:text-indigo-400">
+                Nouvelle version : v{updateInfo.latest}
+              </span>
+            )}
+          </p>
+        </div>
+
+        {updateInfo?.update_available ? (
+          <button
+            type="button"
+            onClick={launchUpdate}
+            disabled={busy}
+            className="px-4 py-2 rounded-lg text-white transition bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {busy ? 'Mise à jour en cours…' : `Mettre à jour vers v${updateInfo.latest}`}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={checkForUpdates}
+            disabled={busy || phase === 'checking'}
+            className="px-4 py-2 rounded-lg border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition disabled:opacity-50"
+          >
+            {phase === 'checking' ? 'Vérification…' : 'Vérifier les mises à jour'}
+          </button>
+        )}
+
+        {busy && (
+          <div className="space-y-2">
+            <div className="h-2 w-full rounded bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
+              <div
+                className="h-full bg-indigo-600 transition-all duration-500"
+                style={{ width: `${STAGE_PCT[stage] ?? 10}%` }}
+              />
+            </div>
+            <p className="text-sm text-neutral-500">
+              {phase === 'restarting'
+                ? 'Redémarrage… la page se rechargera automatiquement.'
+                : STAGE_LABELS[stage] ?? 'Mise à jour…'}
+            </p>
+            {log.length > 0 && (
+              <div className="max-h-40 overflow-y-auto rounded-lg bg-neutral-900 p-2 font-mono text-xs text-green-300">
+                {log.map((line, i) => (
+                  <div key={i} className="whitespace-pre-wrap break-all">
+                    {line}
+                  </div>
+                ))}
+                <div ref={logEndRef} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {phase === 'error' && updateError && (
+          <p className="text-sm text-red-600 dark:text-red-400">Erreur : {updateError}</p>
+        )}
+      </section>
     </div>
   )
 }
