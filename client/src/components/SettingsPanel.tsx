@@ -55,6 +55,9 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  // Local mirror of the saturation slider so dragging stays smooth; we only
+  // POST the value when the user lets go (pointer/key up), not on every step.
+  const [satLocal, setSatLocal] = useState<number | null>(null)
 
   // ── Update feature state ──────────────────────────────────────────────────
   const [updateInfo, setUpdateInfo] = useState<UpdateStatus | null>(null)
@@ -71,7 +74,10 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
     let cancelled = false
     fetchSettings()
       .then((s) => {
-        if (!cancelled) setSettings(s)
+        if (!cancelled) {
+          setSettings(s)
+          setSatLocal(s.saturation)
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err))
@@ -267,6 +273,32 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
             </label>
           ))}
         </div>
+      </fieldset>
+
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium mb-2">Saturation des couleurs</legend>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={satLocal ?? settings.saturation}
+          onChange={(e) => setSatLocal(parseFloat(e.target.value))}
+          onPointerUp={() => satLocal !== null && patch({ saturation: satLocal })}
+          onKeyUp={() => satLocal !== null && patch({ saturation: satLocal })}
+          className="w-full"
+        />
+        <div className="flex justify-between text-xs text-neutral-500">
+          <span>Doux</span>
+          <span className="font-medium text-neutral-700 dark:text-neutral-200">
+            {(satLocal ?? settings.saturation).toFixed(2)}
+          </span>
+          <span>Vif</span>
+        </div>
+        <p className="text-xs text-neutral-500">
+          Ajuste l'intensité des couleurs sur l'écran (défaut : 0.50). S'applique à la
+          prochaine photo affichée.
+        </p>
       </fieldset>
 
       <section className="space-y-3 border-t border-neutral-200 dark:border-neutral-800 pt-6">

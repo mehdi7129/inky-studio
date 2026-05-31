@@ -1,6 +1,6 @@
 [project]
 name = "inky-studio-server"
-version = "0.3.0"
+version = "0.3.1"
 description = "FastAPI backend for Inky Studio — web UI for Inky e-ink photo frame"
 readme = "../README.md"
 requires-python = ">=3.11"

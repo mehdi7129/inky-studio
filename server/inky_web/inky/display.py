@@ -103,17 +103,19 @@ class DisplayController:
             "is_mock": self._is_mock,
         }
 
-    def display_image(self, path: Path) -> None:
+    def display_image(self, path: Path, saturation: float | None = None) -> None:
         """Push the image at ``path`` to the e-ink display.
 
         The full-resolution RGB image (already cropped to the panel size by the
         browser) is handed straight to the official Pimoroni ``set_image``, which
         performs a single Floyd-Steinberg quantisation to the exact palette of
-        the auto-detected panel. No app-level palette/mode — the library owns the
-        colour science, for the most faithful result on each display.
+        the auto-detected panel. ``saturation`` (0 = muted, 1 = vivid) is the
+        user-configurable knob; everything else is owned by the library, for the
+        most faithful result on each display.
         """
+        sat = SATURATION if saturation is None else max(0.0, min(1.0, saturation))
         if self._is_mock or self._impl is None:
-            logger.info("[mock] Would display %s", path)
+            logger.info("[mock] Would display %s (saturation=%s)", path, sat)
             return
 
         with Image.open(path) as raw:
@@ -122,13 +124,13 @@ class DisplayController:
             img = img.resize((self._spec.width, self._spec.height))
 
         try:
-            self._impl.set_image(img, saturation=SATURATION)
+            self._impl.set_image(img, saturation=sat)
         except TypeError:
             # Older inky versions don't accept the saturation kwarg.
             self._impl.set_image(img)
 
         self._impl.show()
-        logger.info("Displayed %s (saturation=%s)", path, SATURATION)
+        logger.info("Displayed %s (saturation=%s)", path, sat)
 
 
 def _detect_model_name(impl: Any) -> str:

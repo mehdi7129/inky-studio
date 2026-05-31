@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform: Raspberry Pi](https://img.shields.io/badge/platform-Raspberry%20Pi-red)](https://www.raspberrypi.com/)
 
-**Inky Studio** turns a Raspberry Pi + a [Pimoroni Inky Impression](https://shop.pimoroni.com/products/inky-impression-7-3) display into a digital photo frame you manage entirely from your phone or laptop's browser. You just upload a photo — it's cropped to your screen and rendered with the official Pimoroni colour science for the **exact palette of your auto-detected panel**. No settings, no modes.
+**Inky Studio** turns a Raspberry Pi + a [Pimoroni Inky Impression](https://shop.pimoroni.com/products/inky-impression-7-3) display into a digital photo frame you manage entirely from your phone or laptop's browser. You just upload a photo — it's cropped to your screen and rendered with the official Pimoroni colour science for the **exact palette of your auto-detected panel**. No colour modes — just an optional saturation slider to taste.
 
 ```
 ┌─────────────────────────┐         ┌──────────────────────────────────┐

@@ -42,6 +42,7 @@ export interface Settings {
   change_mode: ChangeModeApi
   change_hour: number
   change_interval_minutes: number
+  saturation: number
 }
 
 export interface DisplayState {

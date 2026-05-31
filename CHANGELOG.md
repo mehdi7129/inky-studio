@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.3.1]
+
+### Added
+- **Saturation setting.** A slider in Settings (0 = muted → 1 = vivid, default
+  0.5) feeds straight into Pimoroni's `set_image(saturation=…)`, so you can tune
+  the colour intensity to taste. It applies to the next photo displayed.
+
 ## [0.3.0]
 
 ### Changed
@@ -88,6 +95,7 @@ to [Semantic Versioning](https://semver.org/).
 - **Display support** — auto-detection of Inky Impression 7.3" (7-colour),
   7.3" 2025 and 13.3" 2025 (Spectra 6), with an off-Pi mock for development.
 
+[0.3.1]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.1
 [0.3.0]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.0
 [0.2.3]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.2.3
 [0.2.2]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.2.2
