@@ -252,10 +252,19 @@ async def perform_update(emit: EmitFn, *, install_dir: Path | None = None) -> bo
 
         _emit(emit, "restarting", f"Redémarrage sur {tag}…", version=version)
         await asyncio.sleep(0.5)  # let the 'restarting' event flush to clients first
-        await asyncio.create_subprocess_exec(
-            "sudo", "systemctl", "--no-block", "restart", SERVICE_NAME
+        # --no-block so systemctl returns before systemd tears down our cgroup.
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "systemctl", "--no-block", "restart", SERVICE_NAME,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
         )
-        return True
+        out, _ = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"service restart failed (exit {proc.returncode}): "
+                f"{(out or b'').decode('utf-8', 'replace').strip()}"
+            )
+        return True  # systemd will kill+respawn us momentarily
     except Exception as exc:  # noqa: BLE001 — surface any failure to the UI, never crash
         logger.exception("Update failed")
         _emit(emit, "error", f"Échec de la mise à jour : {exc}")

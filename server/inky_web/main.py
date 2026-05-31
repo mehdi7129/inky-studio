@@ -140,6 +140,9 @@ def run() -> None:
         host="0.0.0.0",
         port=8000,
         reload=False,
+        # Bound shutdown so an open WebSocket can't make `systemctl restart`
+        # (used by the in-app update) hang until systemd's SIGKILL timeout.
+        timeout_graceful_shutdown=10,
     )
 
 

@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1]
+
+### Fixed
+- **In-app update could fail to restart the service.** The scoped `sudoers`
+  rule didn't cover the `systemctl --no-block restart` form the updater uses,
+  so the restart was denied; and an open WebSocket could make graceful shutdown
+  hang until systemd's kill timeout (~90 s). The installer now allows the
+  `--no-block` form, the server bounds graceful shutdown to 10 s, and the
+  service unit sets `TimeoutStopSec=20`. The updater also now reports a restart
+  failure instead of swallowing it.
+
 ## [0.2.0]
 
 ### Added
@@ -43,5 +54,6 @@ to [Semantic Versioning](https://semver.org/).
 - **Display support** — auto-detection of Inky Impression 7.3" (7-colour),
   7.3" 2025 and 13.3" 2025 (Spectra 6), with an off-Pi mock for development.
 
+[0.2.1]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.2.1
 [0.2.0]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.1.0

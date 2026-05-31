@@ -194,8 +194,10 @@ say "Granting scoped sudo for service restart…"
 SUDOERS_TMP=$(mktemp)
 cat > "${SUDOERS_TMP}" <<EOF
 # Inky Studio: let the service user (re)start ONLY its own service, so the
-# in-app one-click update can restart cleanly without a password.
-${RUN_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart ${SERVICE_NAME}, /usr/bin/systemctl stop ${SERVICE_NAME}, /usr/bin/systemctl start ${SERVICE_NAME}
+# in-app one-click update can restart cleanly without a password. The updater
+# uses `systemctl --no-block restart` (so it returns before systemd tears down
+# the service's cgroup); sudo matches argv exactly, so that form is listed too.
+${RUN_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl --no-block restart ${SERVICE_NAME}, /usr/bin/systemctl restart ${SERVICE_NAME}, /usr/bin/systemctl stop ${SERVICE_NAME}, /usr/bin/systemctl start ${SERVICE_NAME}
 EOF
 sudo install -m 0440 -o root -g root "${SUDOERS_TMP}" /etc/sudoers.d/inky-studio
 rm -f "${SUDOERS_TMP}"
@@ -222,6 +224,7 @@ Environment="INKY_STUDIO_REPO_SLUG=${REPO_SLUG}"
 ExecStart=${INSTALL_DIR}/server/.venv/bin/inky-studio-server
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=20
 StandardOutput=journal
 StandardError=journal
 
