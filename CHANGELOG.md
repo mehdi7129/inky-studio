@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.3.3]
+
+### Changed
+- **Installer now auto-detects the user.** The one-liner no longer assumes the
+  account is `pi` — it installs for whoever runs it (their real home dir and
+  primary group), and bakes the right paths into the global `inky-studio` CLI.
+  So the one-line install works on any Raspberry Pi OS setup, whatever username
+  was chosen. Override with `INKY_STUDIO_USER` only for a different account.
+
 ## [0.3.2]
 
 ### Added
@@ -109,6 +118,7 @@ to [Semantic Versioning](https://semver.org/).
 - **Display support** — auto-detection of Inky Impression 7.3" (7-colour),
   7.3" 2025 and 13.3" 2025 (Spectra 6), with an off-Pi mock for development.
 
+[0.3.3]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.3
 [0.3.2]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.2
 [0.3.1]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.1
 [0.3.0]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.0

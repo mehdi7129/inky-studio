@@ -20,8 +20,13 @@
 set -euo pipefail
 
 CHANNEL="${INKY_STUDIO_CHANNEL:-release}"
-RUN_USER="${INKY_STUDIO_USER:-pi}"
-INSTALL_DIR="${INKY_STUDIO_INSTALL_DIR:-/home/${RUN_USER}/inky-studio}"
+# Default to the user running the installer (not a hardcoded 'pi'), so the
+# one-liner works whatever username the Pi was set up with.
+RUN_USER="${INKY_STUDIO_USER:-$(id -un)}"
+RUN_GROUP="$(id -gn "${RUN_USER}" 2>/dev/null || echo "${RUN_USER}")"
+RUN_HOME="$(getent passwd "${RUN_USER}" 2>/dev/null | cut -d: -f6)"
+[[ -n "${RUN_HOME}" ]] || RUN_HOME="/home/${RUN_USER}"
+INSTALL_DIR="${INKY_STUDIO_INSTALL_DIR:-${RUN_HOME}/inky-studio}"
 DATA_DIR="${INKY_STUDIO_DATA_DIR:-/var/lib/inky-studio}"
 REPO_SLUG="${INKY_STUDIO_REPO_SLUG:-mehdi7129/inky-studio}"
 REPO_URL="${INKY_STUDIO_REPO:-https://github.com/${REPO_SLUG}.git}"
@@ -33,7 +38,7 @@ BOOT_CONFIG="/boot/firmware/config.txt"
 REBOOT_REQUIRED=0
 
 if [[ "${EUID}" -eq 0 ]]; then
-  echo "❌ Don't run this as root — run as the '${RUN_USER}' user. sudo is invoked when needed." >&2
+  echo "❌ Don't run this as root — run it as your normal Pi user. sudo is invoked when needed." >&2
   exit 1
 fi
 
@@ -186,8 +191,8 @@ cd "${INSTALL_DIR}/server"
 
 # ── 8. Data directory ────────────────────────────────────────────────────────
 say "Creating data directory ${DATA_DIR}…"
-sudo install -d -m 0755 -o "${RUN_USER}" -g "${RUN_USER}" "${DATA_DIR}"
-sudo install -d -m 0755 -o "${RUN_USER}" -g "${RUN_USER}" "${DATA_DIR}/photos"
+sudo install -d -m 0755 -o "${RUN_USER}" -g "${RUN_GROUP}" "${DATA_DIR}"
+sudo install -d -m 0755 -o "${RUN_USER}" -g "${RUN_GROUP}" "${DATA_DIR}/photos"
 
 # ── 9. Scoped sudo so the app can restart itself (one-click update) ───────────
 say "Granting scoped sudo for service restart…"
@@ -206,6 +211,12 @@ sudo visudo -cf /etc/sudoers.d/inky-studio >/dev/null
 # ── 10. CLI wrapper ──────────────────────────────────────────────────────────
 say "Installing CLI at /usr/local/bin/inky-studio…"
 sudo install -m 0755 "${INSTALL_DIR}/scripts/inky-studio-cli" /usr/local/bin/inky-studio
+# Bake the real install/data dirs into the global CLI (its built-in defaults
+# assume /home/pi), so `inky-studio …` works for any username.
+sudo sed -i \
+  -e "s#\${INKY_STUDIO_INSTALL_DIR:-/home/pi/inky-studio}#\${INKY_STUDIO_INSTALL_DIR:-${INSTALL_DIR}}#" \
+  -e "s#\${INKY_STUDIO_DATA_DIR:-/var/lib/inky-studio}#\${INKY_STUDIO_DATA_DIR:-${DATA_DIR}}#" \
+  /usr/local/bin/inky-studio
 
 # ── 11. systemd unit ─────────────────────────────────────────────────────────
 say "Writing systemd unit…"

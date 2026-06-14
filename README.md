@@ -63,7 +63,7 @@ Pass these as environment variables to the installer:
 | Variable | Default | Purpose |
 |---|---|---|
 | `INKY_STUDIO_CHANNEL` | `release` | `release` (prebuilt) or `source` (build from `main`) |
-| `INKY_STUDIO_USER` | `pi` | Service user |
+| `INKY_STUDIO_USER` | current user | Service user (auto-detected; override only for a different account) |
 | `INKY_STUDIO_INSTALL_DIR` | `/home/<user>/inky-studio` | Install directory |
 | `INKY_STUDIO_DATA_DIR` | `/var/lib/inky-studio` | Photos + credentials |
 | `INKY_STUDIO_NO_REBOOT` | – | Set to `1` to never auto-reboot |
