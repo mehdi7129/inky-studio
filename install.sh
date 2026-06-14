@@ -200,7 +200,7 @@ SUDOERS_TMP=$(mktemp)
 cat > "${SUDOERS_TMP}" <<EOF
 # Inky Studio: let the service user (re)start ONLY its own service, so the
 # in-app one-click update can restart cleanly without a password. The updater
-# uses `systemctl --no-block restart` (so it returns before systemd tears down
+# uses \`systemctl --no-block restart\` (so it returns before systemd tears down
 # the service's cgroup); sudo matches argv exactly, so that form is listed too.
 ${RUN_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl --no-block restart ${SERVICE_NAME}, /usr/bin/systemctl restart ${SERVICE_NAME}, /usr/bin/systemctl stop ${SERVICE_NAME}, /usr/bin/systemctl start ${SERVICE_NAME}
 EOF
