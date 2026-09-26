@@ -4,7 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-09-26
+
+### Fixed
+- Release WebSocket event subscriptions before awaiting task cleanup so repeated
+  cancellation cannot leave a disconnected client registered on the event bus.
+  This fixes a cancellation race found during the v0.4.0 release checks.
+
 ## [0.4.0] - 2026-09-26
+
+This version was held as a prerelease after the cancellation issue above was
+identified. Use v0.4.1 for the stable bento release.
 
 ### Changed
 - **Monochrome bento interface.** A responsive white/black dashboard brings the
@@ -148,6 +158,7 @@ to [Semantic Versioning](https://semver.org/).
 - **Display support** — auto-detection of Inky Impression 7.3" (7-colour),
   7.3" 2025 and 13.3" 2025 (Spectra 6), with an off-Pi mock for development.
 
+[0.4.1]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.4.1
 [0.4.0]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.4.0
 [0.3.3]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.3
 [0.3.2]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.2
