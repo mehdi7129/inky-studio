@@ -32,8 +32,10 @@ case "${cmd}" in
   welcome)
     # Need to stop briefly to take the SPI bus
     sudo systemctl stop "${SERVICE_NAME}"
+    trap 'sudo systemctl start "${SERVICE_NAME}"' EXIT
     INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${PYTHON}" -m inky_web.welcome
     sudo systemctl start "${SERVICE_NAME}"
+    trap - EXIT
     ;;
   reset-password)
     # Erase the old credentials file, restart so a new password is generated
@@ -49,7 +51,7 @@ case "${cmd}" in
   update)
     # Download the latest prebuilt release, swap it in, refresh deps, restart.
     # Same code path as the in-app one-click update (inky_web.services.updater).
-    INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${PYTHON}" -m inky_web.updater
+    INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${PYTHON}" -m inky_web.services.updater
     ;;
   info)
     echo "Install dir : ${INSTALL_DIR}"

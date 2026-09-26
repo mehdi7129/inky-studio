@@ -10,6 +10,7 @@ from inky_web.services import photos, queue
 from inky_web.services.photos import PhotoValidationError
 
 router = APIRouter(prefix="/queue", tags=["queue"])
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # Fits a full-colour 1600×1200 PNG.
 
 
 @router.get("", response_model=list[QueueEntry])
@@ -22,18 +23,22 @@ async def add_to_queue(
     request: Request,
     file: Annotated[UploadFile, File()],
 ) -> UploadResponse:
-    """Upload a PNG that has already been resized + palette-applied in the browser.
+    """Upload a full-colour PNG already resized and cropped in the browser.
 
     The image dimensions must match the connected display exactly — the server
-    refuses unconverted uploads. This is the contract that lets the Pi store
-    only ~200 KB per photo instead of multi-megabyte originals.
+    refuses unconverted uploads. The official display driver applies the panel
+    palette when displaying it; uploaded PNGs are limited to 10 MiB.
     """
     display = request.app.state.display
     bus = request.app.state.bus
     info = display.info()
     expected_size = (info["width"], info["height"])
 
-    content = await file.read()
+    if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Photo exceeds the 10 MiB upload limit")
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Photo exceeds the 10 MiB upload limit")
     try:
         photo, already_existed = photos.save(
             content=content,

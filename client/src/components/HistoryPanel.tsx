@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HistoryEntry } from '../lib/api'
 import {
   clearHistory,
@@ -11,6 +11,7 @@ import { formatAbsolute, formatBytes, formatRelative } from '../lib/format'
 
 interface HistoryPanelProps {
   onChange: () => void
+  revision?: number
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -21,37 +22,41 @@ const SOURCE_LABEL: Record<string, string> = {
   upload: 'upload',
 }
 
-export function HistoryPanel({ onChange }: HistoryPanelProps) {
+export function HistoryPanel({ onChange, revision = 0 }: HistoryPanelProps) {
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [requeueingId, setRequeueingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  const requestVersion = useRef(0)
+  const invalidateRequests = useCallback(() => { ++requestVersion.current }, [])
 
   const reload = useCallback(() => {
+    const version = ++requestVersion.current
     return fetchHistory(200, 0)
-      .then(setHistory)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .then((entries) => {
+        if (version === requestVersion.current) {
+          setHistory(entries)
+          setError(null)
+        }
+      })
+      .catch((err) => {
+        if (version === requestVersion.current) {
+          setError(err instanceof Error ? err.message : String(err))
+        }
+      })
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-    fetchHistory(200, 0)
-      .then((entries) => {
-        if (!cancelled) setHistory(entries)
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    void reload()
+    return invalidateRequests
+  }, [revision, reload, invalidateRequests])
 
   const handleRequeue = async (entry: HistoryEntry) => {
     setRequeueingId(entry.photo.id)
     try {
       const response = await fetch(photoFileUrl(entry.photo.id))
+      if (!response.ok) throw new Error(`Impossible de récupérer la photo (HTTP ${response.status})`)
       const blob = await response.blob()
       await uploadToQueue(blob, entry.photo.original_filename)
       onChange()
@@ -63,6 +68,7 @@ export function HistoryPanel({ onChange }: HistoryPanelProps) {
   }
 
   const handleDelete = async (entry: HistoryEntry) => {
+    ++requestVersion.current
     setDeletingId(entry.id)
     try {
       await deleteHistoryEntry(entry.id)
@@ -76,6 +82,7 @@ export function HistoryPanel({ onChange }: HistoryPanelProps) {
   }
 
   const handleClearAll = async () => {
+    ++requestVersion.current
     try {
       await clearHistory()
       setConfirmClear(false)

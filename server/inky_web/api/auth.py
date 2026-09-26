@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -44,7 +45,7 @@ async def login(request: Request, payload: LoginRequest, response: Response) -> 
         )
 
     creds = request.app.state.credentials
-    if payload.password != creds.password:
+    if not secrets.compare_digest(payload.password.encode(), creds.password.encode()):
         logger.warning("Bad login attempt from %s", ip)
         raise HTTPException(status_code=401, detail="Mot de passe incorrect")
 

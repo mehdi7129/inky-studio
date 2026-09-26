@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import logging
 import platform
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -51,6 +54,13 @@ class DisplayController:
         self._impl: Any | None = None
         self._is_mock: bool = True
         self._spec: DisplaySpec = MOCK_SPEC
+        self._lock = threading.RLock()
+
+    @contextmanager
+    def operation(self) -> Iterator[None]:
+        """Serialize selection, hardware refresh, and its persisted result."""
+        with self._lock:
+            yield
 
     def initialize(self) -> None:
         if platform.system() != "Linux":
@@ -82,7 +92,8 @@ class DisplayController:
             self._spec = MOCK_SPEC
 
     def shutdown(self) -> None:
-        self._impl = None
+        with self.operation():
+            self._impl = None
 
     @property
     def spec(self) -> DisplaySpec:
@@ -114,6 +125,10 @@ class DisplayController:
         Otherwise the official library owns all colour science (single faithful
         quantisation to the auto-detected panel's exact palette).
         """
+        with self.operation():
+            self._display_image(path, saturation)
+
+    def _display_image(self, path: Path, saturation: float | None) -> None:
         value = SATURATION if saturation is None else max(0.0, min(2.0, saturation))
         pimoroni_sat = min(value, 1.0)
         color_factor = max(1.0, value)  # 1.0 = no boost; up to 2.0 = strong boost

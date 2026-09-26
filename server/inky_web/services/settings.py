@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 
-from inky_web.db import connection
+from inky_web.db import connection, transaction
 from inky_web.models import ChangeMode, Settings, SettingsUpdate
 
 logger = logging.getLogger(__name__)
@@ -32,10 +32,8 @@ def get() -> Settings:
 
 
 def update(patch: SettingsUpdate) -> Settings:
-    current = get()
-    merged = current.model_copy(update={k: v for k, v in patch.model_dump(exclude_none=True).items()})
-    with connection() as conn:
-        for key, value in merged.model_dump().items():
+    with transaction() as conn:
+        for key, value in patch.model_dump(exclude_none=True).items():
             if isinstance(value, ChangeMode):
                 value = value.value
             conn.execute(
@@ -45,4 +43,4 @@ def update(patch: SettingsUpdate) -> Settings:
                 """,
                 (key, json.dumps(value)),
             )
-    return merged
+    return get()

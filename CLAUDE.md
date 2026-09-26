@@ -7,7 +7,7 @@ Guidance for Claude Code (and human contributors) working in this repository.
 Inky Studio is a self-hosted web app that drives a Pimoroni Inky Impression
 e-ink display on a Raspberry Pi. The browser only decodes (HEIC) and **crops** the
 photo to the panel resolution (full colour); all colour science is done **once on
-the Pi** by the official Pimoroni `inky.set_image(saturation=0.5)`, which quantises
+the Pi** by the official Pimoroni `inky.set_image(saturation=1.0)` by default, which quantises
 to the exact palette of the auto-detected panel. There are **no app-level colour
 modes** — rendering adapts to the detected screen automatically.
 
@@ -54,8 +54,8 @@ Frontend:
 
 ```bash
 cd client
-npm install
-npm run dev                 # :5173, talks to :8000 via CORS
+npm ci
+npm run dev                 # :5273, proxies /api to :8000
 npm run lint && npx tsc -b && npm test && npm run build
 ```
 
@@ -88,7 +88,7 @@ device, so the Pi needs no Node.js at runtime.
   once on first install.
 - **`services/updater.py`** powers both the in-app one-click update
   (`POST /api/system/update`, streaming `system_update` WS events) and the
-  `inky-studio update` CLI (`python -m inky_web.updater`). It downloads the
+  `inky-studio update` CLI (`python -m inky_web.services.updater`). It downloads the
   latest release asset, extracts it over the install dir (preserving `.venv`),
   runs `pip install -e .[pi]`, and restarts via the scoped sudo rule.
 

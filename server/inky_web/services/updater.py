@@ -9,7 +9,7 @@ Progress is reported through an ``emit(stage, message, **extra)`` callback so
 the same routine can drive both:
   * the in-app one-click update (``emit`` broadcasts ``system_update`` events
     over the WebSocket EventBus — see :mod:`inky_web.api.system`), and
-  * the ``inky-studio update`` CLI (``python -m inky_web.updater`` — ``emit``
+  * the ``inky-studio update`` CLI (``python -m inky_web.services.updater`` — ``emit``
     prints to stdout).
 
 Restarting the service requires root; the installer grants the service user a
@@ -19,6 +19,7 @@ inky-studio.service`` only (see ``install.sh``).
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import logging
 import os
@@ -28,7 +29,7 @@ import tempfile
 import time
 import urllib.request
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from inky_web import __version__
@@ -43,7 +44,8 @@ INSTALL_DIR = Path(__file__).resolve().parents[3]
 _API_LATEST = f"https://api.github.com/repos/{REPO_SLUG}/releases/latest"
 _USER_AGENT = "inky-studio-updater"
 _CACHE_TTL = 600.0  # seconds — don't hammer the GitHub API
-_NEVER_OVERWRITE = {".venv", "node_modules"}
+_NEVER_OVERWRITE = {".venv", "node_modules", "data", ".git", ".env", ".env.local"}
+_MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 
 EmitFn = Callable[..., None]
 
@@ -124,11 +126,29 @@ def _safe_extract(tarball: Path, dest: Path) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     dest_resolved = dest.resolve()
     with tarfile.open(tarball, "r:gz") as tf:
-        for member in tf.getmembers():
+        members = tf.getmembers()
+        if len(members) > 10000 or sum(m.size for m in members) > _MAX_ARCHIVE_BYTES:
+            raise RuntimeError("Release archive is too large")
+        for member in members:
+            path = PurePosixPath(member.name)
             target = (dest / member.name).resolve()
-            if not str(target).startswith(str(dest_resolved)):
+            if path.is_absolute() or ".." in path.parts or not target.is_relative_to(dest_resolved):
                 raise RuntimeError(f"Unsafe path in archive: {member.name}")
-        tf.extractall(dest)  # noqa: S202 — members validated above
+            if not (member.isfile() or member.isdir()):
+                raise RuntimeError(f"Unsupported archive entry: {member.name}")
+        # Copy only regular files/directories. No links, devices, ownership or
+        # setuid permissions from the archive are ever applied (also on 3.11).
+        for member in members:
+            target = dest / member.name
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source = tf.extractfile(member)
+                assert source is not None
+                with source, target.open("wb") as output:
+                    shutil.copyfileobj(source, output)
+                target.chmod(0o755 if member.mode & 0o111 else 0o644)
 
 
 def _resolve_payload_root(extracted: Path) -> Path:
@@ -148,6 +168,8 @@ def _merge_dir(src: Path, dest: Path) -> None:
         if child.name in _NEVER_OVERWRITE:
             continue
         target = dest / child.name
+        if target.is_symlink():
+            raise RuntimeError(f"Refusing to overwrite symlink: {target}")
         if child.is_dir():
             _merge_dir(child, target)
         else:
@@ -159,6 +181,8 @@ def _apply(src_root: Path, install_dir: Path) -> None:
         if item.name in _NEVER_OVERWRITE:
             continue
         dest = install_dir / item.name
+        if dest.is_symlink():
+            raise RuntimeError(f"Refusing to overwrite symlink: {dest}")
         if item.is_dir():
             _merge_dir(item, dest)
         else:
@@ -166,7 +190,38 @@ def _apply(src_root: Path, install_dir: Path) -> None:
             shutil.copy2(item, dest)
 
 
-_BACKUP_ITEMS = ("server", "client", "shared", "scripts", "install.sh", "VERSION")
+_BACKUP_ITEMS = (
+    "server", "client", "shared", "scripts", "install.sh", "VERSION",
+    "README.md", "LICENSE", "CHANGELOG.md",
+)
+
+
+def _validate_payload(src_root: Path) -> None:
+    required = ("server/pyproject.toml", "server/inky_web/main.py", "client/dist/index.html")
+    if any(not (src_root / name).is_file() for name in required) or not (src_root / "client/dist/assets").is_dir():
+        raise RuntimeError("Incomplete release payload")
+    if any(item.name not in _BACKUP_ITEMS for item in src_root.iterdir()):
+        raise RuntimeError("Unexpected files at release root")
+    if any(p.name in _NEVER_OVERWRITE or p.is_symlink() for p in src_root.rglob("*")):
+        raise RuntimeError("Release contains protected runtime files or links")
+
+
+def _prune_new_files(current: Path, backup: Path) -> None:
+    """Remove files introduced by a failed update, preserving runtime data."""
+    if current.is_dir() and not current.is_symlink():
+        for child in current.iterdir():
+            if child.name not in _NEVER_OVERWRITE:
+                _prune_new_files(child, backup / child.name)
+        if not backup.exists() and not any(current.iterdir()):
+            current.rmdir()
+    elif current.exists() and not backup.exists():
+        current.unlink()
+
+
+def _restore(backup_dir: Path, install_dir: Path) -> None:
+    for name in _BACKUP_ITEMS:
+        _prune_new_files(install_dir / name, backup_dir / name)
+    _apply(backup_dir, install_dir)
 
 
 def _backup_current(install_dir: Path, backup_dir: Path) -> None:
@@ -212,8 +267,16 @@ async def perform_update(emit: EmitFn, *, install_dir: Path | None = None) -> bo
     shortly after), False on failure. Progress flows through ``emit``.
     """
     install_dir = install_dir or INSTALL_DIR
+    lock = (install_dir / ".inky-update.lock").open("a")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.close()
+        _emit(emit, "error", "Une mise à jour est déjà en cours.")
+        return False
     tmp_root = Path(tempfile.mkdtemp(prefix="inky-update-"))
     backup_dir = tmp_root / "backup"
+    applied = False
     try:
         _emit(emit, "checking", "Recherche de la dernière version…")
         release = await asyncio.to_thread(_fetch_latest_release)
@@ -235,10 +298,12 @@ async def perform_update(emit: EmitFn, *, install_dir: Path | None = None) -> bo
         extracted = tmp_root / "extracted"
         await asyncio.to_thread(_safe_extract, tarball, extracted)
         src_root = _resolve_payload_root(extracted)
+        _validate_payload(src_root)
 
         _emit(emit, "installing", "Sauvegarde de la version actuelle…", version=version)
         await asyncio.to_thread(_backup_current, install_dir, backup_dir)
         _emit(emit, "installing", "Application des nouveaux fichiers…", version=version)
+        applied = True
         await asyncio.to_thread(_apply, src_root, install_dir)
 
         _emit(emit, "installing", "Mise à jour des dépendances Python…", version=version)
@@ -273,14 +338,15 @@ async def perform_update(emit: EmitFn, *, install_dir: Path | None = None) -> bo
         logger.exception("Update failed")
         _emit(emit, "error", f"Échec de la mise à jour : {exc}")
         try:
-            if backup_dir.is_dir():
-                await asyncio.to_thread(_apply, backup_dir, install_dir)
-                _emit(emit, "error", "Version précédente restaurée.")
+            if applied:
+                await asyncio.to_thread(_restore, backup_dir, install_dir)
+                _emit(emit, "error", "Fichiers précédents restaurés. Vérifiez les dépendances Python avant de redémarrer.")
         except Exception:  # noqa: BLE001
             logger.exception("Rollback failed")
         return False
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
+        lock.close()
 
 
 def bus_emitter(bus: Any) -> EmitFn:
@@ -296,7 +362,7 @@ def bus_emitter(bus: Any) -> EmitFn:
     return emit
 
 
-# ── CLI entry point: `python -m inky_web.updater` (used by `inky-studio update`)
+# ── CLI entry point: `python -m inky_web.services.updater` (used by `inky-studio update`)
 def main() -> int:
     def emit(stage: str, message: str = "", **extra: Any) -> None:
         version = extra.get("version")

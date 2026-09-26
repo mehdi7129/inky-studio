@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
@@ -88,33 +88,15 @@ class Scheduler:
         await asyncio.to_thread(self._advance, "auto")
 
     def _advance(self, source: str) -> None:
-        next_entry = queue.pop_next()
-        if next_entry is not None:
-            photo_id = next_entry.photo.id
-            self._show(photo_id, source=source)
-            self._bus.broadcast("queue_updated", {"action": "popped", "photo_id": photo_id})
-            return
-
-        current_entry = history.current()
-        recycled = history.oldest_unique_photo_id_excluding(
-            current_entry.photo.id if current_entry else None
-        )
-        if recycled is None:
-            logger.warning("Nothing to display — queue and history both empty")
-            return
-        self._show(recycled, source="recycle")
-
-    def _show(self, photo_id: str, source: str) -> None:
-        path = path_for(photo_id)
-        if not path.exists():
-            logger.error("Photo file missing for %s — skipping", photo_id)
-            return
-        self._display.display_image(path, saturation=settings.get().saturation)
-        entry = history.record(photo_id, source=source)  # type: ignore[arg-type]
-        self._bus.broadcast(
-            "display_changed",
-            {"history_id": entry.id, "photo_id": photo_id, "source": source},
-        )
+        with self._display.operation():
+            # A manual refresh can complete while this worker waits for the display.
+            cfg = settings.get()
+            current = history.current()
+            now = time.time()
+            next_at = _compute_next_change(cfg, current.displayed_at if current else None, now)
+            if next_at is None or now < next_at:
+                return
+            _advance(self._display, self._bus, source=source, recycle_source="recycle")
 
 
 def _compute_next_change(
@@ -129,15 +111,16 @@ def _compute_next_change(
             return now
         return last_displayed_at + cfg.change_interval_minutes * 60.0
 
-    today_window = datetime.fromtimestamp(now).replace(
+    today = datetime.fromtimestamp(now).replace(
         hour=cfg.change_hour, minute=0, second=0, microsecond=0
-    ).timestamp()
+    )
+    today_window = today.timestamp()
 
     if last_displayed_at is None:
-        return today_window if today_window > now else today_window + 86400.0
+        return today_window
     if last_displayed_at < today_window:
         return today_window
-    return today_window + 86400.0
+    return (today + timedelta(days=1)).timestamp()
 
 
 async def trigger_next(display: DisplayController, bus: EventBus) -> None:
@@ -146,9 +129,24 @@ async def trigger_next(display: DisplayController, bus: EventBus) -> None:
 
 
 def _manual_next(display: DisplayController, bus: EventBus) -> None:
-    entry = queue.pop_next()
-    if entry is not None:
-        _show(display, bus, entry.photo.id, source="manual_next")
+    with display.operation():
+        _advance(display, bus, source="manual_next", recycle_source="manual_next")
+
+
+def _advance(display: DisplayController, bus: EventBus, *, source: str, recycle_source: str) -> None:
+    while (entry := queue.peek_next()) is not None:
+        if not path_for(entry.photo.id).exists():
+            # A permanently missing source must not block every later photo.
+            # Keep its metadata; only remove this unusable queue entry. Errors
+            # from the actual driver below still propagate and preserve queue.
+            logger.warning("Photo file missing for %s — skipping queue entry %s", entry.photo.id, entry.id)
+            queue.remove_entry(entry.id)
+            bus.broadcast("queue_updated", {
+                "action": "skipped", "photo_id": entry.photo.id, "reason": "file_missing",
+            })
+            continue
+        _show(display, bus, entry.photo.id, source=source)
+        queue.remove_entry(entry.id)
         bus.broadcast("queue_updated", {"action": "popped", "photo_id": entry.photo.id})
         return
     current_entry = history.current()
@@ -157,7 +155,7 @@ def _manual_next(display: DisplayController, bus: EventBus) -> None:
     )
     if recycled is None:
         return
-    _show(display, bus, recycled, source="manual_next")
+    _show(display, bus, recycled, source=recycle_source)
 
 
 async def trigger_previous(display: DisplayController, bus: EventBus) -> None:
@@ -165,22 +163,26 @@ async def trigger_previous(display: DisplayController, bus: EventBus) -> None:
 
 
 def _manual_previous(display: DisplayController, bus: EventBus) -> None:
-    cur = history.current()
-    if cur is None:
-        return
-    prev = history.previous_to(cur.id)
-    if prev is None:
-        return
-    _show(display, bus, prev.photo.id, source="manual_previous")
+    with display.operation():
+        prev = history.previous()
+        if prev is not None:
+            _show(
+                display, bus, prev.photo.id,
+                source="manual_previous", navigation_history_id=prev.id,
+            )
 
 
-def _show(display: DisplayController, bus: EventBus, photo_id: str, source: str) -> None:
+def _show(
+    display: DisplayController, bus: EventBus, photo_id: str, source: str,
+    *, navigation_history_id: int | None = None,
+) -> None:
     path = path_for(photo_id)
     if not path.exists():
-        logger.error("Photo file missing for %s — skipping", photo_id)
-        return
+        raise FileNotFoundError(f"Photo file missing for {photo_id}")
     display.display_image(path, saturation=settings.get().saturation)
-    entry = history.record(photo_id, source=source)  # type: ignore[arg-type]
+    entry = history.record(
+        photo_id, source=source, navigation_history_id=navigation_history_id,  # type: ignore[arg-type]
+    )
     bus.broadcast(
         "display_changed",
         {"history_id": entry.id, "photo_id": photo_id, "source": source},

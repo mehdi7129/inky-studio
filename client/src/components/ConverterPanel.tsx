@@ -19,6 +19,7 @@ type Status =
   | { kind: 'error'; message: string }
 
 interface DecodedSource {
+  file: File
   bitmap: ImageBitmap
   wasHeic: boolean
   sourceWidth: number
@@ -29,8 +30,20 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
   const [offsetX, setOffsetX] = useState(0)
   const [offsetY, setOffsetY] = useState(0)
   const [source, setSource] = useState<DecodedSource | null>(null)
-  const [result, setResult] = useState<ConvertResult | null>(null)
+  const [prepared, setPrepared] = useState<{
+    result: ConvertResult
+    source: DecodedSource
+    file: File
+    width: number
+    height: number
+    offsetX: number
+    offsetY: number
+  } | null>(null)
   const [status, setStatus] = useState<Status>({ kind: 'decoding', wasHeic: isLikelyHeic(file) })
+  const result = prepared?.result ?? null
+  const cropReady = prepared !== null && prepared.source === source && prepared.file === file &&
+    prepared.width === display.width && prepared.height === display.height &&
+    prepared.offsetX === offsetX && prepared.offsetY === offsetY
 
   // Decode the file once. HEIC may take 1-2s via WASM; everything else is instant.
   useEffect(() => {
@@ -48,6 +61,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
           return
         }
         setSource({
+          file,
           bitmap: decoded.bitmap,
           wasHeic: decoded.wasHeic,
           sourceWidth: decoded.bitmap.width,
@@ -68,7 +82,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
   // Re-crop to the panel size whenever the source, framing, or panel changes.
   // Cheap (~5-20ms) since the costly decode already happened.
   useEffect(() => {
-    if (!source) return
+    if (!source || source.file !== file) return
     let cancelled = false
     void (async () => {
       try {
@@ -80,7 +94,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
           offsetY,
         })
         if (cancelled) return
-        setResult(r)
+        setPrepared({ result: r, source, file, width: display.width, height: display.height, offsetX, offsetY })
         setStatus((s) => (s.kind === 'uploading' || s.kind === 'done' ? s : { kind: 'ready', result: r }))
       } catch (err) {
         if (cancelled) return
@@ -90,10 +104,10 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
     return () => {
       cancelled = true
     }
-  }, [source, display.width, display.height, offsetX, offsetY])
+  }, [source, file, display.width, display.height, offsetX, offsetY])
 
   const handleUpload = async () => {
-    if (!result) return
+    if (!result || !cropReady || status.kind === 'uploading' || status.kind === 'done') return
     setStatus({ kind: 'uploading' })
     try {
       await uploadToQueue(result.pngBlob, file.name.replace(/\.[^.]+$/, '') + '.png')
@@ -136,7 +150,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
       </div>
 
       {!done && (
-        <fieldset className="space-y-3 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4">
+        <fieldset disabled={busy} className="space-y-3 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4">
           <legend className="px-2 text-xs uppercase tracking-wider text-neutral-500">
             Cadrage
           </legend>
@@ -177,6 +191,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
             </span>
           )}
           {status.kind === 'uploading' && <span className="text-neutral-500">Envoi à l'écran…</span>}
+          {status.kind === 'ready' && !cropReady && <span className="text-neutral-500">Préparation du cadrage…</span>}
           {status.kind === 'done' && (
             <span className="text-green-600 dark:text-green-400 font-medium">
               ✓ Ajoutée à la file · {status.sizeKb} Ko
@@ -198,10 +213,10 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
           <button
             type="button"
             onClick={handleUpload}
-            disabled={!result || busy}
+            disabled={!cropReady || busy}
             className={[
               'px-4 py-2 rounded-md font-medium transition',
-              result && !busy
+              cropReady && !busy
                 ? 'bg-indigo-600 text-white hover:bg-indigo-700'
                 : 'bg-neutral-300 text-neutral-500 dark:bg-neutral-700 cursor-not-allowed',
             ].join(' ')}

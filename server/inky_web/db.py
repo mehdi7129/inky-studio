@@ -47,6 +47,11 @@ CREATE TABLE IF NOT EXISTS history (
 );
 CREATE INDEX IF NOT EXISTS idx_history_time ON history(displayed_at DESC);
 
+CREATE TABLE IF NOT EXISTS display_navigation (
+    id          INTEGER PRIMARY KEY CHECK (id = 1),
+    history_id  INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     key    TEXT PRIMARY KEY,
     value  TEXT NOT NULL
@@ -89,6 +94,19 @@ def connection() -> Iterator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+@contextmanager
+def transaction() -> Iterator[sqlite3.Connection]:
+    """Serialize a read/modify/write operation and roll it back on failure."""
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield conn
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
 
 
 def init_db() -> None:

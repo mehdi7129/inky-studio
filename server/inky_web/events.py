@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
@@ -26,24 +27,44 @@ EventType = Literal[
 
 class EventBus:
     def __init__(self, queue_maxsize: int = 32) -> None:
-        self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
+        self._subscribers: dict[asyncio.Queue[dict[str, Any]], asyncio.AbstractEventLoop] = {}
+        self._lock = threading.Lock()
         self._maxsize = queue_maxsize
 
     def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
         q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=self._maxsize)
-        self._subscribers.add(q)
+        loop = asyncio.get_running_loop()
+        with self._lock:
+            self._subscribers[q] = loop
         return q
 
     def unsubscribe(self, q: asyncio.Queue[dict[str, Any]]) -> None:
-        self._subscribers.discard(q)
+        with self._lock:
+            self._subscribers.pop(q, None)
 
     def broadcast(self, event_type: EventType, payload: dict[str, Any] | None = None) -> None:
         event = {"type": event_type, "payload": payload or {}}
-        dropped = 0
-        for q in list(self._subscribers):
+        with self._lock:
+            subscribers = list(self._subscribers.items())
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+        for q, loop in subscribers:
+            if current_loop is loop:
+                self._enqueue(q, event)
+            else:
+                try:
+                    loop.call_soon_threadsafe(self._enqueue, q, event)
+                except RuntimeError:  # The subscriber's event loop has shut down.
+                    self.unsubscribe(q)
+
+    def _enqueue(self, q: asyncio.Queue[dict[str, Any]], event: dict[str, Any]) -> None:
+        """Only touch an asyncio queue on the event loop that owns it."""
+        with self._lock:
+            if q not in self._subscribers:
+                return
             try:
                 q.put_nowait(event)
             except asyncio.QueueFull:
-                dropped += 1
-        if dropped:
-            logger.warning("Dropped %s event(s) for slow subscribers", dropped)
+                logger.warning("Dropped event for a slow subscriber")

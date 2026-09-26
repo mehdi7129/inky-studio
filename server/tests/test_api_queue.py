@@ -64,3 +64,15 @@ def test_reorder_changes_positions(client, png_factory):
     assert response.status_code == 200
     order = [e["photo"]["id"] for e in response.json()]
     assert order == [p3, p1, p2]
+
+
+def test_oversized_upload_is_rejected_before_storage(client, png_factory, monkeypatch):
+    from inky_web.api import queue
+
+    payload = png_factory(800, 480)
+    monkeypatch.setattr(queue, "MAX_UPLOAD_BYTES", len(payload) - 1)
+    response = client.post(
+        "/api/queue", files={"file": ("large.png", payload, "image/png")}
+    )
+    assert response.status_code == 413
+    assert client.get("/api/queue").json() == []

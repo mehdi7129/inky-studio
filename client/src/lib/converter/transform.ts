@@ -6,15 +6,15 @@
  * in a single drawImage call, leaning on the browser's built-in resampling
  * (which on modern engines is bilinear-or-better and good enough for e-ink).
  *
- * Returns ImageData (RGBA byte array) so the dithering pass can run on it
- * without going through canvas again.
+ * Returns ImageData (RGBA byte array) for the preview and full-colour PNG encoder.
  */
 export interface TransformOptions {
   targetWidth: number
   targetHeight: number
   /**
    * Center offset in [-1, 1] for horizontal/vertical re-centering of the crop.
-   * 0,0 = perfect center, -1,0 = pin to the left, 1,0 = pin to the right.
+   * 0,0 = centered. Positive offsets move the image right/down in the frame;
+   * negative offsets move it left/up, revealing the opposite edge of the source.
    */
   offsetX?: number
   offsetY?: number

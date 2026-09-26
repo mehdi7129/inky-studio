@@ -22,13 +22,17 @@ const SOURCE_LABEL: Record<string, string> = {
 export function Dashboard({ state, queue, onChange }: DashboardProps) {
   const [pickedFile, setPickedFile] = useState<File | null>(null)
   const [navBusy, setNavBusy] = useState(false)
+  const [navError, setNavError] = useState<string | null>(null)
   const { display, current } = state
 
   const handleNext = async () => {
     setNavBusy(true)
+    setNavError(null)
     try {
       await triggerNext()
       onChange()
+    } catch (err) {
+      setNavError(err instanceof Error ? err.message : String(err))
     } finally {
       setNavBusy(false)
     }
@@ -36,9 +40,12 @@ export function Dashboard({ state, queue, onChange }: DashboardProps) {
 
   const handlePrevious = async () => {
     setNavBusy(true)
+    setNavError(null)
     try {
       await triggerPrevious()
       onChange()
+    } catch (err) {
+      setNavError(err instanceof Error ? err.message : String(err))
     } finally {
       setNavBusy(false)
     }
@@ -113,6 +120,7 @@ export function Dashboard({ state, queue, onChange }: DashboardProps) {
               </button>
             </div>
           </footer>
+          {navError && <p role="alert" className="px-5 pb-3 text-sm text-red-600 dark:text-red-400">{navError}</p>}
         </article>
 
         <aside className="rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5 bg-white dark:bg-neutral-900 space-y-4">

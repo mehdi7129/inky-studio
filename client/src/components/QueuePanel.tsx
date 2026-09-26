@@ -22,7 +22,7 @@ import { formatAbsolute, formatBytes } from '../lib/format'
 
 interface QueuePanelProps {
   queue: QueueEntry[]
-  onChange: () => void
+  onChange: () => void | Promise<void>
 }
 
 export function QueuePanel({ queue, onChange }: QueuePanelProps) {
@@ -42,6 +42,7 @@ export function QueuePanel({ queue, onChange }: QueuePanelProps) {
     .filter((entry): entry is QueueEntry => entry !== undefined)
 
   const handleDragEnd = async (event: DragEndEvent) => {
+    if (busy) return
     const { active, over } = event
     if (!over || active.id === over.id) return
     const ids = liveIds
@@ -55,21 +56,23 @@ export function QueuePanel({ queue, onChange }: QueuePanelProps) {
     setError(null)
     try {
       await reorderQueue(newIds)
-      onChange()
+      await onChange()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setOrder(null)
     } finally {
+      setOrder(null)
       setBusy(false)
     }
   }
 
   const handleRemove = async (photoId: string) => {
+    if (busy) return
     setBusy(true)
     setError(null)
     try {
       await removeFromQueue(photoId)
-      onChange()
+      await onChange()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -116,6 +119,7 @@ export function QueuePanel({ queue, onChange }: QueuePanelProps) {
                 key={entry.photo.id}
                 entry={entry}
                 index={idx}
+                disabled={busy}
                 onRemove={() => handleRemove(entry.photo.id)}
               />
             ))}
@@ -130,11 +134,13 @@ interface SortableRowProps {
   entry: QueueEntry
   index: number
   onRemove: () => void
+  disabled: boolean
 }
 
-function SortableRow({ entry, index, onRemove }: SortableRowProps) {
+function SortableRow({ entry, index, onRemove, disabled }: SortableRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.photo.id,
+    disabled,
   })
 
   const style = {
@@ -151,6 +157,7 @@ function SortableRow({ entry, index, onRemove }: SortableRowProps) {
     >
       <button
         type="button"
+        disabled={disabled}
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing px-2 py-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
@@ -177,6 +184,7 @@ function SortableRow({ entry, index, onRemove }: SortableRowProps) {
       <button
         type="button"
         onClick={onRemove}
+        disabled={disabled}
         className="px-2 py-1 text-sm text-neutral-500 hover:text-red-600 dark:hover:text-red-400"
         aria-label="Retirer de la file"
         title="Retirer de la file"

@@ -12,6 +12,7 @@ import { useWebSocket } from '../lib/useWebSocket'
 interface SettingsPanelProps {
   onChange: () => void
   health: HealthResponse | null
+  revision?: number
 }
 
 type UpdatePhase = 'idle' | 'checking' | 'running' | 'restarting' | 'error'
@@ -50,7 +51,7 @@ const CHANGE_MODES: { id: ChangeModeApi; label: string; help: string }[] = [
   },
 ]
 
-export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
+export function SettingsPanel({ onChange, health, revision = 0 }: SettingsPanelProps) {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -58,6 +59,7 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
   // Local mirror of the saturation slider so dragging stays smooth; we only
   // POST the value when the user lets go (pointer/key up), not on every step.
   const [satLocal, setSatLocal] = useState<number | null>(null)
+  const settingsRequestVersion = useRef(0)
 
   // ── Update feature state ──────────────────────────────────────────────────
   const [updateInfo, setUpdateInfo] = useState<UpdateStatus | null>(null)
@@ -71,17 +73,27 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
   const currentVersion = updateInfo?.current ?? health?.version ?? '?'
 
   useEffect(() => {
+    const version = ++settingsRequestVersion.current
     let cancelled = false
     fetchSettings()
       .then((s) => {
-        if (!cancelled) {
+        if (!cancelled && version === settingsRequestVersion.current) {
           setSettings(s)
           setSatLocal(s.saturation)
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled && version === settingsRequestVersion.current) {
+          setError(err instanceof Error ? err.message : String(err))
+        }
       })
+    return () => {
+      cancelled = true
+    }
+  }, [revision])
+
+  useEffect(() => {
+    let cancelled = false
     fetchUpdateStatus()
       .then((u) => {
         if (!cancelled) setUpdateInfo(u)
@@ -146,6 +158,7 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
     try {
       setUpdateInfo(await fetchUpdateStatus(true)) // explicit check → bypass cache
     } catch (err) {
+      setPhase('error')
       setUpdateError(err instanceof Error ? err.message : String(err))
     } finally {
       setPhase((cur) => (cur === 'checking' ? 'idle' : cur))
@@ -153,6 +166,7 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
   }
 
   const launchUpdate = async () => {
+    restartingRef.current = false
     setPhase('running')
     setStage('checking')
     setLog([])
@@ -168,13 +182,17 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
   const busy = phase === 'running' || phase === 'restarting'
 
   const patch = async (delta: Partial<Settings>) => {
-    if (!settings) return
+    if (!settings || saving) return
+    const version = ++settingsRequestVersion.current
     setSaving(true)
     setSaved(false)
     setError(null)
     try {
       const updated = await updateSettings(delta)
-      setSettings(updated)
+      if (version === settingsRequestVersion.current) {
+        setSettings(updated)
+        setSatLocal(updated.saturation)
+      }
       setSaved(true)
       onChange()
     } catch (err) {
@@ -208,7 +226,7 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
         )}
       </section>
 
-      <fieldset className="space-y-3">
+      <fieldset disabled={saving} className="space-y-3">
         <legend className="text-sm font-medium mb-2">Fréquence de changement</legend>
         <div className="space-y-2">
           {CHANGE_MODES.map((mode) => (
@@ -275,7 +293,7 @@ export function SettingsPanel({ onChange, health }: SettingsPanelProps) {
         </div>
       </fieldset>
 
-      <fieldset className="space-y-2">
+      <fieldset disabled={saving} className="space-y-2">
         <legend className="text-sm font-medium mb-2">Saturation des couleurs</legend>
         <input
           type="range"

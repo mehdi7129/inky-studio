@@ -87,7 +87,7 @@ inky-studio info            # paths + URL
 
 - **The display never refreshes / "pins in use".** SPI needs the `dtoverlay=spi0-0cs` overlay (the installer adds it) and a reboot. Run `sudo reboot`, then `inky-studio welcome` to test.
 - **Can't reach the web UI.** Check the service: `inky-studio status` and `inky-studio logs`. It listens on port `8000`.
-- **Forgot the password.** `inky-studio reset-password` prints a new one (and re-shows it on the display).
+- **Forgot the password.** `inky-studio reset-password` prints a new one. Run `inky-studio welcome` to show it on the display again.
 - **Pi Zero 2 W (512 MB RAM).** The installer adds a 1 GB swap file automatically when needed.
 
 ## Development
@@ -108,12 +108,17 @@ ruff check . && pytest
 
 ```bash
 cd client
-npm install
-npm run dev                 # http://localhost:5173 (talks to :8000 via CORS)
+npm ci
+npm run dev                 # http://localhost:5273 (proxies /api to :8000)
 npm run lint && npm test && npm run build
 ```
 
 See [CLAUDE.md](CLAUDE.md) for architecture, conventions, and the release process.
+
+The frontend toolchain requires Node.js 20.19+ or 22.12+ (use a supported LTS).
+The September 2026 stabilization audit and its validation are recorded in
+[the first report](docs/audits/2026-09-26-first-audit.md) and
+[the independent second pass](docs/audits/2026-09-26-second-audit.md).
 
 ## License
 
