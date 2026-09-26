@@ -83,6 +83,8 @@ struct ConnectionView: View {
             }.padding(20).frame(maxWidth: 540)
                 .frame(maxWidth: .infinity)
         }.background(Bento.background).scrollDismissesKeyboard(.interactively)
+            .onAppear { remember = store.biometricEnabled }
+            .onChange(of: store.biometricEnabled) { _, enabled in remember = enabled }
     }
     private func connect() { passwordFocused = false; Task { await store.login(password: password, rememberBiometric: remember) } }
 }

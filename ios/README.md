@@ -46,10 +46,16 @@ python3 ios/scripts/smoke-api.py
 # python3 ios/scripts/seed-simulator-photo.py <SIMULATOR_UDID>
 xcodebuild -project ios/InkyStudio.xcodeproj -scheme InkyStudio \
   -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' \
-  -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
+  -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
 ```
 
-Debug-only UI-test arguments reset app preferences and supply a fixture address. There is no authentication bypass in the app. Unit tests cover the API wire contract, cookie isolation, URL validation, errors, crop geometry, HEIC/orientation, output dimensions and metadata removal. GitHub Actions also builds the iPhone Release configuration.
+Simulator tests use ad-hoc signing so Keychain entitlements are present; unsigned simulator apps cannot validate biometric storage. Debug-only UI-test arguments reset app preferences and supply a fixture address. There is no authentication bypass in the app. Unit tests cover the API wire contract, cookie isolation, URL validation, errors, crop geometry, HEIC/orientation, output dimensions and metadata removal. GitHub Actions also builds the iPhone Release configuration.
+
+### Optional simulated Face ID journey (Xcode 27)
+
+Start the fixture with `python3 ios/scripts/mock-server.py --biometric-device <BOOTED_SIMULATOR_UDID>` instead of the plain fixture. It verifies that the target is a simulator, enables simulated enrollment, and provides a loopback-only test endpoint to emit a biometric match using Apple's public `devicectl` commands. Run the UI tests on that same simulator, with ad-hoc signing enabled. The biometric case skips when this mode is absent; the normal CI suite uses Xcode 16.4.
+
+This exercises the actual app Keychain path and password fallback. It does not replace physical-device verification.
 
 ## Device and TestFlight delivery
 

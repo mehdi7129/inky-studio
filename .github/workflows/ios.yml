@@ -8,6 +8,10 @@ on:
     paths: ["ios/**", ".github/workflows/ios.yml"]
   workflow_dispatch:
 
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -29,6 +33,7 @@ jobs:
           done
           python3 ios/scripts/smoke-api.py
       - name: Prepare simulator photo library
+        timeout-minutes: 8
         run: |
           DEVICE_ID=$(xcrun simctl create 'Inky CI' com.apple.CoreSimulator.SimDeviceType.iPhone-16 com.apple.CoreSimulator.SimRuntime.iOS-18-5)
           echo "INKY_SIMULATOR_ID=$DEVICE_ID" >> "$GITHUB_ENV"
@@ -40,7 +45,7 @@ jobs:
           xcodebuild -project ios/InkyStudio.xcodeproj -scheme InkyStudio \
             -destination "platform=iOS Simulator,id=$INKY_SIMULATOR_ID" \
             -parallel-testing-enabled NO -resultBundlePath TestResults.xcresult \
-            CODE_SIGNING_ALLOWED=NO test
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
       - name: Build iPhone release
         run: |
           xcodebuild -project ios/InkyStudio.xcodeproj -scheme InkyStudio \

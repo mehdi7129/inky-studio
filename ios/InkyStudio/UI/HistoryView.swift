@@ -25,7 +25,7 @@ struct HistoryView: View {
                                 }
                                 Button { Task { await store.requeue(entry) } } label: { Label("Remettre dans la file", systemImage: "plus") }
                                     .buttonStyle(OutlineButtonStyle()).disabled(!store.canMutate).accessibilityIdentifier("history.requeue.\(entry.id)")
-                            }.padding(.vertical, 8).swipeActions { Button("Supprimer", role: .destructive) { deleting = entry } }
+                            }.padding(.vertical, 8).swipeActions { Button("Supprimer", role: .destructive) { deleting = entry }.disabled(!store.canMutate) }
                         }
                     }.listRowBackground(Color.white)
                 }

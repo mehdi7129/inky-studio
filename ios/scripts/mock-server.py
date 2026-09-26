@@ -19,6 +19,7 @@ import json
 import secrets
 import socket
 import struct
+import subprocess
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
@@ -192,6 +193,27 @@ class Handler(BaseHTTPRequestHandler):
         path, method = parsed.path, self.command
         raw = self.read_body() if method == "POST" else b""
         body = json.loads(raw) if raw and "application/json" in self.headers.get("Content-Type", "") else {}
+        if path == "/__test/biometrics" and method in {"GET", "POST"}:
+            device = getattr(self.server, "biometric_device", None)
+            if method == "GET":
+                self.reply(200, {"enabled": device is not None})
+                return
+            if device is None:
+                self.failure(409, "Start the fixture with --biometric-device <simulator-UDID>")
+                return
+            event = body.get("event")
+            if event not in {"success", "failure"}:
+                self.failure(400, "Expected success or failure")
+                return
+            # The target is verified as a simulator at startup. No shell, arbitrary
+            # device IDs, production frame data, or physical phone can be supplied.
+            try:
+                subprocess.run(["xcrun", "devicectl", "device", "simulate", "biometrics", "--device", device, "--" + event, "--timeout", "10"], check=True, capture_output=True, timeout=12)
+            except (subprocess.SubprocessError, OSError) as error:
+                self.failure(503, f"Simulator biometric event failed: {type(error).__name__}")
+            else:
+                self.reply(200, {"simulated": event})
+            return
         if path == "/__test/reset" and method == "POST":
             FIXTURE.reset()
             self.reply(200, {"reset": True})
@@ -442,9 +464,16 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--biometric-device", help="Optional booted simulator UDID for Xcode 27 Face ID UI tests")
     options = parser.parse_args()
+    if options.biometric_device:
+        devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "booted", "--json"]))
+        if not any(device["udid"] == options.biometric_device and device["state"] == "Booted" for runtime in devices["devices"].values() for device in runtime):
+            parser.error("--biometric-device must be a booted iOS Simulator UDID")
+        subprocess.run(["xcrun", "devicectl", "device", "settings", "biometrics", "--device", options.biometric_device, "--enable", "--timeout", "10"], check=True, timeout=12)
     server = ThreadingHTTPServer(("127.0.0.1", options.port), Handler)
     server.daemon_threads = True
+    server.biometric_device = options.biometric_device
     print(f"Inky fixture ready: http://127.0.0.1:{options.port} (test-password)", flush=True)
     try:
         server.serve_forever()

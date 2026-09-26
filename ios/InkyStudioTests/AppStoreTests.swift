@@ -3,6 +3,25 @@ import XCTest
 
 @MainActor
 final class AppStoreTests: XCTestCase {
+    func testBiometricPreferenceIsPreservedUnlessExplicitlyDisabledAfterSuccessfulLogin() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let store = fixture.store
+        await fixture.login("saved-frame.local")
+        store.biometricEnabled = true
+        await store.login(password: "synthetic-test-password")
+        XCTAssertTrue(store.biometricEnabled, "A biometric reconnect preserves the opted-in credential.")
+        let gate = fixture.stub.hold(host: "saved-frame.local", path: "/api/auth/login", method: "POST")
+        let rejected = Task { await store.login(password: "wrong", rememberBiometric: false) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        gate.release(status: 401)
+        await rejected.value
+        XCTAssertTrue(store.biometricEnabled, "A rejected password must not replace the saved preference.")
+        await store.login(password: "synthetic-test-password", rememberBiometric: false)
+        XCTAssertTrue(store.authenticated)
+        XCTAssertFalse(store.biometricEnabled)
+    }
+
     func testCancelledLoginCannotRestoreSessionAfterNewConnection() async throws {
         let fixture = StoreFixture()
         defer { fixture.dispose() }

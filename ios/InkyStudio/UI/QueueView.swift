@@ -25,14 +25,15 @@ struct QueueView: View {
                             if !editing { Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary).accessibilityHidden(true) }
                         }.padding(.vertical, 8).accessibilityIdentifier("queue.row.\(entry.photo.id)")
                             .listRowBackground(Color.white)
-                            .swipeActions { Button("Retirer", role: .destructive) { deleting = entry }.accessibilityIdentifier("queue.remove.\(entry.photo.id)") }
+                            .swipeActions { Button("Retirer", role: .destructive) { deleting = entry }.accessibilityIdentifier("queue.remove.\(entry.photo.id)").disabled(!store.canMutate) }
                             .contextMenu {
-                                if index > 0 { Button("Monter", systemImage: "arrow.up") { move(index, by: -1) } }
-                                if index + 1 < store.queue.count { Button("Descendre", systemImage: "arrow.down") { move(index, by: 1) } }
-                                Button("Retirer de la file", systemImage: "trash", role: .destructive) { deleting = entry }
+                                if store.canMutate, index > 0 { Button("Monter", systemImage: "arrow.up") { move(index, by: -1) } }
+                                if store.canMutate, index + 1 < store.queue.count { Button("Descendre", systemImage: "arrow.down") { move(index, by: 1) } }
+                                Button("Retirer de la file", systemImage: "trash", role: .destructive) { deleting = entry }.disabled(!store.canMutate)
                             }
-                            .accessibilityAction(named: "Monter") { if index > 0 { move(index, by: -1) } }
-                            .accessibilityAction(named: "Descendre") { if index + 1 < store.queue.count { move(index, by: 1) } }
+                            .moveDisabled(!store.canMutate).deleteDisabled(!store.canMutate)
+                            .accessibilityAction(named: "Monter") { if store.canMutate, index > 0 { move(index, by: -1) } }
+                            .accessibilityAction(named: "Descendre") { if store.canMutate, index + 1 < store.queue.count { move(index, by: 1) } }
                     }
                     .onMove { source, target in
                         var entries = store.queue
@@ -48,7 +49,7 @@ struct QueueView: View {
                     Section {
                         Text("Maintenez une photo pour la déplacer, ou choisissez Modifier la file.").font(.caption).foregroundStyle(.secondary)
                         Button(editing ? "Terminer" : "Modifier la file") { withAnimation { editing.toggle() } }
-                            .accessibilityIdentifier("queue.edit").frame(maxWidth: .infinity, minHeight: 44)
+                            .accessibilityIdentifier("queue.edit").disabled(!store.canMutate).frame(maxWidth: .infinity, minHeight: 44)
                     }.listRowBackground(Color.white)
                 }
             }.listStyle(.insetGrouped).scrollContentBackground(.hidden).screenBackground()

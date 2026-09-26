@@ -29,6 +29,61 @@ final class InkyStudioUITests: XCTestCase {
         app = nil
     }
 
+    /// Requires Xcode 27 and the fixture's opt-in --biometric-device mode.
+    func testFaceIDReconnectAndPasswordFallback() throws {
+        let configuration = try Data(contentsOf: fixtureURL.appendingPathComponent("__test/biometrics"))
+        let enabled = (try JSONSerialization.jsonObject(with: configuration) as? [String: Bool])?["enabled"] == true
+        try XCTSkipUnless(enabled, "Use mock-server.py --biometric-device <booted-simulator-UDID> for Face ID.")
+        launchFixtureApp()
+        let remember = app.switches["Activer Face ID"]
+        XCTAssertTrue(remember.waitForExistence(timeout: 10), "Enrolled Face ID must be offered during the first connection.")
+        remember.tap()
+        XCTAssertEqual(remember.value as? String, "1")
+        login()
+        tab("settings", fallback: "Réglages").tap()
+        let biometric = app.switches["settings.biometric"]
+        scrollTo(biometric)
+        XCTAssertEqual(biometric.value as? String, "1", "The opted-in password must be saved in the biometric Keychain.")
+        let logout = app.buttons["settings.logout"]
+        scrollTo(logout)
+        logout.tap()
+        let faceID = app.buttons["connection.biometric"]
+        XCTAssertTrue(faceID.waitForExistence(timeout: 10))
+        capture("04 Connexion Face ID")
+        faceID.tap()
+        // First Keychain access may ask for the app's Face ID permission.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let permission = springboard.alerts.buttons["OK"]
+        if permission.waitForExistence(timeout: 3) { permission.tap() }
+        var request = URLRequest(url: fixtureURL.appendingPathComponent("__test/biometrics"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data(#"{"event":"success"}"#.utf8)
+        let matched = expectation(description: "Simulated Face ID match")
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            XCTAssertNil(error)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+            matched.fulfill()
+        }.resume()
+        wait(for: [matched], timeout: 15)
+        XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10), "A matching simulated face must retrieve the Keychain password and reconnect to the frame.")
+        tab("settings", fallback: "Réglages").tap()
+        scrollTo(logout)
+        logout.tap()
+        XCTAssertTrue(faceID.waitForExistence(timeout: 10))
+        app.buttons["Utiliser le mot de passe"].tap()
+        XCTAssertTrue(app.secureTextFields["connection.password"].waitForExistence(timeout: 5))
+        login()
+        tab("settings", fallback: "Réglages").tap()
+        scrollTo(biometric)
+        biometric.tap()
+        XCTAssertEqual(biometric.value as? String, "0")
+        scrollTo(logout)
+        logout.tap()
+        XCTAssertTrue(app.secureTextFields["connection.password"].waitForExistence(timeout: 10))
+        XCTAssertFalse(faceID.exists, "Disabling Face ID must remove the saved login action.")
+    }
+
     func testImportPhotoCropAndUpload() {
         launchFixtureApp()
         login()

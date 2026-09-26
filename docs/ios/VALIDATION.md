@@ -7,15 +7,18 @@ The approved six-screen bento design is implemented in SwiftUI. Minimum iOS vers
 | Check | Result |
 |---|---|
 | Simulator Debug build | Passed, Xcode 27.0 |
-| Native unit tests, iPhone 16e / iOS 18.5 | **34 passed**, 0 failures |
+| Native unit tests, iPhone 16e / iOS 18.5 | **35 passed**, 0 failures |
 | API unit tests | 15 passed: wire types, cookies/port isolation, redirects, empty 202/204, validation errors, multipart, deadlines/cancellation |
-| Session/state unit tests | 8 passed: logout/forget races, cancellation, late 401/result isolation, refresh/pagination, history beyond 500 entries |
+| Session/state unit tests | 9 passed: biometric preference, logout/forget races, cancellation, late 401/result isolation, refresh/pagination, history beyond 500 entries |
 | Photo pipeline unit tests | 11 passed: native HEIC, EXIF orientation, crop coordinates, exact dimensions, sRGB/SDR, metadata removal, bounded PNG output |
 | End-to-end UI tests, iPhone 16 Pro / iOS 18.5 | **6 passed**, 0 failures, 106.5 seconds |
+| Simulated Face ID end-to-end | Passed: opt-in, protected Keychain save, logout, simulated biometric match, reconnect, password fallback and disabling/removing the credential |
 | Local fixture contract smoke | **41 checks passed**, including authenticated REST and WebSocket events |
 | Real Raspberry native API probe | Passed: login, v0.4.2 health, state (800×480), queue/history/settings, authenticated PNG, WebSocket hello, logout |
 | iPhone Release archive | Passed, automatic Apple Development signing |
 | App Store Connect IPA export | Passed with Apple distribution signing |
+
+Biometric testing uses Xcode 27’s public `devicectl` simulator commands and an ad-hoc-signed test app. Unsigned simulator apps lack the Keychain entitlements; the harness was corrected to sign locally, without weakening the production Keychain protection. The optional biometric UI case skips on CI/Xcode 16.4.
 
 UI coverage: incorrect/correct password and four tabs; PhotosPicker → crop → zoom/reset → PNG upload → queue; queue edit/removal and history requeue; next-photo command; settings save/logout; offline error/retry. All fixture photos are generated, non-personal images. Visual inspection confirmed readable controls, no overlapping content, a 5:3 crop aperture and visible primary actions. See [`screenshots/`](screenshots/).
 
@@ -31,4 +34,4 @@ The exported IPA is ready for App Store Connect, but export is not TestFlight pu
 
 Use the checked-in Xcode project, start `ios/scripts/mock-server.py`, boot a simulator and run `ios/scripts/seed-simulator-photo.py <UDID>`, then `xcodebuild test` with test parallelization disabled. The dedicated `.github/workflows/ios.yml` performs the same setup on Xcode 16.4 / iOS 18.5 and also builds an unsigned device Release binary.
 
-Local evidence bundles (outside Git): `/tmp/inky-ios-unit-verified.xcresult`, `/tmp/inky-ios-ui-complete.xcresult`. Signed exports are under the ignored `build/ios/` directory. GitHub Actions retains its test result bundle for 14 days.
+Local evidence bundles (outside Git): `/tmp/inky-ios-unit-signed.xcresult`, `/tmp/inky-ios-ui-complete.xcresult`. Signed exports are under the ignored `build/ios/` directory. GitHub Actions retains its test result bundle for 14 days.

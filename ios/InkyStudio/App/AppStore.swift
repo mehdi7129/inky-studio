@@ -71,7 +71,7 @@ final class AppStore: ObservableObject {
         resetSession()
     }
 
-    func login(password: String, rememberBiometric: Bool = false) async {
+    func login(password: String, rememberBiometric: Bool? = nil) async {
         guard !connecting else { return }
         resetSession()
         let epoch = generation
@@ -101,7 +101,7 @@ final class AppStore: ObservableObject {
                 biometricEnabled = false
                 defaults.set(false, forKey: "biometricEnabled")
             }
-            if rememberBiometric && status.authRequired && !password.isEmpty {
+            if rememberBiometric == true && status.authRequired && !password.isEmpty {
                 do {
                     try vault.save(password: password, address: normalized)
                     biometricEnabled = true
@@ -110,6 +110,12 @@ final class AppStore: ObservableObject {
                     notice = error.localizedDescription
                 }
                 defaults.set(biometricEnabled, forKey: "biometricEnabled")
+            } else if rememberBiometric == false && biometricEnabled {
+                // An explicit unchecked switch disables the previously opted-in credential.
+                // Biometric login passes nil and preserves the existing Keychain item.
+                try vault.remove(address: normalized)
+                biometricEnabled = false
+                defaults.set(false, forKey: "biometricEnabled")
             }
             stopMonitoring()
             api?.clearSession()
