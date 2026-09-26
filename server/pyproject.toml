@@ -8,6 +8,7 @@ license = { text = "MIT" }
 authors = [{ name = "Inky Studio contributors" }]
 
 dependencies = [
+    "anyio>=4.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",

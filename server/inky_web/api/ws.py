@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+import anyio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from inky_web import auth
@@ -66,4 +67,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         bus.unsubscribe(event_queue)
         for task in tasks:
             task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        # Preserve the enclosing ASGI cancellation scope while draining tasks.
+        # Otherwise gather can replace its cancellation with a bare child
+        # CancelledError that the enclosing scope cannot recognize.
+        with anyio.CancelScope(shield=True):
+            await asyncio.gather(*tasks, return_exceptions=True)
