@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.4.2] - 2026-09-26
+
+### Fixed
+- Import recent HEIC/HEIF photos with native browser decoding when available,
+  or the current libheif decoder through lazily loaded `heic-to` 1.5.2. The
+  fallback returns a bitmap directly, avoiding intermediate JPEG recompression.
+- Show readable conversion errors instead of `[object Object]`, including a
+  useful fallback message for failures without a text description.
+
 ## [0.4.1] - 2026-09-26
 
 ### Fixed
