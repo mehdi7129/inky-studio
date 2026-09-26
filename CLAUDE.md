@@ -69,8 +69,10 @@ CI (`.github/workflows/ci.yml`) runs exactly these on every push/PR. Keep them g
   Emit UI updates with `request.app.state.bus.broadcast("<event_type>", payload)`
   and add the type to the `EventType` literal in `events.py`.
 - Frontend: add API calls in `lib/api.ts` (reuse `getJSON`/`sendJSON`). Subscribe
-  to backend events via `useWebSocket((event) => …)`. Styling is Tailwind, with
-  `dark:` variants. The app UI is in **French**; repo docs are in **English**.
+  to backend events via `useWebSocket((event) => …)`. Styling uses Tailwind and
+  shared `bento-*` controls in `src/index.css`. The approved bento direction is
+  intentionally light, with restrained color accents; see `design/README.md`.
+  The app UI is in **French**; repo docs are in **English**.
 - Ruff and ESLint must pass with zero errors.
 
 ## How install & update work

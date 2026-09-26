@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { DisplayInfo, HealthResponse } from '../lib/api'
+import { Icon, type IconName } from './Icon'
 
 export type TabId = 'dashboard' | 'queue' | 'settings' | 'history'
 
@@ -14,87 +15,47 @@ interface LayoutProps {
   children: ReactNode
 }
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'dashboard', label: 'Tableau de bord' },
-  { id: 'queue', label: "File d'attente" },
-  { id: 'settings', label: 'Paramètres' },
-  { id: 'history', label: 'Historique' },
+const TABS: { id: TabId; label: string; icon: IconName }[] = [
+  { id: 'dashboard', label: 'Tableau de bord', icon: 'home' },
+  { id: 'queue', label: 'File d’attente', icon: 'image' },
+  { id: 'history', label: 'Historique', icon: 'history' },
+  { id: 'settings', label: 'Paramètres', icon: 'settings' },
 ]
 
-export function Layout({
-  activeTab,
-  onTabChange,
-  display,
-  health,
-  queueCount,
-  authRequired,
-  onLogout,
-  children,
-}: LayoutProps) {
+export function Layout({ activeTab, onTabChange, display, health, queueCount, authRequired, onLogout, children }: LayoutProps) {
   return (
     <div className="min-h-screen">
-      <header className="border-b border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-950/70 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Inky Studio</h1>
-            {display && (
-              <p className="text-xs text-neutral-500 mt-0.5">
-                {display.model} · {display.width}×{display.height} · {display.colors} couleurs
-                {display.is_mock && (
-                  <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] font-medium">
-                    MOCK
-                  </span>
-                )}
-                {health && <span className="ml-2 opacity-60">v{health.version}</span>}
-              </p>
-            )}
-          </div>
-          <nav className="flex gap-1 text-sm items-center" aria-label="Sections principales">
-            {TABS.map((tab) => {
-              const isActive = activeTab === tab.id
-              const isQueue = tab.id === 'queue'
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => onTabChange(tab.id)}
-                  className={[
-                    'px-3 py-1.5 rounded-md transition',
-                    isActive
-                      ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                      : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                  ].join(' ')}
-                >
-                  {tab.label}
-                  {isQueue && queueCount > 0 && (
-                    <span
-                      className={[
-                        'ml-1.5 inline-flex items-center justify-center text-[10px] font-semibold rounded-full min-w-[1.25rem] h-5 px-1.5',
-                        isActive
-                          ? 'bg-white/20 text-white dark:bg-neutral-900/20 dark:text-neutral-900'
-                          : 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200',
-                      ].join(' ')}
-                    >
-                      {queueCount}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+      <a href="#main-content" className="studio-skip-link bento-button bento-button-primary">Aller au contenu</a>
+      <header className="studio-header">
+        <div className="studio-header-inner">
+          <div className="studio-brand"><span className="studio-brand-mark" aria-hidden="true" />Inky Studio</div>
+          <nav className="studio-nav" aria-label="Sections principales">
+            {TABS.map((tab) => (
+              <button key={tab.id} type="button" onClick={() => onTabChange(tab.id)} className="studio-nav-button" aria-current={activeTab === tab.id ? 'page' : undefined}>
+                <Icon name={tab.icon} />
+                {tab.label}
+                {tab.id === 'queue' && queueCount > 0 && <span className="bento-badge">{queueCount}</span>}
+              </button>
+            ))}
+          </nav>
+          <div className="studio-status">
+            <span className="bento-status-dot" style={display?.is_mock ? { background: '#bd8b31' } : undefined} aria-hidden="true" />
+            <span>{display?.is_mock ? 'Aperçu local' : 'Cadre Inky'}</span>
             {authRequired && (
-              <button
-                type="button"
-                onClick={onLogout}
-                className="ml-2 px-3 py-1.5 rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
-                title="Se déconnecter"
-              >
-                Déconnexion
+              <button type="button" onClick={onLogout} className="bento-button bento-button-quiet studio-logout" title="Se déconnecter" aria-label="Se déconnecter">
+                <Icon name="logout" size={18} />
               </button>
             )}
-          </nav>
+          </div>
         </div>
       </header>
-      <main className="max-w-6xl mx-auto px-6 py-8">{children}</main>
+      <main id="main-content" className="studio-main" tabIndex={-1}>
+        {children}
+        <footer className="studio-footer">
+          <span>Inky Studio · Un peu de vie dans votre cadre.</span>
+          {health && <span>Version {health.version}</span>}
+        </footer>
+      </main>
     </div>
   )
 }

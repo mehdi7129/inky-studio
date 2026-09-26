@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { login } from '../lib/api'
+import { Icon } from './Icon'
 
 interface LoginScreenProps {
   onSuccess: () => void
@@ -26,49 +27,58 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-8 space-y-6 shadow-xl"
-      >
-        <header className="text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Inky Studio</h1>
-          <p className="text-sm text-neutral-500 mt-1">
-            Entre le mot de passe affiché sur l'écran Inky.
+    <main className="flex min-h-screen flex-col px-5 py-7 sm:px-10 sm:py-9">
+      <div className="flex items-center gap-3 text-xl font-semibold tracking-tight">
+        <span className="h-6 w-6 rounded-[3px] border-[2.5px] border-neutral-950" aria-hidden="true" />
+        Inky Studio
+      </div>
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center py-14">
+        <header className="mb-9 text-center">
+          <p className="bento-eyebrow mb-4">Bienvenue chez vous</p>
+          <h1 className="text-4xl font-semibold leading-tight tracking-tight sm:text-[2.75rem]">
+            Vos photos.<br />À votre rythme.
+          </h1>
+          <p className="mx-auto mt-4 max-w-xs text-sm leading-relaxed text-neutral-500">
+            Connectez-vous à votre cadre pour lui offrir une nouvelle vue.
           </p>
         </header>
-        <div className="space-y-2">
-          <label htmlFor="password" className="block text-sm font-medium">
-            Mot de passe
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoFocus
-            autoComplete="current-password"
-            className="w-full px-3 py-2 rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="10 caractères alphanumériques"
-          />
-          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-        </div>
-        <button
-          type="submit"
-          disabled={busy || !password}
-          className={[
-            'w-full px-4 py-2 rounded-md font-medium transition',
-            busy || !password
-              ? 'bg-neutral-300 text-neutral-500 dark:bg-neutral-700 cursor-not-allowed'
-              : 'bg-indigo-600 text-white hover:bg-indigo-700',
-          ].join(' ')}
-        >
-          {busy ? 'Connexion…' : 'Se connecter'}
-        </button>
-        <p className="text-xs text-neutral-500 text-center">
-          Tu trouveras le mot de passe sur l'écran d'accueil de l'Inky.
-        </p>
-      </form>
+        <form onSubmit={handleSubmit} className="bento-card space-y-6 p-6 sm:p-8">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+              <Icon name="lock" size={20} />
+            </span>
+            <p className="text-sm font-medium">Votre studio vous attend</p>
+          </div>
+          <div className="space-y-2.5">
+            <label htmlFor="password" className="block text-sm font-medium">Mot de passe</label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoFocus
+              autoComplete="current-password"
+              aria-describedby={error ? 'login-error login-help' : 'login-help'}
+              aria-invalid={error ? true : undefined}
+              className="bento-field w-full"
+              placeholder="Votre mot de passe"
+            />
+            {error && <p id="login-error" className="bento-alert" role="alert">{error}</p>}
+          </div>
+          <button
+            type="submit"
+            disabled={busy || !password}
+            className="bento-button bento-button-primary w-full"
+          >
+            {busy ? 'Connexion…' : 'Se connecter'}
+            {!busy && <Icon name="arrowRight" size={17} />}
+          </button>
+          <p id="login-help" className="text-center text-xs leading-relaxed text-neutral-500">
+            Le mot de passe se trouve sur l'écran d'accueil de votre Inky.
+          </p>
+        </form>
+      </div>
+      <p className="text-center text-xs text-neutral-400">Un cadre. Mille souvenirs.</p>
     </main>
   )
 }

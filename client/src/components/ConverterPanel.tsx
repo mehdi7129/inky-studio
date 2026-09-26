@@ -3,6 +3,7 @@ import { convertBitmap, decode, type ConvertResult } from '../lib/converter/pipe
 import type { DisplayInfo } from '../lib/api'
 import { uploadToQueue } from '../lib/api'
 import { PreviewCanvas } from './PreviewCanvas'
+import { Icon } from './Icon'
 
 interface ConverterPanelProps {
   file: File
@@ -125,103 +126,109 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
   const done = status.kind === 'done'
 
   return (
-    <section className="space-y-6">
-      <header className="flex items-center justify-between gap-4">
+    <section className="bento-card converter-card" aria-label="Cadrage de la photo">
+      <header className="converter-header">
         <div>
-          <h2 className="text-xl font-semibold">{file.name}</h2>
-          <p className="text-sm text-neutral-500">
+          <h2>{file.name}</h2>
+          <p>
             {dimensionsHint ?? `Cible : ${display.width} × ${display.height}`} · {display.model}
           </p>
         </div>
         <button
           type="button"
           onClick={onReset}
-          className="text-sm text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+          disabled={busy}
+          className="bento-button bento-button-quiet"
         >
-          ← Choisir une autre photo
+          <Icon name="arrowLeft" size={16} />Choisir une autre photo
         </button>
       </header>
 
-      <div className="max-w-xl mx-auto">
-        <PreviewCanvas image={result?.originalImage ?? null} label="Aperçu — cadré pour l'écran" />
-        <p className="mt-2 text-center text-xs text-neutral-500">
-          Les couleurs sont optimisées automatiquement sur l'écran e-ink lors de l'affichage.
-        </p>
+      <div className="converter-workspace">
+        <div>
+          <PreviewCanvas image={result?.originalImage ?? null} label="Aperçu — cadré pour l'écran" aspectRatio={display.width / display.height} />
+          <p className="converter-preview-note">
+            Les couleurs sont optimisées automatiquement sur l'écran e-ink lors de l'affichage.
+          </p>
+        </div>
+
+        {!done && (
+          <fieldset disabled={busy} className="converter-crop">
+            <legend>
+              Cadrage
+            </legend>
+            <p>Gardez ce qui compte. Déplacez la photo pour trouver le bon cadre.</p>
+            <div className="converter-sliders">
+              <label>
+                <span className="converter-slider-label"><span>Horizontal</span><output>{Math.round(offsetX * 100)} %</output></span>
+                <input
+                  type="range"
+                  min={-1}
+                  max={1}
+                  step={0.05}
+                  value={offsetX}
+                  onChange={(e) => setOffsetX(parseFloat(e.target.value))}
+                  aria-valuetext={`${Math.round(offsetX * 100)} %`}
+                />
+              </label>
+              <label>
+                <span className="converter-slider-label"><span>Vertical</span><output>{Math.round(offsetY * 100)} %</output></span>
+                <input
+                  type="range"
+                  min={-1}
+                  max={1}
+                  step={0.05}
+                  value={offsetY}
+                  onChange={(e) => setOffsetY(parseFloat(e.target.value))}
+                  aria-valuetext={`${Math.round(offsetY * 100)} %`}
+                />
+              </label>
+            </div>
+          </fieldset>
+        )}
+        {done && (
+          <div className="converter-complete">
+            <Icon name="check" size={28} />
+            <h3>Une nouvelle vue vous attend.</h3>
+            <p>Votre photo a rejoint la file. Elle sera affichée à son tour.</p>
+          </div>
+        )}
       </div>
 
-      {!done && (
-        <fieldset disabled={busy} className="space-y-3 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4">
-          <legend className="px-2 text-xs uppercase tracking-wider text-neutral-500">
-            Cadrage
-          </legend>
-          <div className="grid grid-cols-2 gap-4">
-            <label className="block text-sm">
-              <span className="font-medium">Horizontal : {offsetX.toFixed(2)}</span>
-              <input
-                type="range"
-                min={-1}
-                max={1}
-                step={0.05}
-                value={offsetX}
-                onChange={(e) => setOffsetX(parseFloat(e.target.value))}
-                className="w-full mt-1"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="font-medium">Vertical : {offsetY.toFixed(2)}</span>
-              <input
-                type="range"
-                min={-1}
-                max={1}
-                step={0.05}
-                value={offsetY}
-                onChange={(e) => setOffsetY(parseFloat(e.target.value))}
-                className="w-full mt-1"
-              />
-            </label>
-          </div>
-        </fieldset>
-      )}
-
-      <footer className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="text-sm min-h-[1.5rem] flex-1">
+      <footer className="converter-footer">
+        <div className="converter-status" role={status.kind === 'error' ? 'alert' : 'status'}>
           {status.kind === 'decoding' && (
-            <span className="text-neutral-500">
-              {status.wasHeic ? 'Décodage HEIC (1ère fois ~1-2 s)…' : 'Préparation…'}
+            <span>
+              {status.wasHeic ? 'Préparation de votre photo HEIC…' : 'Préparation…'}
             </span>
           )}
-          {status.kind === 'uploading' && <span className="text-neutral-500">Envoi à l'écran…</span>}
-          {status.kind === 'ready' && !cropReady && <span className="text-neutral-500">Préparation du cadrage…</span>}
+          {status.kind === 'uploading' && <span>Ajout à la file…</span>}
+          {status.kind === 'ready' && <span>{cropReady ? 'Prête à rejoindre votre file de photos.' : 'Préparation du cadrage…'}</span>}
           {status.kind === 'done' && (
-            <span className="text-green-600 dark:text-green-400 font-medium">
+            <span className="converter-status-success">
               ✓ Ajoutée à la file · {status.sizeKb} Ko
             </span>
           )}
           {status.kind === 'error' && (
-            <span className="text-red-600 dark:text-red-400">Erreur : {status.message}</span>
+            <span className="converter-status-error">Erreur : {status.message}</span>
           )}
         </div>
         {done ? (
           <button
             type="button"
             onClick={onReset}
-            className="px-4 py-2 rounded-md font-medium bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-white transition"
+            className="bento-button bento-button-primary"
           >
-            Envoyer une autre photo
+            <Icon name="plus" size={17} />Envoyer une autre photo
           </button>
         ) : (
           <button
             type="button"
             onClick={handleUpload}
             disabled={!cropReady || busy}
-            className={[
-              'px-4 py-2 rounded-md font-medium transition',
-              cropReady && !busy
-                ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                : 'bg-neutral-300 text-neutral-500 dark:bg-neutral-700 cursor-not-allowed',
-            ].join(' ')}
+            className="bento-button bento-button-primary"
           >
-            Envoyer à l'écran
+            <Icon name="upload" size={17} />Envoyer à l'écran
           </button>
         )}
       </footer>

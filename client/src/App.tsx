@@ -8,6 +8,7 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { ApiError, fetchAuthStatus, fetchHealth, fetchQueue, fetchState, logout } from './lib/api'
 import type { AuthStatus, DisplayState, HealthResponse, QueueEntry } from './lib/api'
 import { useWebSocket } from './lib/useWebSocket'
+import { Icon } from './components/Icon'
 
 type BootStatus = 'auth-check' | 'login-required' | 'loading' | 'ok' | 'error'
 
@@ -132,8 +133,13 @@ function App() {
 
   if (bootStatus === 'auth-check') {
     return (
-      <main className="min-h-screen flex items-center justify-center text-neutral-500">
-        Vérification de l'authentification…
+      <main className="studio-boot">
+        <div className="studio-boot-card bento-card" role="status">
+          <p className="studio-brand mb-6"><span className="studio-brand-mark" aria-hidden="true" />Inky Studio</p>
+          <p className="text-sm text-neutral-500">Vérification de l'authentification…</p>
+          <div className="studio-boot-line mt-5 w-3/4" aria-hidden="true" />
+          <div className="studio-boot-line mt-3 w-1/2" aria-hidden="true" />
+        </div>
       </main>
     )
   }
@@ -153,20 +159,26 @@ function App() {
 
   if (bootStatus === 'loading') {
     return (
-      <main className="min-h-screen flex items-center justify-center text-neutral-500">
-        Connexion à l'API…
+      <main className="studio-boot">
+        <div className="studio-boot-card bento-card" role="status">
+          <p className="studio-brand mb-6"><span className="studio-brand-mark" aria-hidden="true" />Inky Studio</p>
+          <p className="text-sm text-neutral-500">Chargement de votre cadre…</p>
+          <div className="studio-boot-line mt-5 w-3/4" aria-hidden="true" />
+          <div className="studio-boot-line mt-3 w-1/2" aria-hidden="true" />
+        </div>
       </main>
     )
   }
 
   if (bootStatus === 'error' || !state) {
     return (
-      <main className="min-h-screen p-6 max-w-2xl mx-auto pt-20">
-        <div className="rounded-lg border border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30 p-6">
-          <h1 className="text-xl font-semibold text-red-700 dark:text-red-300">
-            Erreur
-          </h1>
-          <p className="text-sm text-red-600 dark:text-red-400 mt-2">{error}</p>
+      <main className="studio-boot">
+        <div className="studio-boot-card bento-card">
+          <h1 className="text-xl font-semibold mb-3">Le cadre est indisponible</h1>
+          <p role="alert" className="bento-alert">{error}</p>
+          <button type="button" className="bento-button bento-button-primary mt-5" onClick={() => window.location.reload()}>
+            <Icon name="refresh" size={16} />Réessayer
+          </button>
         </div>
       </main>
     )
@@ -182,8 +194,8 @@ function App() {
       authRequired={authStatus?.auth_required ?? false}
       onLogout={handleLogout}
     >
-      {error && <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
-      {tab === 'dashboard' && <Dashboard state={state} queue={queue} onChange={refresh} />}
+      {error && <p role="alert" className="bento-alert mb-4">{error}</p>}
+      {tab === 'dashboard' && <Dashboard state={state} queue={queue} onChange={refresh} onOpenQueue={() => setTab('queue')} onOpenSettings={() => setTab('settings')} />}
       {tab === 'queue' && <QueuePanel queue={queue} onChange={refresh} />}
       {tab === 'settings' && <SettingsPanel onChange={refresh} health={health} revision={settingsRevision} />}
       {tab === 'history' && <HistoryPanel onChange={refresh} revision={historyRevision} />}

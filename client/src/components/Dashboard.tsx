@@ -1,29 +1,60 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DisplayState, QueueEntry } from '../lib/api'
 import { photoFileUrl, triggerNext, triggerPrevious } from '../lib/api'
 import { formatAbsolute, formatBytes, formatRelative } from '../lib/format'
 import { Uploader } from './Uploader'
 import { ConverterPanel } from './ConverterPanel'
+import { Icon } from './Icon'
+import './Dashboard.css'
 
 interface DashboardProps {
   state: DisplayState
   queue: QueueEntry[]
   onChange: () => void
+  onOpenQueue?: () => void
+  onOpenSettings?: () => void
 }
 
 const SOURCE_LABEL: Record<string, string> = {
   auto: 'rotation automatique',
-  manual_next: 'bouton suivant',
-  manual_previous: 'bouton précédent',
-  recycle: 'recyclage historique',
-  upload: 'upload',
+  manual_next: 'photo suivante',
+  manual_previous: 'photo précédente',
+  recycle: 'depuis l’historique',
+  upload: 'ajoutée au cadre',
 }
 
-export function Dashboard({ state, queue, onChange }: DashboardProps) {
+function nextChangeLabel(timestamp: number | null): string {
+  if (timestamp === null) return 'À votre rythme'
+  const date = new Date(timestamp * 1000)
+  const today = new Date()
+  const tomorrow = new Date(today)
+  tomorrow.setDate(today.getDate() + 1)
+  const day = date.toDateString() === today.toDateString()
+    ? 'Aujourd’hui'
+    : date.toDateString() === tomorrow.toDateString()
+      ? 'Demain'
+      : date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  const time = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  return `${day}, ${time}`
+}
+
+export function Dashboard({ state, queue, onChange, onOpenQueue, onOpenSettings }: DashboardProps) {
   const [pickedFile, setPickedFile] = useState<File | null>(null)
   const [navBusy, setNavBusy] = useState(false)
   const [navError, setNavError] = useState<string | null>(null)
+  const uploadInput = useRef<HTMLInputElement>(null)
+  const addPhotoButton = useRef<HTMLButtonElement>(null)
+  const converterRegion = useRef<HTMLDivElement>(null)
   const { display, current } = state
+  const photoRatio = current
+    ? `${current.photo.width} / ${current.photo.height}`
+    : `${display.width} / ${display.height}`
+
+  useEffect(() => {
+    if (!pickedFile) return
+    converterRegion.current?.focus({ preventScroll: true })
+    converterRegion.current?.scrollIntoView?.({ block: 'start' })
+  }, [pickedFile])
 
   const handleNext = async () => {
     setNavBusy(true)
@@ -51,160 +82,155 @@ export function Dashboard({ state, queue, onChange }: DashboardProps) {
     }
   }
 
+  const choosePhoto = () => {
+    if (pickedFile) {
+      converterRegion.current?.focus({ preventScroll: true })
+      converterRegion.current?.scrollIntoView?.({ block: 'start' })
+    } else {
+      uploadInput.current?.click()
+    }
+  }
+
   return (
-    <div className="space-y-10">
-      <section className="grid lg:grid-cols-[2fr_1fr] gap-6">
-        <article className="rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden bg-white dark:bg-neutral-900">
-          <header className="px-5 py-3 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-            <h2 className="text-xs uppercase tracking-wider text-neutral-500">
-              Actuellement à l'écran
-            </h2>
-            {current && (
-              <span className="text-xs text-neutral-500">
-                {SOURCE_LABEL[current.source] ?? current.source}
-              </span>
-            )}
+    <div className="dashboard">
+      <header className="dashboard-hero">
+        <div>
+          <h1>Votre cadre, à votre rythme.</h1>
+          <p>Une nouvelle photo. Un autre regard.</p>
+        </div>
+        <button ref={addPhotoButton} type="button" onClick={choosePhoto} className="bento-button bento-button-primary dashboard-add">
+          <Icon name="plus" size={20} />
+          {pickedFile ? 'Ajuster ma photo' : 'Ajouter une photo'}
+        </button>
+      </header>
+
+      <div className="dashboard-grid">
+        <article className="bento-card current-card">
+          <header className="dashboard-card-heading">
+            <h2><Icon name="image" size={20} />Sur le cadre</h2>
+            {navBusy && <span className="bento-badge" role="status">Actualisation…</span>}
           </header>
-          <div className="bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center aspect-[5/3] relative">
+          <div className="current-photo" style={{ aspectRatio: photoRatio }}>
             {current ? (
-              <img
-                src={photoFileUrl(current.photo.id)}
-                alt={current.photo.original_filename}
-                className="max-w-full max-h-full object-contain"
-                style={{ imageRendering: 'pixelated' }}
-              />
+              <img src={photoFileUrl(current.photo.id)} alt={current.photo.original_filename} />
             ) : (
-              <div className="text-center text-neutral-500 p-8">
-                <p className="text-lg font-medium mb-1">Aucune photo affichée</p>
-                <p className="text-sm">
-                  Le service n'a encore poussé aucune image sur l'écran.
-                </p>
+              <div className="current-empty">
+                <span className="empty-frame"><Icon name="image" size={32} /></span>
+                <h3>Votre première vue commence ici.</h3>
+                <p>Ajoutez une photo pour donner vie à votre cadre.</p>
+                <button type="button" className="bento-button bento-button-secondary" onClick={choosePhoto}>
+                  <Icon name="plus" size={16} />{pickedFile ? 'Ajuster ma photo' : 'Choisir ma première photo'}
+                </button>
               </div>
             )}
           </div>
-          <footer className="px-5 py-3 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3 flex-wrap">
-            <div className="min-w-0 flex-1">
+          <footer className="current-footer">
+            <div className="current-caption">
               {current ? (
                 <>
-                  <p className="font-medium truncate" title={current.photo.original_filename}>
-                    {current.photo.original_filename}
-                  </p>
-                  <p className="text-xs text-neutral-500">
-                    {formatRelative(current.displayed_at)} ·{' '}
-                    {formatAbsolute(current.displayed_at)} ·{' '}
-                    {formatBytes(current.photo.size_bytes)}
+                  <h3 title={current.photo.original_filename}>{current.photo.original_filename}</h3>
+                  <p title={`${formatAbsolute(current.displayed_at)} · ${SOURCE_LABEL[current.source] ?? current.source} · ${formatBytes(current.photo.size_bytes)}`}>
+                    Affichée {formatRelative(current.displayed_at)}
                   </p>
                 </>
               ) : (
-                <p className="text-sm text-neutral-500">—</p>
+                <div><h3>Un cadre à votre image</h3><p>Prêt pour vos souvenirs préférés.</p></div>
               )}
             </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handlePrevious}
-                disabled={navBusy}
-                className="px-3 py-1.5 rounded-md text-sm border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
-                title="Photo précédente (depuis l'historique)"
-              >
-                ← Précédente
+            <div className="current-actions">
+              <button type="button" onClick={handlePrevious} disabled={navBusy} className="bento-button bento-button-secondary"
+                title="Afficher la photo précédente depuis l’historique">
+                Précédente
               </button>
-              <button
-                type="button"
-                onClick={handleNext}
-                disabled={navBusy}
-                className="px-3 py-1.5 rounded-md text-sm border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
-                title="Photo suivante (pop la queue ou recycle)"
-              >
-                Suivante →
+              <button type="button" onClick={handleNext} disabled={navBusy} className="bento-button bento-button-primary"
+                title="Afficher la prochaine photo de la file ou de l’historique">
+                Afficher la suivante<Icon name="arrowRight" size={18} />
               </button>
             </div>
           </footer>
-          {navError && <p role="alert" className="px-5 pb-3 text-sm text-red-600 dark:text-red-400">{navError}</p>}
+          {navError && <p role="alert" className="bento-alert current-error">{navError}</p>}
         </article>
 
-        <aside className="rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5 bg-white dark:bg-neutral-900 space-y-4">
-          <h2 className="text-xs uppercase tracking-wider text-neutral-500">Écran</h2>
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="text-neutral-500">Modèle</dt>
-            <dd className="font-medium">
-              {display.model}
-              {display.is_mock && (
-                <span className="ml-2 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                  MOCK
-                </span>
-              )}
-            </dd>
-            <dt className="text-neutral-500">Résolution</dt>
-            <dd className="font-medium">{display.width} × {display.height}</dd>
-            <dt className="text-neutral-500">Couleurs</dt>
-            <dd className="font-medium">{display.colors}</dd>
-          </dl>
-
-          <hr className="border-neutral-200 dark:border-neutral-800" />
-
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="text-neutral-500">Queue</dt>
-            <dd className="font-medium">
-              {state.queue_count === 0
-                ? 'vide'
-                : `${state.queue_count} photo${state.queue_count > 1 ? 's' : ''}`}
-            </dd>
-            <dt className="text-neutral-500">Prochain</dt>
-            <dd className="font-medium">{formatRelative(state.next_change_at)}</dd>
-          </dl>
-        </aside>
-      </section>
-
-      <section>
-        <h2 className="text-sm uppercase tracking-wider text-neutral-500 mb-3">
-          Ajouter une photo
-        </h2>
-        {!pickedFile ? (
-          <Uploader onFile={setPickedFile} />
-        ) : (
-          <ConverterPanel
-            file={pickedFile}
-            display={display}
-            onUploaded={onChange}
-            onReset={() => setPickedFile(null)}
-          />
-        )}
-      </section>
-
-      {queue.length > 0 && (
-        <section>
-          <h2 className="text-sm uppercase tracking-wider text-neutral-500 mb-3">
-            Aperçu de la file ({queue.length})
-          </h2>
-          <ul className="flex flex-wrap gap-3">
-            {queue.slice(0, 6).map((entry) => (
-              <li
-                key={entry.id}
-                className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden bg-white dark:bg-neutral-900"
-              >
-                <img
-                  src={photoFileUrl(entry.photo.id)}
-                  alt={entry.photo.original_filename}
-                  className="w-28 h-auto block"
-                  style={{ imageRendering: 'pixelated' }}
-                />
-                <div className="p-2 text-xs">
-                  <p className="font-medium truncate w-28" title={entry.photo.original_filename}>
-                    {entry.photo.original_filename}
-                  </p>
-                  <p className="text-neutral-500">{formatBytes(entry.photo.size_bytes)}</p>
-                </div>
-              </li>
-            ))}
-            {queue.length > 6 && (
-              <li className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700 p-3 w-28 flex items-center justify-center text-xs text-neutral-500">
-                + {queue.length - 6} autres
-              </li>
+        <section className="bento-card schedule-card" aria-labelledby="schedule-heading">
+          <header className="dashboard-card-heading">
+            <h2 id="schedule-heading"><Icon name="clock" size={21} />Prochain changement</h2>
+          </header>
+          <p className="schedule-time" title={formatAbsolute(state.next_change_at)}>
+            {nextChangeLabel(state.next_change_at)}
+          </p>
+          <div className="schedule-footer">
+            <span className="bento-badge">{state.next_change_at === null ? 'Manuel' : 'Planifié'}</span>
+            {onOpenSettings && (
+              <button type="button" onClick={onOpenSettings} className="bento-button bento-button-secondary">Modifier</button>
             )}
-          </ul>
+          </div>
         </section>
-      )}
+
+        <section className="bento-card upload-card" aria-label="Ajouter une photo">
+          <Uploader inputRef={uploadInput} onFile={setPickedFile} disabled={pickedFile !== null} />
+          {pickedFile && (
+            <button type="button" className="bento-button bento-button-secondary upload-resume" onClick={choosePhoto}>
+              Reprendre le cadrage<Icon name="arrowRight" size={16} />
+            </button>
+          )}
+        </section>
+
+        {pickedFile && (
+          <div ref={converterRegion} tabIndex={-1} className="dashboard-converter" aria-label="Préparer la photo">
+            <ConverterPanel
+              file={pickedFile}
+              display={display}
+              onUploaded={onChange}
+              onReset={() => {
+                setPickedFile(null)
+                requestAnimationFrame(() => addPhotoButton.current?.focus())
+              }}
+            />
+          </div>
+        )}
+
+        <section className="bento-card queue-preview-card" aria-labelledby="queue-preview-heading">
+          <header className="dashboard-card-heading">
+            <div className="queue-preview-title">
+              <h2 id="queue-preview-heading"><Icon name="queue" size={20} />À suivre</h2>
+              <span className="bento-badge">{queue.length} photo{queue.length > 1 ? 's' : ''}</span>
+            </div>
+            {onOpenQueue && (
+              <button type="button" onClick={onOpenQueue} className="bento-button bento-button-secondary bento-button-small">
+                Voir la file<Icon name="arrowRight" size={14} />
+              </button>
+            )}
+          </header>
+          {queue.length > 0 ? (
+            <ol className="queue-preview-list">
+              {queue.slice(0, 4).map((entry, index) => (
+                <li key={entry.id}>
+                  <div className="queue-preview-image" style={{ aspectRatio: `${entry.photo.width} / ${entry.photo.height}` }}>
+                    <img src={photoFileUrl(entry.photo.id)} alt={entry.photo.original_filename} loading="lazy" />
+                  </div>
+                  <p title={entry.photo.original_filename}>{entry.photo.original_filename}</p>
+                  <span>{index === 0 ? 'La prochaine' : `Position ${index + 1}`} · {formatBytes(entry.photo.size_bytes)}</span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="queue-preview-empty">
+              <p>La suite reste à imaginer.</p>
+              <span>Vos prochaines photos vous attendront ici.</span>
+            </div>
+          )}
+          {queue.length > 4 && <p className="queue-preview-more">Et {queue.length - 4} autre{queue.length > 5 ? 's' : ''} dans la file.</p>}
+        </section>
+
+        <section className="bento-card hardware-card" aria-label="Votre écran">
+          <span className="hardware-frame"><Icon name="monitor" size={40} /></span>
+          <h2>{display.model}</h2>
+          <p>{display.width} × {display.height} · {display.colors} couleurs</p>
+          <span className={`bento-badge ${display.is_mock ? 'bento-badge-warning' : 'bento-badge-success'}`}>
+            <span className="bento-status-dot" />{display.is_mock ? 'Mode démo' : 'Écran détecté'}
+          </span>
+        </section>
+      </div>
     </div>
   )
 }

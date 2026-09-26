@@ -176,9 +176,9 @@ describe('UI stability regressions', () => {
   it('shows display navigation errors instead of silently rejecting', async () => {
     vi.mocked(api.triggerNext).mockRejectedValue(new Error('Display unavailable'))
     render(<Dashboard state={state} queue={[]} onChange={() => {}} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Suivante →' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Afficher la suivante' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Display unavailable')
-    expect(screen.getByRole('button', { name: 'Suivante →' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Afficher la suivante' })).toBeEnabled()
   })
 })
 
