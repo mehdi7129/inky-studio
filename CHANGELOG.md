@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-09-26
+
+### Changed
+- **Monochrome bento interface.** A responsive white/black dashboard brings the
+  current photo, schedule, upload, upcoming queue and detected display together.
+  Queue, history, settings, login and crop preparation share the same controls,
+  restrained color accents and keyboard focus styles.
+- Photo previews preserve their actual aspect ratio. Mock mode is identified
+  explicitly, and the page title, favicon and language match Inky Studio.
+
+### Fixed
+- Scheduling now handles the first daily rotation and local daylight-saving
+  changes consistently. Failed display operations retain queued photos, missing
+  source files are skipped, and display operations are serialized per process.
+- Previous-photo navigation, concurrent history changes and settings updates
+  preserve consistent state. Reconnected clients resynchronize their panels and
+  return to login when a session has expired.
+- Crop uploads reject stale conversions; empty successful display responses no
+  longer appear as client errors. Uploaded PNGs are fully decoded and validated
+  against the connected display before deduplication.
+- Hardened SPA paths, WebSocket authentication, credential storage, upload reads
+  and release extraction. Update rollback removes newly introduced code files,
+  and existing CLI installations retain their legacy update entrypoint.
+
+### Maintenance
+- Added regression coverage and CI checks for frontend, Python 3.11/3.13 and
+  installer/CLI scripts. Release builds run lint and tests before packaging.
+- The Pimoroni driver remains pinned to `inky==2.3.0`; image quantization remains
+  on the Raspberry Pi with the existing saturation setting.
+
 ## [0.3.3]
 
 ### Changed
@@ -118,6 +148,7 @@ to [Semantic Versioning](https://semver.org/).
 - **Display support** — auto-detection of Inky Impression 7.3" (7-colour),
   7.3" 2025 and 13.3" 2025 (Spectra 6), with an off-Pi mock for development.
 
+[0.4.0]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.4.0
 [0.3.3]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.3
 [0.3.2]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.2
 [0.3.1]: https://github.com/mehdi7129/inky-studio/releases/tag/v0.3.1
