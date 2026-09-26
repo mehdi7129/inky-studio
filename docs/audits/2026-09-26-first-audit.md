@@ -105,7 +105,7 @@ static/local checks; no installer was executed against systemd or boot settings.
 
 Before opening the PR:
 
-- Python 3.11.15: Ruff passes; **133 pytest tests pass** (one upstream
+- Python 3.11.12: Ruff passes; **133 pytest tests pass** (one upstream
   Starlette/httpx deprecation warning).
 - Node 22.23.3: ESLint, TypeScript and production build pass; **18 Vitest tests
   in three files pass**. The known lazy HEIC chunk-size warning remains.
