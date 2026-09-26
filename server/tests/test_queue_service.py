@@ -1,6 +1,9 @@
 """Unit tests for the queue service."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 
 def _save(png_factory, *, color):
     from inky_web.services import photos
@@ -107,3 +110,36 @@ def test_deleting_photo_cascades_to_queue(data_dir, png_factory):
     assert queue.count() == 1
     photos.delete(p.id)
     assert queue.count() == 0
+
+
+def test_concurrent_pop_returns_each_entry_once(data_dir, png_factory):
+    from inky_web.services import queue
+
+    for red in range(8):
+        queue.add(_save(png_factory, color=(red, 0, 0)).id)
+    gate = Barrier(8)
+
+    def pop():
+        gate.wait(timeout=3)
+        return queue.pop_next()
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        entries = list(pool.map(lambda _: pop(), range(8)))
+    assert len({entry.id for entry in entries}) == 8
+    assert queue.count() == 0
+
+
+def test_concurrent_add_is_idempotent(data_dir, png_factory):
+    from inky_web.services import queue
+
+    photo = _save(png_factory, color=(150, 0, 0))
+    gate = Barrier(8)
+
+    def add():
+        gate.wait(timeout=3)
+        return queue.add(photo.id)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        entries = list(pool.map(lambda _: add(), range(8)))
+    assert len({entry.id for entry in entries}) == 1
+    assert queue.count() == 1

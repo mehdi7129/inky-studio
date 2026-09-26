@@ -10,6 +10,7 @@ from inky_web.services import photos, queue
 from inky_web.services.photos import PhotoValidationError
 
 router = APIRouter(prefix="/queue", tags=["queue"])
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # Fits a full-colour 1600×1200 PNG.
 
 
 @router.get("", response_model=list[QueueEntry])
@@ -33,7 +34,11 @@ async def add_to_queue(
     info = display.info()
     expected_size = (info["width"], info["height"])
 
-    content = await file.read()
+    if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Photo exceeds the 10 MiB upload limit")
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Photo exceeds the 10 MiB upload limit")
     try:
         photo, already_existed = photos.save(
             content=content,

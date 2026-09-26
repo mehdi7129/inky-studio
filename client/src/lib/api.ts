@@ -58,9 +58,19 @@ export interface UploadResponse {
   already_existed: boolean
 }
 
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 async function getJSON<T>(path: string): Promise<T> {
   const response = await fetch(path, { credentials: 'include' })
-  if (!response.ok) throw new Error(`HTTP ${response.status} on ${path}`)
+  if (!response.ok) throw new ApiError(response.status, `HTTP ${response.status} on ${path}`)
   return response.json() as Promise<T>
 }
 
@@ -73,10 +83,12 @@ async function sendJSON<T>(method: string, path: string, body?: unknown): Promis
   })
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
-    throw new Error(`${method} ${path} → ${response.status}: ${detail}`)
+    throw new ApiError(response.status, `${method} ${path} → ${response.status}: ${detail}`)
   }
-  if (response.status === 204) return undefined as T
-  return response.json() as Promise<T>
+  // Display commands return an empty 202 while the hardware refresh runs.
+  // Do not parse an empty success body as JSON, regardless of its status code.
+  const content = await response.text()
+  return content.trim() === '' ? undefined as T : JSON.parse(content) as T
 }
 
 export interface AuthStatus {
@@ -172,7 +184,7 @@ export async function uploadToQueue(pngBlob: Blob, filename: string): Promise<Up
   })
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
-    throw new Error(`Upload failed (${response.status}): ${detail}`)
+    throw new ApiError(response.status, `Upload failed (${response.status}): ${detail}`)
   }
   return response.json() as Promise<UploadResponse>
 }

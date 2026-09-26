@@ -33,6 +33,9 @@ def data_dir(inky_env):
 def client(inky_env) -> TestClient:
     from inky_web.main import app
     with TestClient(app) as test_client:
+        # API tests drive display actions explicitly; the clock-dependent worker
+        # is exercised separately in test_scheduler.py.
+        test_client.portal.call(app.state.scheduler.stop)
         yield test_client
 
 

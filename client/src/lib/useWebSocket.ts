@@ -12,7 +12,7 @@ export interface EventMessage {
   payload?: Record<string, unknown>
 }
 
-export function useWebSocket(onEvent: (event: EventMessage) => void) {
+export function useWebSocket(onEvent: (event: EventMessage) => void, enabled = true) {
   const handlerRef = useRef(onEvent)
 
   // Keep the latest handler without re-opening the socket on every render.
@@ -21,7 +21,9 @@ export function useWebSocket(onEvent: (event: EventMessage) => void) {
   })
 
   useEffect(() => {
+    if (!enabled) return
     let socket: WebSocket | null = null
+    let retry: ReturnType<typeof setTimeout> | undefined
     let cancelled = false
     let backoffMs = 500
 
@@ -42,9 +44,13 @@ export function useWebSocket(onEvent: (event: EventMessage) => void) {
           // Ignore malformed messages — the server only emits JSON.
         }
       })
-      socket.addEventListener('close', () => {
+      socket.addEventListener('close', (event) => {
         if (cancelled) return
-        setTimeout(connect, backoffMs)
+        if (event.code === 1008) {
+          handlerRef.current({ type: 'auth_required' })
+          return
+        }
+        retry = setTimeout(connect, backoffMs)
         backoffMs = Math.min(backoffMs * 2, 30_000)
       })
       socket.addEventListener('error', () => {
@@ -56,7 +62,8 @@ export function useWebSocket(onEvent: (event: EventMessage) => void) {
 
     return () => {
       cancelled = true
+      clearTimeout(retry)
       socket?.close()
     }
-  }, [])
+  }, [enabled])
 }

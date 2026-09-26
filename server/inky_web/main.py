@@ -1,12 +1,13 @@
 """Entry point for the Inky Studio FastAPI app."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -58,8 +59,7 @@ async def lifespan(app: FastAPI):
     app.state.display = DisplayController()
     app.state.display.initialize()
     app.state.scheduler = Scheduler(app.state.display, app.state.bus)
-    await app.state.scheduler.start()
-
+    welcome_task = None
     credentials_existed = (data_dir() / "credentials.json").is_file()
     app.state.credentials = auth.load_or_create_credentials(data_dir())
     app.state.sessions = auth.SessionStore()
@@ -67,21 +67,14 @@ async def lifespan(app: FastAPI):
     if not auth.auth_disabled():
         logger = logging.getLogger(__name__)
         logger.info(
-            "Auth enabled. Password (also persisted in %s) : %s",
+            "Auth enabled. Credentials persisted in %s",
             app.state.credentials.path,
-            app.state.credentials.password,
         )
 
     # On first boot (credentials freshly generated AND nothing ever displayed),
     # push the welcome screen so the user sees the URL + password on the Inky.
     if not credentials_existed and not auth.auth_disabled():
-        try:
-            from inky_web import history as _history_module  # noqa: F401
-        except ImportError:
-            pass
         # No history yet → show welcome. Run in a thread so lifespan stays snappy.
-        import asyncio
-
         from inky_web.services import history as history_service
         from inky_web.welcome import show_welcome
 
@@ -89,13 +82,18 @@ async def lifespan(app: FastAPI):
             logging.getLogger(__name__).info(
                 "First boot detected — pushing welcome screen to the Inky"
             )
-            asyncio.create_task(asyncio.to_thread(show_welcome, app.state.display))
+            welcome_task = asyncio.create_task(asyncio.to_thread(show_welcome, app.state.display))
 
     try:
+        await app.state.scheduler.start()
         yield
     finally:
-        await app.state.scheduler.stop()
-        app.state.display.shutdown()
+        try:
+            await app.state.scheduler.stop()
+            if welcome_task is not None:
+                await welcome_task
+        finally:
+            app.state.display.shutdown()
 
 
 app = FastAPI(
@@ -121,15 +119,19 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api")
 
+async def spa_fallback(full_path: str) -> FileResponse:
+    root = CLIENT_DIST.resolve()
+    candidate = (root / full_path).resolve()
+    if not candidate.is_relative_to(root) or full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+    if candidate.is_file():
+        return FileResponse(candidate)
+    return FileResponse(root / "index.html")
+
+
 if CLIENT_DIST.is_dir():
     app.mount("/assets", StaticFiles(directory=CLIENT_DIST / "assets"), name="assets")
-
-    @app.get("/{full_path:path}")
-    async def spa_fallback(full_path: str) -> FileResponse:
-        candidate = CLIENT_DIST / full_path
-        if candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(CLIENT_DIST / "index.html")
+    app.add_api_route("/{full_path:path}", spa_fallback, methods=["GET"], include_in_schema=False)
 
 
 def run() -> None:

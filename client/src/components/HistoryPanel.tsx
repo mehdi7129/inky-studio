@@ -11,6 +11,7 @@ import { formatAbsolute, formatBytes, formatRelative } from '../lib/format'
 
 interface HistoryPanelProps {
   onChange: () => void
+  revision?: number
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -21,7 +22,7 @@ const SOURCE_LABEL: Record<string, string> = {
   upload: 'upload',
 }
 
-export function HistoryPanel({ onChange }: HistoryPanelProps) {
+export function HistoryPanel({ onChange, revision = 0 }: HistoryPanelProps) {
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [requeueingId, setRequeueingId] = useState<string | null>(null)
@@ -38,7 +39,10 @@ export function HistoryPanel({ onChange }: HistoryPanelProps) {
     let cancelled = false
     fetchHistory(200, 0)
       .then((entries) => {
-        if (!cancelled) setHistory(entries)
+        if (!cancelled) {
+          setHistory(entries)
+          setError(null)
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err))
@@ -46,12 +50,13 @@ export function HistoryPanel({ onChange }: HistoryPanelProps) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [revision])
 
   const handleRequeue = async (entry: HistoryEntry) => {
     setRequeueingId(entry.photo.id)
     try {
       const response = await fetch(photoFileUrl(entry.photo.id))
+      if (!response.ok) throw new Error(`Impossible de récupérer la photo (HTTP ${response.status})`)
       const blob = await response.blob()
       await uploadToQueue(blob, entry.photo.original_filename)
       onChange()

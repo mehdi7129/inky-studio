@@ -11,8 +11,8 @@ Design — kept deliberately tiny because this app serves one user on one Pi:
   any reboot/update without us having to manage refresh tokens or revocation.
 - Rate limiting on /api/auth/login: max 5 attempts per IP per 60 s.
 
-Set ``INKY_STUDIO_DISABLE_AUTH=1`` to skip middleware entirely (used by
-pytest and by ``inky-studio-server`` in dev mode on macOS).
+Set ``INKY_STUDIO_DISABLE_AUTH=1`` to skip authentication explicitly (used by
+pytest; optional for local development).
 """
 from __future__ import annotations
 
@@ -21,7 +21,9 @@ import logging
 import os
 import secrets
 import string
+import tempfile
 import time
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -66,26 +68,38 @@ def load_or_create_credentials(data_dir: Path) -> Credentials:
     if path.is_file():
         try:
             data = json.loads(path.read_text())
-            return Credentials(password=data["password"], path=path)
-        except (json.JSONDecodeError, KeyError) as exc:
+            password = data.get("password") if isinstance(data, dict) else None
+            if not isinstance(password, str) or not 1 <= len(password) <= 64:
+                raise ValueError("Expected a non-empty password of at most 64 characters")
+            return Credentials(password=password, path=path)
+        except ValueError as exc:
             logger.warning("Corrupt credentials at %s — regenerating (%s)", path, exc)
 
+    return _create_credentials(data_dir)
+
+
+def _create_credentials(data_dir: Path) -> Credentials:
+    """Atomically replace the credentials with a private, fully written file."""
+    path = _credentials_path(data_dir)
     password = "".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(10))
-    path.write_text(json.dumps({"password": password}, indent=2))
+    temporary_path = None
     try:
-        path.chmod(0o600)
-    except OSError as exc:  # noqa: BLE001 — fs may not support chmod (network share)
-        logger.warning("Could not chmod %s to 600: %s", path, exc)
+        with tempfile.NamedTemporaryFile(mode="w", dir=data_dir, prefix=".credentials-", delete=False) as tmp:
+            temporary_path = Path(tmp.name)
+            json.dump({"password": password}, tmp, indent=2)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
     logger.info("Generated new credentials at %s — show on welcome screen", path)
     return Credentials(password=password, path=path)
 
 
 def reset_credentials(data_dir: Path) -> Credentials:
     """Drop existing credentials and create a fresh password — used by `inky-studio reset-password`."""
-    path = _credentials_path(data_dir)
-    if path.exists():
-        path.unlink()
-    return load_or_create_credentials(data_dir)
+    return _create_credentials(data_dir)
 
 
 class SessionStore:
@@ -98,8 +112,10 @@ class SessionStore:
         self._sessions: dict[str, float] = {}
 
     def create(self) -> str:
+        now = time.time()
+        self._sessions = {token: expires for token, expires in self._sessions.items() if expires > now}
         token = secrets.token_urlsafe(32)
-        self._sessions[token] = time.time() + SESSION_TTL_SECONDS
+        self._sessions[token] = now + SESSION_TTL_SECONDS
         return token
 
     def validate(self, token: str | None) -> bool:
@@ -108,7 +124,7 @@ class SessionStore:
         expires = self._sessions.get(token)
         if expires is None:
             return False
-        if time.time() > expires:
+        if time.time() >= expires:
             self._sessions.pop(token, None)
             return False
         return True
@@ -128,15 +144,18 @@ class LoginRateLimiter:
     ) -> None:
         self._window = window_seconds
         self._max = max_attempts
-        self._attempts: dict[str, list[float]] = {}
+        self._attempts: dict[str, deque[float]] = {}
 
     def record_and_check(self, ip: str) -> bool:
-        """Record an attempt and return True if still under the limit."""
-        now = time.time()
-        recent = [t for t in self._attempts.get(ip, []) if now - t < self._window]
+        """Allow at most ``max_attempts`` per window, with bounded per-IP storage."""
+        now = time.monotonic()
+        recent = self._attempts.setdefault(ip, deque())
+        while recent and now - recent[0] >= self._window:
+            recent.popleft()
+        if len(recent) >= self._max:
+            return False
         recent.append(now)
-        self._attempts[ip] = recent
-        return len(recent) <= self._max
+        return True
 
 
 def get_session_token(request: Request) -> str | None:

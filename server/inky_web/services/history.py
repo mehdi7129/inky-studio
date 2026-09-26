@@ -5,7 +5,7 @@ import logging
 import time
 from typing import Literal
 
-from inky_web.db import connection
+from inky_web.db import connection, transaction
 from inky_web.models import HistoryEntry, Photo
 
 logger = logging.getLogger(__name__)
@@ -40,17 +40,22 @@ _BASE_SELECT = """
 """
 
 
-def record(photo_id: str, source: Source) -> HistoryEntry:
+def record(
+    photo_id: str, source: Source, *, navigation_history_id: int | None = None
+) -> HistoryEntry:
     now = time.time()
-    with connection() as conn:
+    with transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO history (photo_id, displayed_at, source) VALUES (?, ?, ?)",
             (photo_id, now, source),
         )
         history_id = cursor.lastrowid
-    sql = _BASE_SELECT + " WHERE h.id = ?"
-    with connection() as conn:
-        row = conn.execute(sql, (history_id,)).fetchone()
+        conn.execute(
+            "INSERT INTO display_navigation (id, history_id) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET history_id = excluded.history_id",
+            (navigation_history_id if navigation_history_id is not None else history_id,),
+        )
+        row = conn.execute(_BASE_SELECT + " WHERE h.id = ?", (history_id,)).fetchone()
     return _row_to_entry(row)
 
 
@@ -66,6 +71,17 @@ def previous_to(history_id: int) -> HistoryEntry | None:
     with connection() as conn:
         row = conn.execute(sql, (history_id,)).fetchone()
         return _row_to_entry(row) if row else None
+
+
+def previous() -> HistoryEntry | None:
+    """Navigate before the selected event, independently of the append-only log."""
+    with connection() as conn:
+        row = conn.execute("SELECT history_id FROM display_navigation WHERE id = 1").fetchone()
+    cursor = row["history_id"] if row else None
+    if cursor is None:
+        last = current()
+        cursor = last.id if last else None
+    return previous_to(cursor) if cursor is not None else None
 
 
 def list_recent(limit: int = 100, offset: int = 0) -> list[HistoryEntry]:

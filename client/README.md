@@ -1,14 +1,14 @@
 # Inky Studio — Frontend
 
-React 19 + TypeScript + Vite 8 + Tailwind 4 single-page app. All image
-conversion (HEIC decode, resize, palette mapping, Floyd–Steinberg dithering)
-runs here in the browser; the backend only stores and displays the result.
+React 19 + TypeScript + Vite 8 + Tailwind 4 single-page app. HEIC decoding,
+resizing and cropping run in the browser. The Raspberry Pi performs colour
+quantisation once, using the official Pimoroni driver for the detected panel.
 
 ## Develop
 
 ```bash
-npm install
-npm run dev        # http://localhost:5173 — talks to the backend on :8000 via CORS
+npm ci
+npm run dev        # http://localhost:5273 — proxies /api to the backend on :8000
 ```
 
 ## Checks & build

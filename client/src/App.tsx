@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Dashboard } from './components/Dashboard'
 import { HistoryPanel } from './components/HistoryPanel'
 import { Layout, type TabId } from './components/Layout'
 import { LoginScreen } from './components/LoginScreen'
 import { QueuePanel } from './components/QueuePanel'
 import { SettingsPanel } from './components/SettingsPanel'
-import { fetchAuthStatus, fetchHealth, fetchQueue, fetchState, logout } from './lib/api'
+import { ApiError, fetchAuthStatus, fetchHealth, fetchQueue, fetchState, logout } from './lib/api'
 import type { AuthStatus, DisplayState, HealthResponse, QueueEntry } from './lib/api'
 import { useWebSocket } from './lib/useWebSocket'
 
@@ -19,28 +19,45 @@ function App() {
   const [queue, setQueue] = useState<QueueEntry[]>([])
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<TabId>('dashboard')
+  const [historyRevision, setHistoryRevision] = useState(0)
+  const [settingsRevision, setSettingsRevision] = useState(0)
+  const requestVersion = useRef(0)
 
   const refresh = useCallback(() => {
-    void Promise.all([fetchState(), fetchQueue()])
+    const version = ++requestVersion.current
+    return Promise.all([fetchState(), fetchQueue()])
       .then(([s, q]) => {
+        if (version !== requestVersion.current) return
         setState(s)
         setQueue(q)
+        setError(null)
       })
-      .catch(() => {})
+      .catch((err: Error) => {
+        if (version !== requestVersion.current) return
+        if (err instanceof ApiError && err.status === 401) {
+          setBootStatus('login-required')
+        } else {
+          setError(err.message)
+        }
+      })
   }, [])
 
   const loadAll = useCallback(() => {
+    const version = ++requestVersion.current
+    setError(null)
     setBootStatus('loading')
     Promise.all([fetchHealth(), fetchState(), fetchQueue()])
       .then(([h, s, q]) => {
+        if (version !== requestVersion.current) return
         setHealth(h)
         setState(s)
         setQueue(q)
         setBootStatus('ok')
       })
       .catch((err: Error) => {
+        if (version !== requestVersion.current) return
         setError(err.message)
-        setBootStatus('error')
+        setBootStatus(err instanceof ApiError && err.status === 401 ? 'login-required' : 'error')
       })
   }, [])
 
@@ -64,7 +81,20 @@ function App() {
     useCallback(
       (event) => {
         if (bootStatus !== 'ok') return
+        if (event.type === 'auth_required') {
+          ++requestVersion.current
+          setBootStatus('login-required')
+          return
+        }
+        if (event.type === 'hello' || event.type === 'settings_changed') {
+          setSettingsRevision((revision) => revision + 1)
+        }
+        if (event.type === 'hello' || event.type === 'display_changed' ||
+            event.type === 'history_changed' || event.type === 'photo_deleted') {
+          setHistoryRevision((revision) => revision + 1)
+        }
         if (
+          event.type === 'hello' ||
           event.type === 'queue_updated' ||
           event.type === 'photo_uploaded' ||
           event.type === 'display_changed' ||
@@ -77,6 +107,7 @@ function App() {
       },
       [refresh, bootStatus],
     ),
+    bootStatus === 'ok',
   )
 
   useEffect(() => {
@@ -85,12 +116,14 @@ function App() {
   }, [])
 
   const handleLogout = async () => {
+    ++requestVersion.current
     try {
       await logout()
     } catch {
       /* ignore — we reset client state anyway */
     }
     setAuthStatus((prev) => (prev ? { ...prev, authenticated: false } : prev))
+    ++requestVersion.current
     setHealth(null)
     setState(null)
     setQueue([])
@@ -149,10 +182,11 @@ function App() {
       authRequired={authStatus?.auth_required ?? false}
       onLogout={handleLogout}
     >
+      {error && <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {tab === 'dashboard' && <Dashboard state={state} queue={queue} onChange={refresh} />}
       {tab === 'queue' && <QueuePanel queue={queue} onChange={refresh} />}
-      {tab === 'settings' && <SettingsPanel onChange={refresh} health={health} />}
-      {tab === 'history' && <HistoryPanel onChange={refresh} />}
+      {tab === 'settings' && <SettingsPanel onChange={refresh} health={health} revision={settingsRevision} />}
+      {tab === 'history' && <HistoryPanel onChange={refresh} revision={historyRevision} />}
     </Layout>
   )
 }

@@ -54,8 +54,8 @@ Frontend:
 
 ```bash
 cd client
-npm install
-npm run dev                 # :5173, talks to :8000 via CORS
+npm ci
+npm run dev                 # :5273, proxies /api to :8000
 npm run lint && npx tsc -b && npm test && npm run build
 ```
 
@@ -88,7 +88,7 @@ device, so the Pi needs no Node.js at runtime.
   once on first install.
 - **`services/updater.py`** powers both the in-app one-click update
   (`POST /api/system/update`, streaming `system_update` WS events) and the
-  `inky-studio update` CLI (`python -m inky_web.updater`). It downloads the
+  `inky-studio update` CLI (`python -m inky_web.services.updater`). It downloads the
   latest release asset, extracts it over the install dir (preserving `.venv`),
   runs `pip install -e .[pi]`, and restarts via the scoped sudo rule.
 

@@ -4,7 +4,7 @@
  * We use the browser's native PNG encoder because:
  *  - It's free (zero JS bytes added)
  *  - The Inky-side server doesn't care how the PNG is compressed
- *  - The output dimensions/palette are already locked by the dither step
+ *  - The output dimensions are already fixed by the crop step
  */
 export async function imageDataToPng(image: ImageData): Promise<Blob> {
   if (typeof OffscreenCanvas !== 'undefined') {

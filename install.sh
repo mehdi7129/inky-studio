@@ -11,7 +11,7 @@
 #
 # Environment overrides:
 #   INKY_STUDIO_CHANNEL     release (default) | source
-#   INKY_STUDIO_USER        service user (default: pi)
+#   INKY_STUDIO_USER        service user (default: current user)
 #   INKY_STUDIO_INSTALL_DIR install dir (default: /home/<user>/inky-studio)
 #   INKY_STUDIO_DATA_DIR    data dir (default: /var/lib/inky-studio)
 #   INKY_STUDIO_REPO_SLUG   GitHub slug (default: mehdi7129/inky-studio)
@@ -106,11 +106,14 @@ if systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${LEGACY_SER
   say "Stopping & disabling legacy ${LEGACY_SERVICE_NAME}…"
   sudo systemctl stop "${LEGACY_SERVICE_NAME}" || true
   sudo systemctl disable "${LEGACY_SERVICE_NAME}" || true
-  STRAYS=$(pgrep -f "inky-photo-frame/inky_photo_frame" || true)
-  if [[ -n "${STRAYS}" ]]; then
-    sudo kill -TERM ${STRAYS} 2>/dev/null || true
+  mapfile -t STRAYS < <(pgrep -f "inky-photo-frame/inky_photo_frame" || true)
+  if [[ "${#STRAYS[@]}" -gt 0 ]]; then
+    sudo kill -TERM "${STRAYS[@]}" 2>/dev/null || true
     sleep 2
-    sudo kill -KILL $(pgrep -f "inky-photo-frame/inky_photo_frame" || true) 2>/dev/null || true
+    mapfile -t STRAYS < <(pgrep -f "inky-photo-frame/inky_photo_frame" || true)
+    if [[ "${#STRAYS[@]}" -gt 0 ]]; then
+      sudo kill -KILL "${STRAYS[@]}" 2>/dev/null || true
+    fi
   fi
 fi
 
@@ -131,9 +134,9 @@ except Exception: pass' 2>/dev/null || true)
 
   say "Downloading release ${tag}…"
   tmp=$(mktemp -d)
-  curl -fsSL -o "${tmp}/release.tar.gz" "${asset}"
+  curl -fsSL -o "${tmp}/release.tar.gz" "${asset}" || { rm -rf "${tmp}"; return 1; }
   mkdir -p "${tmp}/x"
-  tar -xzf "${tmp}/release.tar.gz" -C "${tmp}/x"
+  tar -xzf "${tmp}/release.tar.gz" -C "${tmp}/x" || { rm -rf "${tmp}"; return 1; }
   local src="${tmp}/x"
   if [[ ! -d "${src}/server" ]]; then
     local inner
@@ -143,7 +146,7 @@ except Exception: pass' 2>/dev/null || true)
   [[ -d "${src}/server" ]] || { echo "❌ Release archive has no server/ — aborting." >&2; rm -rf "${tmp}"; return 1; }
   mkdir -p "${INSTALL_DIR}"
   # Copy over the install dir, leaving any existing .venv intact.
-  cp -a "${src}/." "${INSTALL_DIR}/"
+  cp -a "${src}/." "${INSTALL_DIR}/" || { rm -rf "${tmp}"; return 1; }
   rm -rf "${tmp}"
   echo "${tag}" > "${INSTALL_DIR}/VERSION" 2>/dev/null || true
   return 0
@@ -153,7 +156,10 @@ fetch_source() {
   # Build from main — needs Node 22 for the Vite build.
   local need_node=1
   if command -v node >/dev/null 2>&1; then
-    [[ "$(node -v | sed -E 's/^v([0-9]+)\..*/\1/')" -ge 20 ]] && need_node=0
+    # Match Vite 8's engine range, including the minimum minor versions.
+    if node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit((major === 20 && minor >= 19) || (major === 22 && minor >= 12) || major > 22 ? 0 : 1)'; then
+      need_node=0
+    fi
   fi
   if [[ "${need_node}" -eq 1 ]]; then
     say "Installing Node 22 (NodeSource)…"

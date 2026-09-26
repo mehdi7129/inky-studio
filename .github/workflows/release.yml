@@ -23,10 +23,26 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate backend
+        run: |
+          cd server
+          python -m pip install -e ".[dev]"
+          ruff check .
+          pytest -q
+
+      - name: Validate installer and CLI
+        run: shellcheck install.sh scripts/inky-studio-cli scripts/uninstall.sh
+
       - name: Build frontend
         run: |
           cd client
           npm ci --no-audit --no-fund
+          npm run lint
+          npm test
           npm run build
 
       - name: Stage release payload

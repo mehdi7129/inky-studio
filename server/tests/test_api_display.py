@@ -60,3 +60,16 @@ def test_previous_with_no_history_is_noop(client):
     response = client.post("/api/display/previous")
     assert response.status_code == 202
     assert client.get("/api/history").json() == []
+
+
+def test_repeated_previous_walks_back_to_first_photo(client, png_factory):
+    ids = [_upload(client, png_factory, color=(red, 0, 0))["photo"]["id"] for red in (7, 8, 9)]
+    for _ in ids:
+        client.post("/api/display/next")
+
+    for expected in (ids[1], ids[0], ids[0]):
+        assert client.post("/api/display/previous").status_code == 202
+        assert client.get("/api/state").json()["current"]["photo"]["id"] == expected
+
+    # Backward navigation remains an append-only log of actual refreshes.
+    assert len(client.get("/api/history").json()) == 5
