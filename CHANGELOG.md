@@ -12,6 +12,8 @@ to [Semantic Versioning](https://semver.org/).
   fallback returns a bitmap directly, avoiding intermediate JPEG recompression.
 - Show readable conversion errors instead of `[object Object]`, including a
   useful fallback message for failures without a text description.
+- Shield WebSocket task cleanup from AnyIO scope cancellation, preventing an
+  intermittent teardown error without swallowing external cancellation.
 
 ## [0.4.1] - 2026-09-26
 

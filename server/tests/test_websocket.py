@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import anyio
 import pytest
 
 from inky_web.api.ws import websocket_endpoint
@@ -46,6 +47,41 @@ async def test_idle_disconnect_releases_subscription():
             return {"type": "websocket.disconnect", "code": 1000}
 
     await asyncio.wait_for(websocket_endpoint(DisconnectedWebSocket()), timeout=1)
+    assert not bus._subscribers
+
+
+async def test_disconnect_during_cancel_scope_cleanup(monkeypatch):
+    bus = EventBus()
+
+    class DisconnectedWebSocket:
+        app = SimpleNamespace(state=SimpleNamespace(bus=bus))
+        cookies = {}
+
+        async def accept(self):
+            pass
+
+        async def send_json(self, value):
+            assert value["type"] == "hello"
+
+        async def receive(self):
+            return {"type": "websocket.disconnect", "code": 1000}
+
+    with anyio.CancelScope() as scope:
+        unsubscribe = bus.unsubscribe
+
+        def cancel_during_cleanup(event_queue):
+            unsubscribe(event_queue)
+            # Match a server/test-client scope cancellation racing with a
+            # disconnect: deliver it while child-task cleanup is awaiting.
+            asyncio.get_running_loop().call_soon(scope.cancel)
+
+        monkeypatch.setattr(bus, "unsubscribe", cancel_during_cleanup)
+        await websocket_endpoint(DisconnectedWebSocket())
+        # Shielding cleanup must preserve the outer scope's cancellation,
+        # not replace it with a bare cancellation from an already-cancelled child.
+        await anyio.lowlevel.checkpoint()
+
+    assert scope.cancelled_caught
     assert not bus._subscribers
 
 
