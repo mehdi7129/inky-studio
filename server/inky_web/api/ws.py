@@ -61,7 +61,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     except Exception:  # noqa: BLE001
         logger.exception("WebSocket loop crashed")
     finally:
+        # Unsubscribe before awaiting task cleanup: a second cancellation can
+        # interrupt gather, but must never leave this connection on the bus.
+        bus.unsubscribe(event_queue)
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        bus.unsubscribe(event_queue)
