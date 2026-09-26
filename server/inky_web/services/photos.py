@@ -39,10 +39,19 @@ def _validate_image(content: bytes, expected_size: tuple[int, int] | None) -> tu
     """Return (width, height, mime). Raises PhotoValidationError on bad input."""
     try:
         with Image.open(BytesIO(content)) as img:
-            img.verify()
-        with Image.open(BytesIO(content)) as img:
             width, height = img.size
             fmt = (img.format or "").upper()
+            if expected_size is not None and (width, height) != expected_size:
+                raise PhotoValidationError(
+                    f"Image size {width}x{height} does not match display {expected_size[0]}x{expected_size[1]}"
+                )
+            img.verify()
+        with Image.open(BytesIO(content)) as img:
+            # PNG verify() checks chunk integrity, not whether pixels decode.
+            # Enforce panel dimensions before allocating the decoded image.
+            img.load()
+    except PhotoValidationError:
+        raise
     except Exception as exc:
         raise PhotoValidationError(f"Not a valid image: {exc}") from exc
 
@@ -52,11 +61,6 @@ def _validate_image(content: bytes, expected_size: tuple[int, int] | None) -> tu
         mime = "image/jpeg"
     else:
         raise PhotoValidationError(f"Unsupported format '{fmt}' — expected PNG or JPEG")
-
-    if expected_size is not None and (width, height) != expected_size:
-        raise PhotoValidationError(
-            f"Image size {width}x{height} does not match display {expected_size[0]}x{expected_size[1]}"
-        )
 
     return width, height, mime
 
@@ -92,17 +96,17 @@ def save(
     if not content:
         raise PhotoValidationError("Empty payload")
 
-    sha = hashlib.sha256(content).hexdigest()
-    existing = find_by_sha(sha)
-    if existing:
-        logger.info("Dedupe hit on sha %s — reusing photo %s", sha[:12], existing.id)
-        return existing, True
-
     width, height, mime = _validate_image(content, expected_size)
     if mime != "image/png":
         raise PhotoValidationError(
             "Only PNG uploads are accepted — the browser must convert before upload"
         )
+
+    sha = hashlib.sha256(content).hexdigest()
+    existing = find_by_sha(sha)
+    if existing:
+        logger.info("Dedupe hit on sha %s — reusing photo %s", sha[:12], existing.id)
+        return existing, True
 
     photo_id = uuid.uuid4().hex[:12]
     path = path_for(photo_id)

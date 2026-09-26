@@ -49,7 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_history_time ON history(displayed_at DESC);
 
 CREATE TABLE IF NOT EXISTS display_navigation (
     id          INTEGER PRIMARY KEY CHECK (id = 1),
-    history_id  INTEGER REFERENCES history(id) ON DELETE SET NULL
+    history_id  INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS settings (

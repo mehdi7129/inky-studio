@@ -134,8 +134,17 @@ def _manual_next(display: DisplayController, bus: EventBus) -> None:
 
 
 def _advance(display: DisplayController, bus: EventBus, *, source: str, recycle_source: str) -> None:
-    entry = queue.peek_next()
-    if entry is not None:
+    while (entry := queue.peek_next()) is not None:
+        if not path_for(entry.photo.id).exists():
+            # A permanently missing source must not block every later photo.
+            # Keep its metadata; only remove this unusable queue entry. Errors
+            # from the actual driver below still propagate and preserve queue.
+            logger.warning("Photo file missing for %s — skipping queue entry %s", entry.photo.id, entry.id)
+            queue.remove_entry(entry.id)
+            bus.broadcast("queue_updated", {
+                "action": "skipped", "photo_id": entry.photo.id, "reason": "file_missing",
+            })
+            continue
         _show(display, bus, entry.photo.id, source=source)
         queue.remove_entry(entry.id)
         bus.broadcast("queue_updated", {"action": "popped", "photo_id": entry.photo.id})

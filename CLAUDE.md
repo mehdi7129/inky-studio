@@ -7,7 +7,7 @@ Guidance for Claude Code (and human contributors) working in this repository.
 Inky Studio is a self-hosted web app that drives a Pimoroni Inky Impression
 e-ink display on a Raspberry Pi. The browser only decodes (HEIC) and **crops** the
 photo to the panel resolution (full colour); all colour science is done **once on
-the Pi** by the official Pimoroni `inky.set_image(saturation=0.5)`, which quantises
+the Pi** by the official Pimoroni `inky.set_image(saturation=1.0)` by default, which quantises
 to the exact palette of the auto-detected panel. There are **no app-level colour
 modes** — rendering adapts to the detected screen automatically.
 

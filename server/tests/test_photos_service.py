@@ -1,6 +1,9 @@
 """Unit tests for the photos service (CRUD + dedupe + validation)."""
 from __future__ import annotations
 
+import struct
+import zlib
+
 import pytest
 
 
@@ -82,3 +85,32 @@ def test_delete_returns_false_for_unknown(data_dir):
     from inky_web.services import photos
 
     assert photos.delete("does-not-exist") is False
+
+
+def test_save_rejects_png_with_valid_chunks_but_invalid_pixels(data_dir):
+    from inky_web.services import photos
+
+    def chunk(kind, payload):
+        return (
+            struct.pack(">I", len(payload)) + kind + payload
+            + struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF)
+        )
+
+    content = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", 800, 480, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(b""))
+        + chunk(b"IEND", b"")
+    )
+    with pytest.raises(photos.PhotoValidationError, match="Not a valid image"):
+        photos.save(content=content, original_filename="truncated.png", expected_size=(800, 480))
+    assert not list(photos.photos_dir().glob("*.png"))
+
+
+def test_duplicate_upload_still_requires_current_panel_dimensions(data_dir, png_factory):
+    from inky_web.services import photos
+
+    content = png_factory(800, 480)
+    photos.save(content=content, original_filename="old-panel.png", expected_size=(800, 480))
+    with pytest.raises(photos.PhotoValidationError, match="does not match display"):
+        photos.save(content=content, original_filename="new-panel.png", expected_size=(1600, 1200))

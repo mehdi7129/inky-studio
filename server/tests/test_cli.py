@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -38,3 +39,24 @@ def test_failed_welcome_restarts_service(tmp_path):
     assert result.stdout.splitlines() == [
         "systemctl stop inky-studio.service", "systemctl start inky-studio.service",
     ]
+
+
+def test_previously_installed_updater_entrypoint_delegates_without_network():
+    root = Path(__file__).resolve().parents[2]
+    code = """
+import runpy
+from inky_web.services import updater
+
+def fake_main():
+    print("delegated to current updater")
+    return 7
+
+updater.main = fake_main
+runpy.run_module("inky_web.updater", run_name="__main__")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code], cwd=root / "server",
+        text=True, capture_output=True,
+    )
+    assert result.returncode == 7
+    assert result.stdout.strip() == "delegated to current updater"

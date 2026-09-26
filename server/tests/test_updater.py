@@ -4,7 +4,7 @@ from __future__ import annotations
 import fcntl
 import io
 import tarfile
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -139,6 +139,9 @@ def test_payload_must_be_complete_and_exclude_runtime(tmp_path):
         target = tmp_path / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("test")
+    with pytest.raises(RuntimeError, match="Incomplete"):
+        updater._validate_payload(tmp_path)
+    (tmp_path / "client/dist/assets").mkdir()
     updater._validate_payload(tmp_path)
     (tmp_path / "server/data").mkdir()
     with pytest.raises(RuntimeError, match="protected"):
@@ -155,6 +158,7 @@ async def test_failed_pip_restores_code_and_reports_dependency_limit(tmp_path, m
         target = payload / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("new")
+    (payload / "client/dist/assets").mkdir()
     archive = tmp_path / "release.tar.gz"
     with tarfile.open(archive, "w:gz") as tf:
         for child in payload.iterdir():
@@ -186,3 +190,25 @@ async def test_concurrent_update_is_rejected_before_network(tmp_path, monkeypatc
         events = []
         assert not await updater.perform_update(lambda *args, **kwargs: events.append(args), install_dir=tmp_path)
     assert events == [("error", "Une mise à jour est déjà en cours.")]
+
+
+async def test_missing_frontend_assets_is_rejected_before_backup_or_apply(tmp_path, monkeypatch):
+    def extract_incomplete_payload(_archive, dest):
+        for name in ["server/pyproject.toml", "server/inky_web/main.py", "client/dist/index.html"]:
+            target = dest / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("fixture")
+
+    monkeypatch.setattr(updater, "_fetch_latest_release", lambda: {
+        "tag_name": "v9", "assets": [{"name": "release.tar.gz", "browser_download_url": "fixture"}],
+    })
+    monkeypatch.setattr(updater, "_download", lambda *_: None)
+    monkeypatch.setattr(updater, "_safe_extract", extract_incomplete_payload)
+    backup, apply = Mock(), Mock()
+    monkeypatch.setattr(updater, "_backup_current", backup)
+    monkeypatch.setattr(updater, "_apply", apply)
+    events = []
+    assert not await updater.perform_update(lambda *args, **kwargs: events.append(args), install_dir=tmp_path)
+    backup.assert_not_called()
+    apply.assert_not_called()
+    assert "Incomplete release payload" in events[-1][1]

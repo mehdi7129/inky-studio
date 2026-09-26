@@ -23,11 +23,11 @@ async def add_to_queue(
     request: Request,
     file: Annotated[UploadFile, File()],
 ) -> UploadResponse:
-    """Upload a PNG that has already been resized + palette-applied in the browser.
+    """Upload a full-colour PNG already resized and cropped in the browser.
 
     The image dimensions must match the connected display exactly — the server
-    refuses unconverted uploads. This is the contract that lets the Pi store
-    only ~200 KB per photo instead of multi-megabyte originals.
+    refuses unconverted uploads. The official display driver applies the panel
+    palette when displaying it; uploaded PNGs are limited to 10 MiB.
     """
     display = request.app.state.display
     bus = request.app.state.bus

@@ -59,6 +59,7 @@ export function SettingsPanel({ onChange, health, revision = 0 }: SettingsPanelP
   // Local mirror of the saturation slider so dragging stays smooth; we only
   // POST the value when the user lets go (pointer/key up), not on every step.
   const [satLocal, setSatLocal] = useState<number | null>(null)
+  const settingsRequestVersion = useRef(0)
 
   // ── Update feature state ──────────────────────────────────────────────────
   const [updateInfo, setUpdateInfo] = useState<UpdateStatus | null>(null)
@@ -72,16 +73,19 @@ export function SettingsPanel({ onChange, health, revision = 0 }: SettingsPanelP
   const currentVersion = updateInfo?.current ?? health?.version ?? '?'
 
   useEffect(() => {
+    const version = ++settingsRequestVersion.current
     let cancelled = false
     fetchSettings()
       .then((s) => {
-        if (!cancelled) {
+        if (!cancelled && version === settingsRequestVersion.current) {
           setSettings(s)
           setSatLocal(s.saturation)
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled && version === settingsRequestVersion.current) {
+          setError(err instanceof Error ? err.message : String(err))
+        }
       })
     return () => {
       cancelled = true
@@ -179,13 +183,16 @@ export function SettingsPanel({ onChange, health, revision = 0 }: SettingsPanelP
 
   const patch = async (delta: Partial<Settings>) => {
     if (!settings || saving) return
+    const version = ++settingsRequestVersion.current
     setSaving(true)
     setSaved(false)
     setError(null)
     try {
       const updated = await updateSettings(delta)
-      setSettings(updated)
-      setSatLocal(updated.saturation)
+      if (version === settingsRequestVersion.current) {
+        setSettings(updated)
+        setSatLocal(updated.saturation)
+      }
       setSaved(true)
       onChange()
     } catch (err) {

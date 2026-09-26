@@ -74,7 +74,11 @@ def previous_to(history_id: int) -> HistoryEntry | None:
 
 
 def previous() -> HistoryEntry | None:
-    """Navigate before the selected event, independently of the append-only log."""
+    """Navigate before the selected event, even if that log entry was deleted.
+
+    The cursor is a chronological boundary, not a foreign key: history can be
+    deleted while a slow hardware refresh is in progress.
+    """
     with connection() as conn:
         row = conn.execute("SELECT history_id FROM display_navigation WHERE id = 1").fetchone()
     cursor = row["history_id"] if row else None

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HistoryEntry } from '../lib/api'
 import {
   clearHistory,
@@ -28,29 +28,29 @@ export function HistoryPanel({ onChange, revision = 0 }: HistoryPanelProps) {
   const [requeueingId, setRequeueingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  const requestVersion = useRef(0)
+  const invalidateRequests = useCallback(() => { ++requestVersion.current }, [])
 
   const reload = useCallback(() => {
+    const version = ++requestVersion.current
     return fetchHistory(200, 0)
-      .then(setHistory)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    fetchHistory(200, 0)
       .then((entries) => {
-        if (!cancelled) {
+        if (version === requestVersion.current) {
           setHistory(entries)
           setError(null)
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (version === requestVersion.current) {
+          setError(err instanceof Error ? err.message : String(err))
+        }
       })
-    return () => {
-      cancelled = true
-    }
-  }, [revision])
+  }, [])
+
+  useEffect(() => {
+    void reload()
+    return invalidateRequests
+  }, [revision, reload, invalidateRequests])
 
   const handleRequeue = async (entry: HistoryEntry) => {
     setRequeueingId(entry.photo.id)
@@ -68,6 +68,7 @@ export function HistoryPanel({ onChange, revision = 0 }: HistoryPanelProps) {
   }
 
   const handleDelete = async (entry: HistoryEntry) => {
+    ++requestVersion.current
     setDeletingId(entry.id)
     try {
       await deleteHistoryEntry(entry.id)
@@ -81,6 +82,7 @@ export function HistoryPanel({ onChange, revision = 0 }: HistoryPanelProps) {
   }
 
   const handleClearAll = async () => {
+    ++requestVersion.current
     try {
       await clearHistory()
       setConfirmClear(false)

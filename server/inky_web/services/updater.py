@@ -198,7 +198,7 @@ _BACKUP_ITEMS = (
 
 def _validate_payload(src_root: Path) -> None:
     required = ("server/pyproject.toml", "server/inky_web/main.py", "client/dist/index.html")
-    if any(not (src_root / name).is_file() for name in required):
+    if any(not (src_root / name).is_file() for name in required) or not (src_root / "client/dist/assets").is_dir():
         raise RuntimeError("Incomplete release payload")
     if any(item.name not in _BACKUP_ITEMS for item in src_root.iterdir()):
         raise RuntimeError("Unexpected files at release root")

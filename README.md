@@ -117,7 +117,8 @@ See [CLAUDE.md](CLAUDE.md) for architecture, conventions, and the release proces
 
 The frontend toolchain requires Node.js 20.19+ or 22.12+ (use a supported LTS).
 The September 2026 stabilization audit and its validation are recorded in
-[docs/audits/2026-09-26-first-audit.md](docs/audits/2026-09-26-first-audit.md).
+[the first report](docs/audits/2026-09-26-first-audit.md) and
+[the independent second pass](docs/audits/2026-09-26-second-audit.md).
 
 ## License
 

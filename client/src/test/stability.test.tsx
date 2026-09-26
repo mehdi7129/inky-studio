@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { QueuePanel } from '../components/QueuePanel'
 import { ConverterPanel } from '../components/ConverterPanel'
 import { SettingsPanel } from '../components/SettingsPanel'
+import { HistoryPanel } from '../components/HistoryPanel'
 import { Dashboard } from '../components/Dashboard'
 import App from '../App'
 import * as api from '../lib/api'
@@ -179,4 +180,39 @@ describe('UI stability regressions', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Display unavailable')
     expect(screen.getByRole('button', { name: 'Suivante →' })).toBeEnabled()
   })
+})
+
+it('keeps newer saved settings when an older event read completes', async () => {
+  let finishOld!: (value: typeof settings) => void
+  vi.mocked(api.fetchSettings).mockResolvedValueOnce(settings)
+    .mockReturnValueOnce(new Promise((resolve) => { finishOld = resolve }))
+  vi.mocked(api.fetchUpdateStatus).mockResolvedValue({ current: '1', latest: '1', update_available: false })
+  vi.mocked(api.updateSettings).mockResolvedValue({ ...settings, saturation: 1.5 })
+  const { rerender } = render(<SettingsPanel revision={0} onChange={() => {}} health={null} />)
+  const slider = await screen.findByRole('slider')
+  rerender(<SettingsPanel revision={1} onChange={() => {}} health={null} />)
+  fireEvent.change(slider, { target: { value: '1.5' } })
+  fireEvent.pointerUp(slider)
+  await screen.findByText('✓ Enregistré')
+  expect(slider).toHaveValue('1.5')
+  await act(async () => { finishOld(settings) })
+  expect(slider).toHaveValue('1.5')
+})
+
+it('keeps fresh history when a prior mutation reload completes', async () => {
+  const historyEntry = (id: string) => ({ id: id.charCodeAt(0), displayed_at: 1, source: 'auto' as const, photo: entry(id).photo })
+  const a = historyEntry('a'), b = historyEntry('b'), c = historyEntry('c')
+  let finishOld!: (value: typeof a[]) => void
+  vi.mocked(api.fetchHistory).mockResolvedValueOnce([a,b])
+    .mockReturnValueOnce(new Promise((resolve) => { finishOld = resolve }))
+    .mockResolvedValueOnce([c,b])
+  vi.mocked(api.deleteHistoryEntry).mockResolvedValue(undefined)
+  const { rerender } = render(<HistoryPanel revision={0} onChange={() => {}} />)
+  await screen.findByText('a.png')
+  fireEvent.click(screen.getAllByTitle("Supprimer de l'historique")[0])
+  await waitFor(() => expect(api.fetchHistory).toHaveBeenCalledTimes(2))
+  rerender(<HistoryPanel revision={1} onChange={() => {}} />)
+  await screen.findByText('c.png')
+  await act(async () => { finishOld([b]) })
+  expect(screen.queryByText('c.png')).toBeInTheDocument()
 })

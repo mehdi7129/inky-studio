@@ -68,8 +68,8 @@ export class ApiError extends Error {
   }
 }
 
-async function getJSON<T>(path: string): Promise<T> {
-  const response = await fetch(path, { credentials: 'include' })
+async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, { credentials: 'include', ...(signal ? { signal } : {}) })
   if (!response.ok) throw new ApiError(response.status, `HTTP ${response.status} on ${path}`)
   return response.json() as Promise<T>
 }
@@ -85,7 +85,7 @@ async function sendJSON<T>(method: string, path: string, body?: unknown): Promis
     const detail = await response.text().catch(() => '')
     throw new ApiError(response.status, `${method} ${path} → ${response.status}: ${detail}`)
   }
-  // Display commands return an empty 202 while the hardware refresh runs.
+  // Display commands return an empty 202 after completing their refresh.
   // Do not parse an empty success body as JSON, regardless of its status code.
   const content = await response.text()
   return content.trim() === '' ? undefined as T : JSON.parse(content) as T
@@ -96,8 +96,8 @@ export interface AuthStatus {
   auth_required: boolean
 }
 
-export function fetchAuthStatus(): Promise<AuthStatus> {
-  return getJSON('/api/auth/status')
+export function fetchAuthStatus(signal?: AbortSignal): Promise<AuthStatus> {
+  return getJSON('/api/auth/status', signal)
 }
 
 export function login(password: string): Promise<AuthStatus> {

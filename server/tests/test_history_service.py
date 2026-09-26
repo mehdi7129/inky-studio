@@ -97,3 +97,17 @@ def test_clear_all(data_dir, png_factory):
     assert history.clear() == 3
     assert history.count() == 0
     assert history.current() is None
+
+
+def test_navigation_boundary_survives_deleting_selected_history(data_dir, png_factory):
+    from inky_web.services import history, photos
+
+    entries = []
+    for red in (10, 20, 30):
+        photo, _ = photos.save(content=png_factory(color=(red, 0, 0)), original_filename=f"{red}.png")
+        entries.append(history.record(photo.id, "manual_next"))
+    history.record(entries[1].photo.id, "manual_previous", navigation_history_id=entries[1].id)
+    history.delete(entries[1].id)
+    assert history.previous().id == entries[0].id
+    history.clear()
+    assert history.previous() is None
