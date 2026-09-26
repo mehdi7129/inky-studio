@@ -42,3 +42,12 @@ server/data/
 .env
 .env.local
 *.pem
+
+# Xcode local output
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcresult/
+*.xcarchive/
+*.ipa
+ios/Signing.xcconfig

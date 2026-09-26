@@ -25,6 +25,10 @@
 - 🔌 **One-line install** that handles SPI, dependencies, the service, and first-boot setup.
 - 🔒 Single-password auth (the password is shown right on the e-ink screen on first boot). Runs entirely on your LAN — no account, no cloud.
 
+## Native iPhone app
+
+The [SwiftUI iPhone app](ios/README.md) supports iOS 18+, the approved light bento design, optional Face ID/Touch ID login, native photo import and crop, queue/history management, display controls and Raspberry settings. It connects to the existing server on the same Wi-Fi network. Build and device/TestFlight instructions are in [`ios/README.md`](ios/README.md).
+
 ## Supported hardware
 
 Displays are auto-detected via [`inky`](https://github.com/pimoroni/inky):

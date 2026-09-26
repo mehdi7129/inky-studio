@@ -1,0 +1,54 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  pull_request:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: iPhone build and tests
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+      - name: Start isolated frame fixture
+        run: |
+          python3 ios/scripts/mock-server.py > /tmp/inky-fixture.log 2>&1 &
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:8765/api/health; then break; fi
+            sleep 1
+          done
+          python3 ios/scripts/smoke-api.py
+      - name: Prepare simulator photo library
+        run: |
+          DEVICE_ID=$(xcrun simctl create 'Inky CI' com.apple.CoreSimulator.SimDeviceType.iPhone-16 com.apple.CoreSimulator.SimRuntime.iOS-18-5)
+          echo "INKY_SIMULATOR_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE_ID"
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          python3 ios/scripts/seed-simulator-photo.py "$DEVICE_ID"
+      - name: Build and test
+        run: |
+          xcodebuild -project ios/InkyStudio.xcodeproj -scheme InkyStudio \
+            -destination "platform=iOS Simulator,id=$INKY_SIMULATOR_ID" \
+            -parallel-testing-enabled NO -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO test
+      - name: Build iPhone release
+        run: |
+          xcodebuild -project ios/InkyStudio.xcodeproj -scheme InkyStudio \
+            -configuration Release -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-test-results
+          path: TestResults.xcresult
+          retention-days: 14
