@@ -1,9 +1,8 @@
 /**
- * File → HTMLImageElement (via Blob URL).
+ * File → ImageBitmap, using the browser's native decoder first.
  *
- * HEIC files are converted to JPEG first using libheif-js (loaded lazily so
- * the WASM blob — ~2 MB — never costs anything until a HEIC is dropped).
- * Everything else goes straight through createImageBitmap-friendly paths.
+ * Unsupported HEIC/HEIF files fall back to heic-to's libheif decoder (asm.js),
+ * loaded only when needed. It returns a bitmap without JPEG recompression.
  */
 
 const HEIC_MIMES = new Set([
@@ -19,10 +18,16 @@ function isHeic(file: File): boolean {
   return lower.endsWith('.heic') || lower.endsWith('.heif')
 }
 
-async function decodeHeicToBlob(file: File): Promise<Blob> {
-  const { default: heic2any } = await import('heic2any')
-  const result = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 })
-  return Array.isArray(result) ? result[0] : result
+async function decodeHeic(file: File): Promise<ImageBitmap> {
+  try {
+    const { heicTo } = await import('heic-to')
+    return await heicTo({ blob: file, type: 'bitmap' })
+  } catch (cause) {
+    throw new Error(
+      'Impossible de lire cette photo HEIC/HEIF. Exportez-la en JPEG ou PNG, puis réessayez.',
+      { cause },
+    )
+  }
 }
 
 export interface DecodedImage {
@@ -30,14 +35,19 @@ export interface DecodedImage {
   width: number
   height: number
   sourceFilename: string
-  /** Whether the input went through the HEIC fallback. */
+  /** Whether the input is recognized as HEIC/HEIF, including native decoding. */
   wasHeic: boolean
 }
 
 export async function decode(file: File): Promise<DecodedImage> {
   const wasHeic = isHeic(file)
-  const blob = wasHeic ? await decodeHeicToBlob(file) : file
-  const bitmap = await createImageBitmap(blob)
+  let bitmap: ImageBitmap
+  try {
+    bitmap = await createImageBitmap(file)
+  } catch (error) {
+    if (!wasHeic) throw error
+    bitmap = await decodeHeic(file)
+  }
   return {
     bitmap,
     width: bitmap.width,

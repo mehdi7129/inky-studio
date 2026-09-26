@@ -86,6 +86,19 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('UI stability regressions', () => {
+  it.each([
+    [{ code: 2, message: 'Impossible de lire cette photo HEIC.' }, 'Impossible de lire cette photo HEIC.'],
+    [{ code: 2 }, 'Impossible de lire cette photo. Essayez un fichier JPEG ou PNG.'],
+  ])('shows a readable decoder error and prevents uploading on failure (%j)', async (error, message) => {
+    vi.mocked(pipeline.decode).mockRejectedValue(error)
+    render(<ConverterPanel file={new File(['x'], 'photo.HEIC')} display={display} onUploaded={() => {}} onReset={() => {}} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    expect(screen.queryByText(/\[object Object\]/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: "Envoyer à l'écran" })).toBeDisabled()
+    expect(pipeline.convertBitmap).not.toHaveBeenCalled()
+    expect(api.uploadToQueue).not.toHaveBeenCalled()
+  })
+
   it('shows new queue entries and remote order after a successful reorder', async () => {
     vi.mocked(api.reorderQueue).mockResolvedValue([entry('b'), entry('a')])
     const { rerender } = render(<QueuePanel queue={[entry('a'), entry('b')]} onChange={() => {}} />)

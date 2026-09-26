@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { convertBitmap, decode, type ConvertResult } from '../lib/converter/pipeline'
 import type { DisplayInfo } from '../lib/api'
 import { uploadToQueue } from '../lib/api'
+import { errorMessage } from '../lib/errorMessage'
 import { PreviewCanvas } from './PreviewCanvas'
 import { Icon } from './Icon'
 
@@ -46,7 +47,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
     prepared.width === display.width && prepared.height === display.height &&
     prepared.offsetX === offsetX && prepared.offsetY === offsetY
 
-  // Decode the file once. HEIC may take 1-2s via WASM; everything else is instant.
+  // Decode the file once; HEIC may need the lazily loaded fallback decoder.
   useEffect(() => {
     let cancelled = false
     let acquiredBitmap: ImageBitmap | null = null
@@ -70,7 +71,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
         })
       } catch (err) {
         if (cancelled) return
-        setStatus({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
+        setStatus({ kind: 'error', message: errorMessage(err, 'Impossible de lire cette photo. Essayez un fichier JPEG ou PNG.') })
       }
     })()
 
@@ -99,7 +100,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
         setStatus((s) => (s.kind === 'uploading' || s.kind === 'done' ? s : { kind: 'ready', result: r }))
       } catch (err) {
         if (cancelled) return
-        setStatus({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
+        setStatus({ kind: 'error', message: errorMessage(err, 'Impossible de préparer le cadrage de cette photo.') })
       }
     })()
     return () => {
@@ -115,7 +116,7 @@ export function ConverterPanel({ file, display, onUploaded, onReset }: Converter
       setStatus({ kind: 'done', sizeKb: Math.round(result.pngBlob.size / 1024) })
       onUploaded()
     } catch (err) {
-      setStatus({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
+      setStatus({ kind: 'error', message: errorMessage(err, 'Impossible d’envoyer cette photo. Réessayez.') })
     }
   }
 

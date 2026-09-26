@@ -33,7 +33,7 @@ export interface ConvertResult {
   pngBlob: Blob
   /** Total milliseconds spent in the pipeline. */
   durationMs: number
-  /** Whether the input had to go through HEIC decode. */
+  /** Whether the input was recognized as HEIC/HEIF. */
   wasHeic: boolean
 }
 
