@@ -8,6 +8,7 @@ import {
   updateSettings,
 } from '../lib/api'
 import { useWebSocket } from '../lib/useWebSocket'
+import { Icon } from './Icon'
 
 interface SettingsPanelProps {
   onChange: () => void
@@ -37,17 +38,17 @@ const CHANGE_MODES: { id: ChangeModeApi; label: string; help: string }[] = [
   {
     id: 'daily',
     label: 'Quotidien',
-    help: 'Change la photo une fois par jour, à l\'heure choisie.',
+    help: 'Une nouvelle photo chaque jour, à l’heure de votre choix.',
   },
   {
     id: 'interval',
     label: 'Intervalle',
-    help: 'Change toutes les N minutes (1 à 1440).',
+    help: 'Faites défiler vos photos à intervalles réguliers.',
   },
   {
     id: 'manual',
     label: 'Manuel uniquement',
-    help: 'Le scheduler ne change rien tout seul — tu utilises Next/Prev.',
+    help: 'Prenez le temps. Vous choisissez quand changer de photo.',
   },
 ]
 
@@ -204,189 +205,238 @@ export function SettingsPanel({ onChange, health, revision = 0 }: SettingsPanelP
 
   if (!settings) {
     return error ? (
-      <p className="text-red-600 dark:text-red-400 text-sm">Erreur : {error}</p>
+      <p className="bento-alert" role="alert">Erreur : {error}</p>
     ) : (
-      <p className="text-neutral-500 text-sm">Chargement…</p>
+      <p className="bento-card p-8 text-sm text-neutral-500" role="status">Chargement…</p>
     )
   }
 
   return (
-    <div className="space-y-8 max-w-2xl">
-      <section>
-        <h2 className="text-xl font-semibold mb-1">Paramètres</h2>
-        <p className="text-sm text-neutral-500">
-          Les changements sont enregistrés automatiquement.
-          {saving && <span className="ml-2 text-indigo-600 dark:text-indigo-400">Enregistrement…</span>}
-          {!saving && saved && (
-            <span className="ml-2 text-green-600 dark:text-green-400">✓ Enregistré</span>
-          )}
-        </p>
-        {error && (
-          <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
-        )}
-      </section>
-
-      <fieldset disabled={saving} className="space-y-3">
-        <legend className="text-sm font-medium mb-2">Fréquence de changement</legend>
-        <div className="space-y-2">
-          {CHANGE_MODES.map((mode) => (
-            <label
-              key={mode.id}
-              className={[
-                'flex gap-3 rounded-lg border p-3 cursor-pointer transition',
-                settings.change_mode === mode.id
-                  ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/30'
-                  : 'border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-900',
-              ].join(' ')}
-            >
-              <input
-                type="radio"
-                name="change_mode"
-                value={mode.id}
-                checked={settings.change_mode === mode.id}
-                onChange={() => patch({ change_mode: mode.id })}
-                className="mt-1"
-              />
-              <div className="flex-1">
-                <p className="font-medium">{mode.label}</p>
-                <p className="text-xs text-neutral-500">{mode.help}</p>
-                {settings.change_mode === mode.id && mode.id === 'daily' && (
-                  <label className="block mt-2 text-sm">
-                    Heure :{' '}
-                    <input
-                      type="number"
-                      min={0}
-                      max={23}
-                      value={settings.change_hour}
-                      onChange={(e) =>
-                        patch({ change_hour: Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0)) })
-                      }
-                      className="ml-2 w-16 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
-                    />
-                    <span className="ml-1 text-neutral-500">h (0-23)</span>
-                  </label>
-                )}
-                {settings.change_mode === mode.id && mode.id === 'interval' && (
-                  <label className="block mt-2 text-sm">
-                    Intervalle :{' '}
-                    <input
-                      type="number"
-                      min={1}
-                      max={1440}
-                      value={settings.change_interval_minutes}
-                      onChange={(e) =>
-                        patch({
-                          change_interval_minutes: Math.max(
-                            1,
-                            Math.min(1440, parseInt(e.target.value, 10) || 60),
-                          ),
-                        })
-                      }
-                      className="ml-2 w-20 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
-                    />
-                    <span className="ml-1 text-neutral-500">minutes (1-1440)</span>
-                  </label>
-                )}
-              </div>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
-      <fieldset disabled={saving} className="space-y-2">
-        <legend className="text-sm font-medium mb-2">Saturation des couleurs</legend>
-        <input
-          type="range"
-          min={0}
-          max={2}
-          step={0.05}
-          value={satLocal ?? settings.saturation}
-          onChange={(e) => setSatLocal(parseFloat(e.target.value))}
-          onPointerUp={() => satLocal !== null && patch({ saturation: satLocal })}
-          onKeyUp={() => satLocal !== null && patch({ saturation: satLocal })}
-          className="w-full"
-        />
-        <div className="flex justify-between text-xs text-neutral-500">
-          <span>Doux</span>
-          <span>Fidèle (1.0)</span>
-          <span className="font-medium text-neutral-700 dark:text-neutral-200">
-            {(satLocal ?? settings.saturation).toFixed(2)}
-          </span>
-          <span>Punchy</span>
-        </div>
-        <p className="text-xs text-neutral-500">
-          <strong>1.0</strong> = couleurs les plus fidèles (recommandé). Au-delà, un boost
-          progressif rend l'image plus punchy (limité par l'écran). S'applique à la
-          prochaine photo affichée.
-        </p>
-      </fieldset>
-
-      <section className="space-y-3 border-t border-neutral-200 dark:border-neutral-800 pt-6">
+    <div className="space-y-7">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold mb-1">Mise à jour</h2>
-          <p className="text-sm text-neutral-500">
-            Version installée : <span className="font-mono">v{currentVersion}</span>
-            {updateInfo && !updateInfo.update_available && updateInfo.latest && (
-              <span className="ml-2 text-green-600 dark:text-green-400">✓ À jour</span>
-            )}
-            {updateInfo?.update_available && (
-              <span className="ml-2 text-indigo-600 dark:text-indigo-400">
-                Nouvelle version : v{updateInfo.latest}
-              </span>
-            )}
+          <p className="bento-eyebrow mb-3">À votre façon</p>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Le bon rythme.</h1>
+          <p className="mt-2 text-sm text-neutral-500 sm:text-base">
+            Quelques réglages, un cadre qui vous ressemble.
           </p>
         </div>
+        <p className="text-xs text-neutral-500" role="status">
+          {saving ? (
+            <span className="bento-badge">Enregistrement…</span>
+          ) : saved ? (
+            <span className="bento-badge bento-badge-success">✓ Enregistré</span>
+          ) : 'Enregistrement automatique'}
+        </p>
+      </header>
 
-        {updateInfo?.update_available ? (
-          <button
-            type="button"
-            onClick={launchUpdate}
-            disabled={busy}
-            className="px-4 py-2 rounded-lg text-white transition bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {busy ? 'Mise à jour en cours…' : `Mettre à jour vers v${updateInfo.latest}`}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={checkForUpdates}
-            disabled={busy || phase === 'checking'}
-            className="px-4 py-2 rounded-lg border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition disabled:opacity-50"
-          >
-            {phase === 'checking' ? 'Vérification…' : 'Vérifier les mises à jour'}
-          </button>
-        )}
+      {error && <p className="bento-alert" role="alert">{error}</p>}
 
-        {busy && (
-          <div className="space-y-2">
-            <div className="h-2 w-full rounded bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
+      <div className="grid items-start gap-5 lg:grid-cols-[1.1fr_1fr]">
+        <section className="bento-card p-5 sm:p-7 lg:row-span-2">
+          <div className="mb-7 flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+              <Icon name="clock" size={21} />
+            </span>
+            <h2 className="bento-panel-heading">Fréquence de changement</h2>
+          </div>
+          <fieldset disabled={saving} className="space-y-3">
+            <legend className="sr-only">Fréquence de changement</legend>
+            {CHANGE_MODES.map((mode) => (
               <div
-                className="h-full bg-indigo-600 transition-all duration-500"
-                style={{ width: `${STAGE_PCT[stage] ?? 10}%` }}
-              />
-            </div>
-            <p className="text-sm text-neutral-500">
-              {phase === 'restarting'
-                ? 'Redémarrage… la page se rechargera automatiquement.'
-                : STAGE_LABELS[stage] ?? 'Mise à jour…'}
-            </p>
-            {log.length > 0 && (
-              <div className="max-h-40 overflow-y-auto rounded-lg bg-neutral-900 p-2 font-mono text-xs text-green-300">
-                {log.map((line, i) => (
-                  <div key={i} className="whitespace-pre-wrap break-all">
-                    {line}
+                key={mode.id}
+                className={[
+                  'rounded-2xl border p-4 transition-colors sm:p-5',
+                  settings.change_mode === mode.id
+                    ? 'border-neutral-900 bg-neutral-50'
+                    : 'border-neutral-200/80 hover:border-neutral-300',
+                ].join(' ')}
+              >
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="radio"
+                    name="change_mode"
+                    value={mode.id}
+                    checked={settings.change_mode === mode.id}
+                    onChange={() => patch({ change_mode: mode.id })}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-neutral-950"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold">{mode.label}</span>
+                    <span className="mt-1.5 block text-xs leading-relaxed text-neutral-500">{mode.help}</span>
+                  </span>
+                </label>
+                {settings.change_mode === mode.id && mode.id === 'daily' && (
+                  <div className="ml-7 mt-5 border-t border-neutral-200/80 pt-4">
+                    <label htmlFor="change-hour" className="mb-2 block text-xs font-medium text-neutral-600">
+                      Chaque jour à
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="change-hour"
+                        type="number"
+                        min={0}
+                        max={23}
+                        value={settings.change_hour}
+                        onChange={(e) =>
+                          patch({ change_hour: Math.max(0, Math.min(23, parseInt(e.target.value, 10) || 0)) })
+                        }
+                        className="bento-field w-20 text-sm tabular-nums"
+                      />
+                      <span className="text-sm text-neutral-500">h <span className="ml-1 text-xs">(0–23)</span></span>
+                    </div>
                   </div>
-                ))}
-                <div ref={logEndRef} />
+                )}
+                {settings.change_mode === mode.id && mode.id === 'interval' && (
+                  <div className="ml-7 mt-5 border-t border-neutral-200/80 pt-4">
+                    <label htmlFor="change-interval" className="mb-2 block text-xs font-medium text-neutral-600">
+                      Une nouvelle photo toutes les
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        id="change-interval"
+                        type="number"
+                        min={1}
+                        max={1440}
+                        value={settings.change_interval_minutes}
+                        onChange={(e) =>
+                          patch({
+                            change_interval_minutes: Math.max(
+                              1,
+                              Math.min(1440, parseInt(e.target.value, 10) || 60),
+                            ),
+                          })
+                        }
+                        className="bento-field w-24 text-sm tabular-nums"
+                      />
+                      <span className="text-sm text-neutral-500">minutes</span>
+                    </div>
+                    <p className="mt-2 text-xs text-neutral-400">De 1 à 1 440 minutes.</p>
+                  </div>
+                )}
               </div>
+            ))}
+          </fieldset>
+          <p className="mt-6 text-xs leading-relaxed text-neutral-500">
+            Le cadre affiche les photos dans l'ordre de votre file d'attente.
+          </p>
+        </section>
+
+        <section className="bento-card p-5 sm:p-7">
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Icon name="image" size={21} />
+              </span>
+              <h2 className="bento-panel-heading">Saturation des couleurs</h2>
+            </div>
+            <output htmlFor="saturation" className="bento-badge tabular-nums">
+              {(satLocal ?? settings.saturation).toFixed(2)}
+            </output>
+          </div>
+          <fieldset disabled={saving}>
+            <legend className="sr-only">Saturation des couleurs</legend>
+            <label htmlFor="saturation" className="sr-only">Saturation des couleurs</label>
+            <input
+              id="saturation"
+              type="range"
+              min={0}
+              max={2}
+              step={0.05}
+              value={satLocal ?? settings.saturation}
+              onChange={(e) => setSatLocal(parseFloat(e.target.value))}
+              onPointerUp={() => satLocal !== null && patch({ saturation: satLocal })}
+              onKeyUp={() => satLocal !== null && patch({ saturation: satLocal })}
+              className="h-7 w-full cursor-pointer accent-neutral-950"
+            />
+            <div className="mt-1 flex justify-between text-xs text-neutral-500">
+              <span>Doux</span>
+              <span>Fidèle · 1.0</span>
+              <span>Intense</span>
+            </div>
+          </fieldset>
+          <p className="mt-5 text-xs leading-relaxed text-neutral-500">
+            <strong className="font-medium text-neutral-700">1.0 est recommandé</strong> pour des couleurs fidèles.
+            Le réglage s'applique à la prochaine photo affichée, dans les limites de l'écran.
+          </p>
+        </section>
+
+        <section className="bento-card p-5 sm:p-7">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600">
+                <Icon name="refresh" size={20} />
+              </span>
+              <h2 className="bento-panel-heading">Mise à jour</h2>
+            </div>
+            {updateInfo && !updateInfo.update_available && updateInfo.latest && (
+              <span className="bento-badge bento-badge-success">À jour</span>
             )}
           </div>
-        )}
+          <p className="text-sm text-neutral-500">
+            Inky Studio <span className="font-medium text-neutral-900">v{currentVersion}</span>
+          </p>
+          {updateInfo?.update_available && (
+            <p className="mt-2 text-sm text-blue-600">La version {updateInfo.latest} est disponible.</p>
+          )}
+          <div className="mt-5">
+            {updateInfo?.update_available ? (
+              <button
+                type="button"
+                onClick={launchUpdate}
+                disabled={busy}
+                className="bento-button bento-button-primary"
+              >
+                {busy ? 'Mise à jour en cours…' : `Mettre à jour vers v${updateInfo.latest}`}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={checkForUpdates}
+                disabled={busy || phase === 'checking'}
+                className="bento-button bento-button-secondary"
+              >
+                {phase === 'checking' ? 'Vérification…' : 'Vérifier les mises à jour'}
+              </button>
+            )}
+          </div>
 
-        {phase === 'error' && updateError && (
-          <p className="text-sm text-red-600 dark:text-red-400">Erreur : {updateError}</p>
-        )}
-      </section>
+          {busy && (
+            <div className="mt-5 space-y-3">
+              <div
+                className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100"
+                role="progressbar"
+                aria-label="Progression de la mise à jour"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={STAGE_PCT[stage] ?? 10}
+              >
+                <div
+                  className="h-full rounded-full bg-blue-600 transition-all duration-500"
+                  style={{ width: `${STAGE_PCT[stage] ?? 10}%` }}
+                />
+              </div>
+              <p className="text-xs leading-relaxed text-neutral-500" role="status">
+                {phase === 'restarting'
+                  ? 'Redémarrage… la page se rechargera automatiquement.'
+                  : STAGE_LABELS[stage] ?? 'Mise à jour…'}
+              </p>
+              {log.length > 0 && (
+                <div className="max-h-40 overflow-y-auto rounded-xl bg-neutral-950 p-3 font-mono text-xs text-neutral-300">
+                  {log.map((line, i) => (
+                    <div key={i} className="whitespace-pre-wrap break-all">{line}</div>
+                  ))}
+                  <div ref={logEndRef} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {phase === 'error' && updateError && (
+            <p className="bento-alert mt-4" role="alert">Erreur : {updateError}</p>
+          )}
+        </section>
+      </div>
     </div>
   )
 }

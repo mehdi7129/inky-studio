@@ -19,6 +19,7 @@ import { CSS } from '@dnd-kit/utilities'
 import type { QueueEntry } from '../lib/api'
 import { photoFileUrl, removeFromQueue, reorderQueue } from '../lib/api'
 import { formatAbsolute, formatBytes } from '../lib/format'
+import { Icon } from './Icon'
 
 interface QueuePanelProps {
   queue: QueueEntry[]
@@ -80,52 +81,59 @@ export function QueuePanel({ queue, onChange }: QueuePanelProps) {
     }
   }
 
-  if (queue.length === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed border-neutral-300 dark:border-neutral-700 p-10 text-center">
-        <p className="font-medium text-neutral-700 dark:text-neutral-200">
-          File d'attente vide
-        </p>
-        <p className="text-sm text-neutral-500 mt-1">
-          Ajoute une photo depuis le tableau de bord.
-        </p>
-      </div>
-    )
-  }
-
   return (
-    <div className="space-y-4">
-      <header className="flex items-center justify-between flex-wrap gap-3">
+    <div className="space-y-7">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold">File d'attente</h2>
-          <p className="text-sm text-neutral-500">
-            {queue.length} photo{queue.length > 1 ? 's' : ''} · glisse pour réordonner
+          <p className="bento-eyebrow mb-3">Votre collection</p>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Les prochaines vues.</h1>
+          <p className="mt-2 text-sm text-neutral-500 sm:text-base">
+            Vos photos attendent leur tour. À vous de choisir l'ordre.
           </p>
         </div>
-        {busy && <p className="text-xs text-neutral-500">Mise à jour…</p>}
+        <span className="bento-badge">{queue.length} photo{queue.length > 1 ? 's' : ''}</span>
       </header>
 
-      {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30 p-3 text-sm text-red-700 dark:text-red-300">
-          {error}
-        </div>
-      )}
+      {error && <div className="bento-alert" role="alert">{error}</div>}
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={liveIds} strategy={verticalListSortingStrategy}>
-          <ul className="space-y-2">
-            {orderedEntries.map((entry, idx) => (
-              <SortableRow
-                key={entry.photo.id}
-                entry={entry}
-                index={idx}
-                disabled={busy}
-                onRemove={() => handleRemove(entry.photo.id)}
-              />
-            ))}
-          </ul>
-        </SortableContext>
-      </DndContext>
+      {queue.length === 0 ? (
+        <section className="bento-card flex min-h-80 flex-col items-center justify-center px-6 py-14 text-center">
+          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+            <Icon name="image" size={25} />
+          </div>
+          <h2 className="text-xl font-semibold tracking-tight">File d'attente vide</h2>
+          <p className="mt-2 max-w-sm text-sm leading-relaxed text-neutral-500">
+            Ajoute une photo depuis le tableau de bord.
+          </p>
+        </section>
+      ) : (
+        <section className="bento-card p-4 sm:p-6" aria-label="File d'attente" aria-busy={busy}>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="bento-panel-heading">Dans l'ordre d'affichage</h2>
+            <p className="text-xs text-neutral-500" role="status">
+              {busy ? 'Mise à jour…' : 'Glissez les photos pour changer leur ordre'}
+            </p>
+          </div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={liveIds} strategy={verticalListSortingStrategy}>
+              <ul className="space-y-3">
+                {orderedEntries.map((entry, idx) => (
+                  <SortableRow
+                    key={entry.photo.id}
+                    entry={entry}
+                    index={idx}
+                    disabled={busy}
+                    onRemove={() => handleRemove(entry.photo.id)}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+          <p className="mt-5 text-xs leading-relaxed text-neutral-500">
+            Au clavier : sélectionnez la poignée, appuyez sur Espace, puis utilisez les flèches.
+          </p>
+        </section>
+      )}
     </div>
   )
 }
@@ -153,43 +161,44 @@ function SortableRow({ entry, index, onRemove, disabled }: SortableRowProps) {
     <li
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3"
+      className="flex items-center gap-2 rounded-2xl border border-neutral-200/70 bg-white p-2.5 transition-shadow sm:gap-4 sm:p-3"
     >
       <button
         type="button"
         disabled={disabled}
         {...attributes}
         {...listeners}
-        className="cursor-grab active:cursor-grabbing px-2 py-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
-        aria-label="Réordonner"
+        className="bento-button bento-button-quiet h-11 w-8 shrink-0 touch-none cursor-grab px-0 text-neutral-500 active:cursor-grabbing sm:w-10"
+        aria-label={`Réordonner ${entry.photo.original_filename}`}
         title="Glisse pour réordonner"
       >
-        ⋮⋮
+        <Icon name="grip" size={18} />
       </button>
-      <span className="text-xs font-mono text-neutral-400 w-6 tabular-nums">{index + 1}</span>
+      <span className="hidden w-5 shrink-0 text-center text-xs tabular-nums text-neutral-400 sm:block">{String(index + 1).padStart(2, '0')}</span>
       <img
         src={photoFileUrl(entry.photo.id)}
         alt={entry.photo.original_filename}
-        className="w-20 h-12 object-cover rounded-md"
-        style={{ imageRendering: 'pixelated' }}
+        className="h-16 w-20 shrink-0 rounded-xl object-cover sm:h-20 sm:w-32"
       />
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate" title={entry.photo.original_filename}>
+        <p className="truncate text-sm font-medium sm:text-base" title={entry.photo.original_filename}>
           {entry.photo.original_filename}
         </p>
-        <p className="text-xs text-neutral-500">
-          {formatBytes(entry.photo.size_bytes)} · ajoutée {formatAbsolute(entry.added_at)}
+        <p className="mt-1 truncate text-xs text-neutral-500">
+          <span className="hidden sm:inline">{formatBytes(entry.photo.size_bytes)} · </span>
+          ajoutée {formatAbsolute(entry.added_at)}
         </p>
+        {index === 0 && <span className="mt-2 inline-block text-[11px] font-medium text-blue-600">À suivre sur le cadre</span>}
       </div>
       <button
         type="button"
         onClick={onRemove}
         disabled={disabled}
-        className="px-2 py-1 text-sm text-neutral-500 hover:text-red-600 dark:hover:text-red-400"
-        aria-label="Retirer de la file"
+        className="bento-button bento-button-quiet h-11 w-10 shrink-0 px-0 text-neutral-500 hover:bg-red-50 hover:text-red-600"
+        aria-label={`Retirer ${entry.photo.original_filename} de la file`}
         title="Retirer de la file"
       >
-        ✕
+        <Icon name="close" size={18} />
       </button>
     </li>
   )

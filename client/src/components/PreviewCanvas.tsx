@@ -4,9 +4,10 @@ interface PreviewCanvasProps {
   image: ImageData | null
   label: string
   className?: string
+  aspectRatio?: number
 }
 
-export function PreviewCanvas({ image, label, className }: PreviewCanvasProps) {
+export function PreviewCanvas({ image, label, className, aspectRatio = 5 / 3 }: PreviewCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
@@ -20,21 +21,20 @@ export function PreviewCanvas({ image, label, className }: PreviewCanvasProps) {
   }, [image])
 
   return (
-    <figure className={['flex flex-col gap-2', className ?? ''].join(' ')}>
-      <figcaption className="text-xs uppercase tracking-wider text-neutral-500">
+    <figure className={['photo-preview', className ?? ''].join(' ')}>
+      <figcaption>
         {label}
       </figcaption>
-      <div className="aspect-[5/3] bg-neutral-200 dark:bg-neutral-800 rounded-lg overflow-hidden border border-neutral-300 dark:border-neutral-700">
+      <div className="photo-preview-surface" style={{ aspectRatio: image ? image.width / image.height : aspectRatio }}>
         {image ? (
           <canvas
             ref={canvasRef}
-            className="w-full h-full object-contain"
-            style={{ imageRendering: 'pixelated' }}
+            role="img"
             aria-label={label}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-sm text-neutral-500">
-            (en attente)
+          <div className="photo-preview-waiting">
+            Préparation de l’aperçu…
           </div>
         )}
       </div>
