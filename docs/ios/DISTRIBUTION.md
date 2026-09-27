@@ -37,7 +37,7 @@ Testing notes: confirm local network permission, first password login, Face ID o
 
 ## Privacy and signing
 
-There is no analytics, advertising, tracking or developer-controlled cloud service. Selected photos are sent only to the user-configured frame. Source photo metadata is removed from exported PNGs. The included privacy manifest declares app-local UserDefaults use (`CA92.1`). The app uses Apple's built-in encryption and declares no non-exempt encryption.
+There is no analytics, advertising, tracking or developer-controlled cloud service. Selected photos are sent only to the user-configured frame. Source photo metadata is removed from exported PNGs. The included privacy manifest declares app-local UserDefaults use (`CA92.1`). Delivered build 3 uses Apple's built-in encryption. The Bluetooth candidate additionally embeds Mbed TLS, so it removes the former automatic exemption flag and requires the export questionnaire to be answered for the new build; see [encryption inventory](ENCRYPTION-INVENTORY.md).
 
 Archive/export success proves the package can be signed. It does not prove App Store Connect upload, Apple processing, TestFlight availability or physical Face ID success; record those separately in the validation log.
 

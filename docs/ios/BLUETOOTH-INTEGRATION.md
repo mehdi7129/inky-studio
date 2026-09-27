@@ -93,8 +93,21 @@ ils ne remplacent pas un accès de secours lors de la première qualification.
   après découverte ; le client consulte maintenant la limite courante.
   L’empreinte de ce banc arrive par SSH connu ; cela ne valide pas le scan du QR
   physique. Radio rétablie éteinte/bloquée après essai, service photo actif.
+- Le helper a ensuite été installé sur le Pi par Mehdi. Service actif sous
+  `inky-network`, code root-owned `0555`, socket de groupe `0660`,
+  `NoNewPrivileges=yes` et `health` protocole 1 vérifiés. Le scan réel renvoie
+  un réseau WPA2 ; les noms des réseaux ne sont pas conservés dans les preuves.
+- Le backend candidat `9351ae8` a été qualifié séparément dans un environnement
+  isolé sur le Pi : [11 contrôles PASS](reviews/2026-09-27-bluetooth/pi-backend.json).
+  BlueZ réel, HTTP/HTTPS sur loopback, auth/session commune, TLS 1.3,
+  claim et statut owner via un flux GATT en mémoire, lifecycle et QR mock.
+  Zéro appel SPI ; le vrai helper ne reçoit que `health`, ses mutations sont
+  bloquées et le scan Wi-Fi est ignoré dans ce banc. Les données temporaires
+  ont été supprimées ; le service photo et le helper restent actifs.
+  Cela complète la preuve radio Mac ↔ Pi, sans valider l’adoption QR physique
+  ni le changement de réseau.
 - Aucun test réel de changement Wi-Fi, de rollback NetworkManager ou de coupure
-  électrique n’est encore déclaré réussi. Le helper n’est pas installé en production.
+  électrique n’est encore déclaré réussi. Le backend photo reste en `0.5.0-rc.1`.
 
 Test matériel suivant : adoption sur iPhone, essai avec mauvais mot de passe,
 retour au réseau initial, puis transfert vers un partage de connexion **2,4 GHz**
@@ -115,6 +128,24 @@ qui utilisait seulement le chiffrement système Apple. L’ancienne valeur
 Connect doit être renseigné pour le nouveau build. Aucune réponse d’exemption
 n’est supposée. Voir [ENCRYPTION-INVENTORY.md](ENCRYPTION-INVENTORY.md).
 
-Un nouveau numéro de build, la qualification matérielle et la déclaration export
-précèdent la prochaine distribution TestFlight. La sortie publique et InkyOS
-restent des lots ultérieurs.
+La prochaine **bêta interne de qualification** peut précisément servir aux tests
+iPhone et Wi-Fi encore ouverts. Leur réussite complète ne précède donc pas
+nécessairement cette bêta. Avant de la distribuer, préparer un nouveau numéro de
+build et résoudre le contrôle export avec les réponses exactes et les documents
+effectivement demandés. Le dialogue documentaire au niveau de l’app, avec France
+`Oui`, a demandé un formulaire français puis a été annulé ; le questionnaire du
+nouveau build/TestFlight n’a pas encore été consulté. Ce constat ne suffit pas à
+conclure au blocage de toute bêta interne.
+
+Le merge final et la release publique attendent la fermeture des critères
+matériels, notamment adoption iPhone et commit/rollback NetworkManager réel.
+La PR reste draft pendant cette qualification ; la bêta interne peut la précéder.
+La sortie publique nécessite également son parcours de conformité et de review.
+InkyOS reste un lot ultérieur. TestFlight demeure en `1.0.0 (3)` à ce stade.
+
+Préparation locale sur le Pi : `/home/pi/inky-upgrades/bluetooth-c2-9351ae8/`
+contient les scripts installés et une copie du backend pour qualification isolée.
+Son venv ne partage pas les packages système (`pip check` passe). Il ne contient
+pas encore les dépendances du driver e-ink et ne doit pas remplacer le venv de
+production. Le numéro interne `0.5.0rc1` de cette copie n’en fait pas une release :
+la source testée est le commit de PR `9351ae8`.
