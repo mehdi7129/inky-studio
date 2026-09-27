@@ -1,6 +1,6 @@
 # iPhone and TestFlight distribution
 
-The native app has an independent version (`1.0.0`, candidate build `4`; delivered beta `3`). It does not change the Raspberry release version. Bundle ID: `fr.mehdiguiard.inkystudio`. The project currently uses Mehdi's signing team `X524H8XA4L`; another developer must select their own team and bundle ID.
+The native app has an independent version (`1.0.0`, source candidate build `5`; delivered beta `3`). Build 4 is uploaded but awaits export compliance. Build 5 adds the offline demo and first-connection guide; its archive, upload and processing checkpoints are tracked in [PR #12](https://github.com/mehdi7129/inky-studio/pull/12). A source version is not proof of distribution. It does not change the Raspberry release version. Bundle ID: `fr.mehdiguiard.inkystudio`. The project currently uses Mehdi's signing team `X524H8XA4L`; another developer must select their own team and bundle ID.
 
 ## Personal iPhone
 
@@ -33,7 +33,9 @@ Create the **Inky Studio** app record in App Store Connect with the bundle ID ab
 
 The app requires a local Inky Studio frame. Beta description: **« Gérez les photos de votre cadre Inky depuis votre iPhone : import, cadrage, file d’attente, historique et programmation. Connectez votre iPhone au même Wi-Fi que le Raspberry. »**
 
-Testing notes: confirm local network permission, first password login, Face ID opt-in, logout and biometric login, password fallback, HEIC import/crop/upload, next/previous refresh and background/reconnect. The app does not include a remotely reachable demonstration server for external reviewers.
+Testing notes: confirm local network permission, first password login, Face ID opt-in, logout and biometric login, password fallback, HEIC import/crop/upload, next/previous refresh and background/reconnect. Source candidate build 5 offers **Explorer la démo** without hardware or credentials, followed by **Préparer mon cadre** for real setup. This local demo does not simulate physical Bluetooth, Face ID, camera hardware or e-ink refresh; there is no remotely reachable demonstration server. See [the review walkthrough](DEMO-AND-ONBOARDING.md).
+
+Keep the next qualification upload internal-only (`testFlightInternalTestingOnly=true`) and retain manual group assignment. An internal-only upload cannot be reused as the public App Store candidate. Do not add an encryption exemption flag or assign testers while the required compliance gate remains unresolved.
 
 ## Privacy and signing
 

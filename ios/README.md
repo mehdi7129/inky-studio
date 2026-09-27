@@ -1,12 +1,18 @@
 # Inky Studio for iPhone
 
-Native SwiftUI companion for Inky Studio v0.4.2+. Requires iOS 18 or newer and a Raspberry reachable on the same Wi-Fi network. No third-party Swift dependencies or cloud account. The optional password-change feature requires a compatible updated server; normal photo workflows remain compatible with v0.4.2.
+Native SwiftUI companion for Inky Studio v0.4.2+. Requires iOS 18 or newer. Photo transfer requires a Raspberry reachable on the same local network; the offline demo needs no frame. There is no cloud account. The local `InkyTLS` Swift package embeds pinned Mbed TLS 4.1.1 for secure Bluetooth provisioning. Password changes and Bluetooth require a compatible updated server; normal photo workflows remain compatible with v0.4.2.
+
+The available beta is build 3. Build 4 contains Bluetooth but awaits export compliance; source candidate build 5 also includes the demo and connection guide. Source/build success does not establish TestFlight availability. See [delivery status](../docs/ios/TESTFLIGHT-DELIVERY.md).
 
 ## Run
 
 Open `InkyStudio.xcodeproj`, select the **InkyStudio** scheme and an iPhone simulator or physical iPhone, then Run. The checked-in project is ready to build; XcodeGen is only needed when adding source files or changing `project.yml`.
 
 ```bash
+# A fresh checkout needs the local TLS binary artifact. Requires Xcode, CMake
+# and Python 3.12+; downloads the hash-verified pinned upstream source.
+scripts/build-mbedtls-apple.sh
+
 # From the repository root, after structural project changes:
 xcodegen generate --spec ios/project.yml
 
@@ -26,6 +32,8 @@ Enter the Raspberry hostname (for example `inkyold.local:8000`) or its IP addres
 - Native camera capture or Photos picker, HEIC/JPEG/PNG decoding, EXIF orientation, pan/pinch crop, zoom/reset, exact panel dimensions, SDR/sRGB PNG without private source metadata. Camera permission is requested on use; captures are not automatically saved to Photos. The Pi alone handles palette quantization.
 - Authenticated password change when the server advertises support, renewed session and updated biometric credential. A lost response requires an explicit reconnect instead of repeating the mutation.
 - Foreground WebSocket updates, reconnect with capped backoff, state refresh after return, independent polling to recover missed events, readable errors and offline state.
+- **Explorer la démo:** the same four tabs with temporary local illustrations, crop/import, queue/history, settings, reset and exit; no connection to a Raspberry and no change to real credentials.
+- **Préparer mon cadre:** an in-app first-connection guide, also available in Settings. [Demo behavior and review walkthrough](../docs/ios/DEMO-AND-ONBOARDING.md).
 
 ## Credentials and transport
 
@@ -35,9 +43,16 @@ Only the frame address and biometric preference are stored in UserDefaults. Cook
 
 The default Pi uses HTTP on the local network. `NSAllowsLocalNetworking` permits local origins; public HTTP hosts are not exempted from ATS, and TLS certificate checks are never bypassed. Cross-origin redirects cannot forward passwords or cookies. Do not expose the Pi's HTTP service directly on the internet.
 
-Bluetooth Wi-Fi provisioning is not yet integrated into the app. The independent
-[Mac/Pi diagnostic bench](../docs/ios/BLUETOOTH-BENCH.md) validates transport only;
-it must never carry Wi-Fi or frame credentials.
+The source includes secure Bluetooth Wi-Fi provisioning, initially associated
+through the frame's physical QR. After association, the app verifies the frame's
+identity for HTTPS and does not silently fall back to HTTP. The candidate still
+needs physical iPhone QR adoption and Wi-Fi commit/rollback qualification;
+Simulator and Mac/Pi bench results do not establish those outcomes. See
+[Bluetooth integration](../docs/ios/BLUETOOTH-INTEGRATION.md).
+
+The earlier [Mac/Pi diagnostic bench](../docs/ios/BLUETOOTH-BENCH.md) validates
+transport only and must never carry Wi-Fi or frame credentials. It is distinct
+from the authenticated provisioning implementation.
 
 ## Tests
 
@@ -62,6 +77,8 @@ Simulator tests use ad-hoc signing so Keychain entitlements are present; unsigne
 Start the fixture with `python3 ios/scripts/mock-server.py --biometric-device <BOOTED_SIMULATOR_UDID>` instead of the plain fixture. It verifies that the target is a simulator, enables simulated enrollment, and provides a loopback-only test endpoint to emit a biometric match using Apple's public `devicectl` commands. Run the UI tests on that same simulator, with ad-hoc signing enabled. The biometric case skips when this mode is absent; the normal CI suite uses Xcode 16.4.
 
 This exercises the actual app Keychain path and password fallback. It does not replace physical-device verification.
+
+On 2026-09-27, the build 5 source passed this journey on an isolated iPhone 18 Pro Max / iOS 27 Simulator: opt-in, protected storage, biometric match, reconnect, password fallback and disable. The test dismisses the iOS 27 password-save sheet with a bounded retry and checks that it actually closes. Evidence is retained locally under ignored `build/ios/demo-onboarding/FaceIDBuild5Retry.xcresult`.
 
 ## Device and TestFlight delivery
 

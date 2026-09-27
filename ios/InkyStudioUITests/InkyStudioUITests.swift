@@ -32,8 +32,10 @@ final class InkyStudioUITests: XCTestCase {
     }
 
     /// Requires Xcode 27 and the fixture's opt-in --biometric-device mode.
-    func testFaceIDReconnectAndPasswordFallback() throws {
-        let configuration = try Data(contentsOf: fixtureURL.appendingPathComponent("__test/biometrics"))
+    func testFaceIDReconnectAndPasswordFallback() async throws {
+        let configurationRequest = URLRequest(url: fixtureURL.appendingPathComponent("__test/biometrics"), timeoutInterval: 5)
+        let (configuration, configurationResponse) = try await URLSession.shared.data(for: configurationRequest)
+        XCTAssertEqual((configurationResponse as? HTTPURLResponse)?.statusCode, 200)
         let enabled = (try JSONSerialization.jsonObject(with: configuration) as? [String: Bool])?["enabled"] == true
         try XCTSkipUnless(enabled, "Use mock-server.py --biometric-device <booted-simulator-UDID> for Face ID.")
         launchFixtureApp()
@@ -61,13 +63,9 @@ final class InkyStudioUITests: XCTestCase {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data(#"{"event":"success"}"#.utf8)
-        let matched = expectation(description: "Simulated Face ID match")
-        URLSession.shared.dataTask(with: request) { _, response, error in
-            XCTAssertNil(error)
-            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
-            matched.fulfill()
-        }.resume()
-        wait(for: [matched], timeout: 15)
+        request.timeoutInterval = 15
+        let (_, matchResponse) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((matchResponse as? HTTPURLResponse)?.statusCode, 200)
         XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10), "A matching simulated face must retrieve the Keychain password and reconnect to the frame.")
         selectTab("settings", fallback: "Réglages")
         scrollTo(logout)
@@ -232,17 +230,22 @@ final class InkyStudioUITests: XCTestCase {
 
     private func dismissPasswordSavePrompt() {
         if #available(iOS 27, *) {
-            let later = app.buttons["Plus tard"]
-            if later.waitForExistence(timeout: 6) {
-                later.tap()
-                XCTAssertTrue(later.waitForNonExistence(timeout: 5))
-                return
+            let title = NSPredicate(format: "label BEGINSWITH %@", "Enregistrer le mot de passe")
+            let sheet = app.sheets.matching(title).firstMatch
+            let systemSheet = XCUIApplication(bundleIdentifier: "com.apple.springboard").sheets.matching(title).firstMatch
+            for (prompt, timeout) in [(sheet, 6.0), (systemSheet, 2.0)] {
+                guard prompt.waitForExistence(timeout: timeout) else { continue }
+                // The remote password UI can ignore a tap while it finishes
+                // presenting. Resolve the same dismiss button again, once.
+                for _ in 0..<2 {
+                    let later = prompt.buttons["Plus tard"]
+                    let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: later)
+                    guard XCTWaiter.wait(for: [hittable], timeout: 3) == .completed else { break }
+                    later.tap()
+                    if prompt.waitForNonExistence(timeout: 3) { return }
+                }
             }
-            let systemLater = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Plus tard"]
-            if systemLater.waitForExistence(timeout: 2) {
-                systemLater.tap()
-                XCTAssertTrue(systemLater.waitForNonExistence(timeout: 5))
-            }
+            XCTAssertFalse(sheet.exists || systemSheet.exists, "The password-save sheet must close before testing app controls.")
         }
     }
 
