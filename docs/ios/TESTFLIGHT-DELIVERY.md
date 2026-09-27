@@ -3,6 +3,20 @@
 Date: **2026-09-27**. Distribution was requested by Mehdi for a physical iPhone
 test before preparing a public App Store release.
 
+## Current delivery status
+
+- Available internal beta: **1.0.0 (3)**, without Bluetooth.
+- Bluetooth build **1.0.0 (4)**: uploaded and processed, **Missing Compliance**,
+  **zero assigned groups**. No new TestFlight update is available yet.
+- Raspberry: candidate **0.5.0-rc.2**, source `ae61df1`, now deployed and checked.
+  See [the server delivery](SERVER-BLUETOOTH-DELIVERY.md). Physical iPhone QR
+  adoption and Wi-Fi commit/rollback remain unqualified; PR #11 stays draft.
+- The private official-form draft has 49 populated fields; its XFA rendering
+  is unverified. A separate five-page review companion passed visual QA.
+  Neither document is signed or submitted, and neither is Apple approval.
+
+## Historical delivery: build 2
+
 | Checkpoint | Verified result |
 |---|---|
 | App Store Connect record | Inky Studio, app ID `6816637620`, French primary language |
@@ -22,7 +36,7 @@ The overview's **Prêt à soumettre** state concerns the next submission stage;
 the build is already assigned to the internal group. Invitation receipt and
 installation on the iPhone are separate from server-side delivery.
 
-## First device test
+## Historical build 2 device-test checklist
 
 1. Open Apple's TestFlight invitation on the iPhone and install **Inky Studio
    1.0.0 (2)**. Use iOS 18 or later.
@@ -34,8 +48,8 @@ installation on the iPhone are separate from server-side delivery.
 4. Check queue/history, settings and foreground/network recovery. Report steps,
    expected/actual results and non-sensitive screenshots through TestFlight.
 
-Bluetooth Wi-Fi provisioning and remote family access are planned features;
-they are not present in this build. See [APP-STORE-PLAN.md](APP-STORE-PLAN.md).
+Bluetooth Wi-Fi provisioning and remote family access were outside this build.
+See [APP-STORE-PLAN.md](APP-STORE-PLAN.md) and the current build 4 status below.
 
 ## Evidence retained locally
 
@@ -70,8 +84,8 @@ iPhone test step on 2026-09-27 ("je valide le 1") and authorized continuation.
 This is user acceptance, not an instrumented log of every physical camera/Face ID
 scenario. PR #8 was merged as `b31046d` after this acceptance.
 
-Password personalization is now enabled by server `0.5.0-rc.1`, deployed after
-the CLI migration. Mehdi has since personalized the password and confirmed both
+Password personalization was introduced on the frame by server `0.5.0-rc.1`,
+deployed after the CLI migration. Mehdi then personalized the password and confirmed both
 successful reconnection and rejection of an incorrect password. See [server delivery](SERVER-CANDIDATE-DELIVERY.md).
 BLE Wi-Fi provisioning is not in this beta.
 
@@ -88,7 +102,11 @@ BLE Wi-Fi provisioning is not in this beta.
 **14:04:25 UTC**, with `testFlightInternalTestingOnly=true`. Apple processing
 completed. This build has **Missing Compliance / Informations manquantes** and
 no assigned group; build 3 remains the available beta. French testing notes are
-saved for the candidate, explicitly identifying the pending backend deployment.
+saved for the candidate and updated in App Store Connect after the rc.2
+deployment. The UI confirmed **Enregistré**; the notes now identify the installed
+backend and the remaining iPhone/Wi-Fi tests. Screenshot retained privately:
+`build/ios/app-store-evidence/build4/testflight-build4-backend-rc2.png`. This
+metadata update does not resolve compliance or assign a tester group.
 
 The actual build questionnaire was inspected: standard encryption embedded
 outside Apple's OS, France **Yes**, requires approved export documents in the
@@ -109,6 +127,11 @@ No physical iPhone Bluetooth adoption or actual Wi-Fi transition is claimed.
   ignored `build/ios/app-store-evidence/build4/`.
 - Bundle ID, build number 4, bundled third-party notices and code signature
   verified. The former automatic encryption exemption flag is absent.
-- The Pi's production photo service remains `0.5.0-rc.1`; its newly installed
-  network helper passed health and scan checks. The candidate backend was tested
-  privately with BlueZ and a forced mock display: [evidence](reviews/2026-09-27-bluetooth/pi-backend.json).
+- Before deployment, the network helper passed health and scan checks. The
+  earlier candidate backend was tested privately with BlueZ and a forced mock
+  display: [evidence](reviews/2026-09-27-bluetooth/pi-backend.json).
+- The production service now runs **0.5.0-rc.2** from `ae61df1`. Both backend and
+  iOS CI passed on that commit. Deployment checks cover HTTP, local HTTPS TLS
+  1.3, required authentication, the detected display driver and correlated local
+  BlueZ registration. They do not replace physical iPhone/radio/QR tests or a
+  real Wi-Fi change. [Deployment report](SERVER-BLUETOOTH-DELIVERY.md).

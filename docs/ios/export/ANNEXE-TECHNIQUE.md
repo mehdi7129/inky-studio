@@ -13,7 +13,7 @@ Brouillon pour revue - 27 septembre 2026. Aucun formulaire signé ou envoyé. Ce
 | Produit final | Inky Studio, application iPhone pour cadre photo à encre électronique. |
 | Version | iOS 1.0.0, build 4 ; bundle fr.mehdiguiard.inkystudio. Source 70148f5. |
 | Distribution actuelle | Upload TestFlight interne traité ; distribution suspendue à la conformité documentaire. Aucune publication App Store. |
-| Composant associé | Backend Inky Studio pour Raspberry Pi. L’intégration Bluetooth candidate est testée séparément ; le service photo du cadre reste en 0.5.0-rc.1. |
+| Composant associé | Backend Inky Studio pour Raspberry Pi. Backend Bluetooth 0.5.0-rc.2 déployé sur le cadre de qualification ; la validation physique iPhone/Wi-Fi reste ouverte. |
 
 ## Fonctions accessibles
 
@@ -100,7 +100,7 @@ Un banc Bluetooth réel Mac/Raspberry a réussi l’échange chiffré, le refus 
 
 B.1 : désigner le produit final Inky Studio, version iOS 1.0.0 (4), avec son backend associé décrit comme contexte. B.2 : reprendre la description fonctionnelle. B.3 : reprendre le protocole, les fonctions et les implémentations ci-dessus, en joignant l’inventaire détaillé. La date de mise sur le marché n’est pas la date d’upload : elle reste à définir.
 
-Déclarant confirmé : Mehdi Guiard, personne physique, rubrique A.2. Les coordonnées privées et le contact technique restent à compléter localement dans le formulaire officiel. Aucune société ni référence SIRET n’est déclarée. Le formulaire est un PDF XFA dynamique à ouvrir dans un lecteur compatible.
+Déclarant confirmé : Mehdi Guiard, personne physique, rubrique A.2. Les coordonnées privées et le contact technique fournis par le titulaire sont préremplis dans une copie locale du formulaire officiel, avec les données techniques. Ils ne figurent pas dans cette annexe. Aucune société ni référence SIRET n’est déclarée. Le formulaire est un PDF XFA dynamique à ouvrir dans un lecteur compatible.
 
 Les choix déclaration/autorisation, le classement grand public, les opérations et territoires ainsi que la signature restent à confirmer par la personne habilitée. Aucune référence de déclaration antérieure n’est supposée. L’annexe technique seule n’est pas présentée comme un justificatif approuvé par Apple.
 

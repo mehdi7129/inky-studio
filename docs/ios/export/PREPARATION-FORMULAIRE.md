@@ -1,7 +1,8 @@
 # Formulaire ANSSI pour Inky Studio — préparation non signée
 
-Recherche primaire du 27 septembre 2026. Aucun contact, envoi, signature ou collecte
-de coordonnées personnelles. L’[annexe technique](ANNEXE-TECHNIQUE.md) et l’[inventaire de configuration](build4-crypto-configuration.json)
+Recherche primaire du 27 septembre 2026. Aucun contact externe, envoi ou signature.
+Les coordonnées fournies ensuite par Mehdi servent uniquement au brouillon local
+privé ; elles ne sont pas reproduites dans ce document ni dans Git. L’[annexe technique](ANNEXE-TECHNIQUE.md) et l’[inventaire de configuration](build4-crypto-configuration.json)
 sont préparés séparément ; ce mémo fournit le formulaire, les rubriques
 administratives et leur correspondance avec cette annexe.
 
@@ -89,9 +90,9 @@ review au cas par cas, puis code de conformité après approbation.
 ## Informations confirmées et rubriques personnelles restantes
 
 1. Déclarant confirmé par Mehdi : **Mehdi Guiard, personne physique**, rubrique
-   A.2. Aucune société ni SIRET déclarés. Le contact technique et les coordonnées
-   privées seront complétés localement ; aucun justificatif nominatif n’est
-   demandé dans la conversation ni conservé dans le dépôt.
+   A.2. Aucune société ni SIRET déclarés. Les coordonnées fournies par le titulaire
+   ont été préremplies dans une copie locale privée. Aucun justificatif
+   nominatif ni coordonnée personnelle n’est conservé dans le dépôt.
 2. Périmètre déjà demandé par Mehdi : usage personnel puis TestFlight, avant
    publication publique de l’app. La France est conservée. L’annexe décrit
    l’app iOS finale et son backend associé ; la date de publication publique
@@ -100,17 +101,25 @@ review au cas par cas, puis code de conformité après approbation.
    complet** ? Sinon, laisser les références vides. Une éventuelle référence
    Mbed TLS seule ne remplace pas la désignation du produit final.
 
-Le titulaire devra compléter localement ses coordonnées
-dans A.2 et celles du contact technique, choisir les formalités appropriées
-et valider C s’il demande ce classement. Aucun besoin de publier ces coordonnées
-dans la PR, les preuves techniques ou le chat.
+Le titulaire doit relire les données préremplies, compléter les rubriques
+administratives encore réservées, choisir les formalités appropriées et valider
+C s’il demande ce classement. Les coordonnées restent dans les fichiers privés.
+
+La copie du formulaire est préremplie par mise à jour incrémentale de ses données
+XFA : original et template conservés, champs relus structurellement, aucun script
+PDF exécuté. Le rendu XFA et les droits Reader ne sont pas vérifiés ; un compagnon
+PDF statique inspecté visuellement permet de relire les valeurs. Il ne remplace
+pas le formulaire officiel. La formalité « Combiné » était précochée dans
+l’original ; elle n’est pas confirmée par le préremplissage. Aucune attestation
+signée ni soumission ne résulte de cette préparation.
 
 ## Pièces et procédure, sans exécution
 
 Préparation utile maintenant : original officiel intact, correspondance B.1-B.3
 avec l’annexe technique, présentation fonctionnelle de l’app et guides existants,
 liste des pièces administratives applicables selon A.1/A.2. Le brouillon peut
-être techniquement complet en laissant identité/choix juridiques/attestation vides.
+être techniquement préparé tout en réservant les choix juridiques et l’attestation
+au titulaire.
 
 La page ANSSI décrit un éventuel dépôt électronique à son bureau de contrôle,
 avec formulaire électronique sauvegardé, exemplaire signé numérisé et pièces

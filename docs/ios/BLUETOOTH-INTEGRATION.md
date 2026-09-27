@@ -1,11 +1,14 @@
 # C2 — intégration Bluetooth et configuration Wi-Fi
 
-État au 27 septembre 2026 : implémentation sur `codex/bluetooth-wifi-setup`,
-**qualification matérielle encore ouverte**. Le cadre de Mehdi reste en
-`0.5.0-rc.1`. La bêta disponible reste `1.0.0 (3)` ; le build `1.0.0 (4)`
+État au 27 septembre 2026 : le candidat **`0.5.0-rc.2`**, source `ae61df1`,
+est déployé sur le cadre ; **la qualification iPhone et Wi-Fi réelle reste
+ouverte**. Voir [le compte-rendu de déploiement](SERVER-BLUETOOTH-DELIVERY.md).
+La bêta disponible reste `1.0.0 (3)` ; le build `1.0.0 (4)`
 a été traité par Apple en mode interne uniquement, mais sa distribution attend
-les documents de chiffrement demandés dans le questionnaire du build. Aucun changement de son réseau,
-de ses photos ou de son mot de passe personnalisé pendant le développement.
+les documents de chiffrement demandés dans le questionnaire du build. Aucun
+nouveau réseau n'a été configuré par cette opération. Le chemin des données et
+le mot de passe personnalisé ont été conservés ; l'opérateur n'a ni lu ni
+restauré le contenu du répertoire de données.
 Le changement de mot de passe et le rejet de l’ancien/du mauvais mot de passe
 ont été confirmés par Mehdi avant ce lot.
 
@@ -56,7 +59,11 @@ avant mutation. Un redémarrage traite tout essai incomplet comme une annulation
 un identifiant de checkpoint d’une ancienne instance NetworkManager n’est jamais
 réutilisé. Les tests simulent aussi les coupures pendant la finalisation.
 
-## Installation à qualifier sur Raspberry
+## Installation et qualification sur Raspberry
+
+Le helper et le backend candidat sont maintenant installés sur le cadre de
+Mehdi. Les instructions ci-dessous décrivent les prérequis pour une autre
+installation ; elles ne constituent pas une qualification universelle.
 
 Prérequis : NetworkManager, BlueZ, `python3-dbus`, utilisateur du service identifié,
 accès local de secours et version de backend correspondant à ce protocole.
@@ -94,7 +101,8 @@ ils ne remplacent pas un accès de secours lors de la première qualification.
   Le test a révélé une MTU encore à 20 octets lors de `didConnect`, puis à 182
   après découverte ; le client consulte maintenant la limite courante.
   L’empreinte de ce banc arrive par SSH connu ; cela ne valide pas le scan du QR
-  physique. Radio rétablie éteinte/bloquée après essai, service photo actif.
+  physique. À la fin de ce banc initial, la radio avait été rétablie
+  éteinte/bloquée ; l'installation ultérieure du helper l'a activée.
 - Le helper a ensuite été installé sur le Pi par Mehdi. Service actif sous
   `inky-network`, code root-owned `0555`, socket de groupe `0660`,
   `NoNewPrivileges=yes` et `health` protocole 1 vérifiés. Le scan réel renvoie
@@ -105,11 +113,22 @@ ils ne remplacent pas un accès de secours lors de la première qualification.
   claim et statut owner via un flux GATT en mémoire, lifecycle et QR mock.
   Zéro appel SPI ; le vrai helper ne reçoit que `health`, ses mutations sont
   bloquées et le scan Wi-Fi est ignoré dans ce banc. Les données temporaires
-  ont été supprimées ; le service photo et le helper restent actifs.
+  ont été supprimées ; le service photo et le helper étaient restés actifs.
   Cela complète la preuve radio Mac ↔ Pi, sans valider l’adoption QR physique
   ni le changement de réseau.
-- Aucun test réel de changement Wi-Fi, de rollback NetworkManager ou de coupure
-  électrique n’est encore déclaré réussi. Le backend photo reste en `0.5.0-rc.1`.
+- Le déploiement final de `ae61df1` en `0.5.0-rc.2` a passé son préflight et son
+  postflight : HTTP depuis le Mac, HTTP/HTTPS local TLS 1.3, authentification
+  requise et driver détecté. L'enregistrement Bluetooth est corroboré par le
+  bus du PID courant, un nouvel UUID Inky dans les propriétés publiques BlueZ
+  et une hausse d'`ActiveInstances`. Cette corrélation locale ne prouve pas un
+  échange radio iPhone ni le scan du QR. Le helper reste actif.
+- Les CI backend et iOS de `ae61df1` sont vertes. Le script privé de bascule
+  passe 26 tests de défauts sur Linux. Son premier essai réel a restauré le code
+  précédent après un refus D-Bus du vérificateur ; le contrôle corrigé utilise
+  les propriétés publiques, sans changer les permissions. La bascule finale
+  réussit. Voir [détails et limites](SERVER-BLUETOOTH-DELIVERY.md).
+- Aucun test physique d'adoption iPhone, de changement Wi-Fi, de rollback
+  NetworkManager ou de coupure électrique n’est encore déclaré réussi.
 
 Test matériel suivant : adoption sur iPhone, essai avec mauvais mot de passe,
 retour au réseau initial, puis transfert vers un partage de connexion **2,4 GHz**
@@ -132,11 +151,14 @@ n’est supposée. Voir [ENCRYPTION-INVENTORY.md](ENCRYPTION-INVENTORY.md).
 
 La prochaine **bêta interne de qualification** peut précisément servir aux tests
 iPhone et Wi-Fi encore ouverts. Leur réussite complète ne précède donc pas
-nécessairement cette bêta. Avant de la distribuer, préparer un nouveau numéro de
-build et résoudre le contrôle export avec les réponses exactes et les documents
-effectivement demandés. Le build 4 est traité, mais le questionnaire du build
+nécessairement cette bêta. Le build 4 est déjà téléversé ; sa distribution demande
+de résoudre le contrôle export avec les réponses exactes et les documents
+effectivement demandés. Le questionnaire du build
 interne avec algorithmes standard hors OS et France `Oui` exige bien des documents
-approuvés par Apple. Aucun formulaire ni attestation n’a été soumis. Une version
+approuvés par Apple. Un brouillon privé du formulaire comporte 49 champs
+préremplis ; son rendu XFA n'est pas vérifié. Un compagnon de relecture de cinq
+pages a été contrôlé visuellement. Ces documents ne sont ni signés ni soumis et
+ne valent pas approbation Apple. Une version
 de développement signée existe, mais Mehdi préfère poursuivre via TestFlight
 et les tests Simulator ; aucune installation directe sur son iPhone n’est prévue.
 
@@ -147,11 +169,14 @@ La sortie publique nécessite également son parcours de conformité et de revie
 InkyOS reste un lot ultérieur. Voir [la livraison TestFlight](TESTFLIGHT-DELIVERY.md)
 pour distinguer upload, conformité et disponibilité effective.
 
-Préparation locale sur le Pi : `/home/pi/inky-upgrades/bluetooth-c2-9351ae8/`
-contient les scripts installés et une copie du backend pour qualification isolée.
-Son venv ne partage pas les packages système (`pip check` passe). Les extras
+Préparation historique sur le Pi : `/home/pi/inky-upgrades/bluetooth-c2-9351ae8/`
+contenait les scripts installés et une copie du backend pour qualification isolée.
+Son venv ne partageait pas les packages système (`pip check` passé). Les extras
 Pi ont ensuite été installés en conservant les versions de la chaîne e-ink
-actuellement en production. Le banc isolé repasse ses 11 contrôles avec ces
+alors en production. Le banc isolé a repassé ses 11 contrôles avec ces
 packages présents, toujours sans initialiser le SPI. Cet arbre partiel ne
-constitue pas encore une installation complète de remplacement. Le numéro interne `0.5.0rc1` de cette copie n’en fait pas une release :
-la source testée est le commit de PR `9351ae8`.
+constitue pas une installation complète de remplacement. Le numéro interne `0.5.0rc1` de cette copie n’en fait pas une release :
+la source testée est le commit de PR `9351ae8`. Le déploiement actuel utilise
+l'arbre complet `/home/pi/inky-candidates/bluetooth-rc2-ae61df1`, atteint par le
+lien `/home/pi/inky-studio` ; cet ancien arbre de qualification n'est pas la
+production.

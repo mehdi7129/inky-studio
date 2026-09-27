@@ -141,9 +141,9 @@ protège aussi la confidentialité du mot de passe Wi-Fi.
   connu. Les points non résolus peuvent être soumis aux interlocuteurs
   Apple/ANSSI, sans présumer leur réponse.
 - Un export de développement signé du build 4 est prêt ; le branchement d’un
-  iPhone a été demandé pour la qualification sur appareil. Aucun déploiement
-  du backend candidat en production ni changement de réseau Wi-Fi n’a été
-  effectué dans cette étape.
+  iPhone a été demandé pour la qualification sur appareil. Le backend Bluetooth `0.5.0-rc.2` a ensuite été déployé et vérifié sur le
+  cadre de qualification ; aucun essai réel de changement Wi-Fi n’est déclaré
+  réussi. Voir [le déploiement serveur](SERVER-BLUETOOTH-DELIVERY.md).
 
 Aucun changement de disponibilité géographique enregistré, formulaire soumis, signature,
 attestation d’exemption ou engagement au nom de Mehdi n’est réalisé ici.
@@ -169,11 +169,12 @@ un développeur individuel reste à préciser ; aucun justificatif personnel n�
 recherché ou ajouté ici.
 [ANSSI : pièces du dossier](https://cyber.gouv.fr/reglementation/reglementation-identite-confiance-numerique/controles-reglementaires-cryptographie/controle-moyen-de-cryptologie/faq-demande-dautorisation/).
 
-Points à confirmer ultérieurement par le titulaire du compte, sans répondre à
-sa place : la bêta est-elle réservée à son usage propre ou à d’autres testeurs ;
-quel périmètre public est effectivement prévu ; le déclarant éventuel est-il une
-personne physique ou une société ; existe-t-il déjà un document de classement
-applicable au produit complet. Les builds locaux, les bancs techniques et la PR
+Mehdi a confirmé être le déclarant en personne physique (rubrique A.2), avec
+TestFlight personnel puis une publication publique envisagée. Il a fourni les
+coordonnées nécessaires au préremplissage local le 27 septembre ; elles restent
+hors du dépôt. Les formalités applicables, les pièces administratives encore
+requises et une éventuelle référence de classement restent à vérifier avant
+signature et dépôt. Les builds locaux, les bancs techniques et la PR
 d’intégration peuvent avancer ; la distribution TestFlight du build 4 reste
 dans l’état documentaire constaté ci-dessus.
 
@@ -184,6 +185,8 @@ dans l’état documentaire constaté ci-dessus.
 [inventaire de configuration du build 4](export/build4-crypto-configuration.json),
 et [formulaire officiel, rubriques et pièces](export/PREPARATION-FORMULAIRE.md).
 Le PDF de l’annexe est un brouillon local non signé, distinct du formulaire
-officiel XFA intact. Les coordonnées et choix administratifs ne sont pas publiés.
+officiel XFA dont une copie est désormais préremplie localement (49 valeurs).
+Le rendu XFA reste à vérifier dans un lecteur compatible ; le compagnon statique
+de relecture est inspecté. Les coordonnées et choix administratifs ne sont pas publiés.
 Mehdi préfère TestFlight et les tests Simulator ; l’alternative d’installation
 directe Xcode n’est pas poursuivie.
