@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0-rc.1] - 2026-09-27
+
+Candidate for controlled installation; not offered by the stable updater.
+Refresh the installed CLI before migrating credentials. See
+`docs/ios/PASSWORD-ROTATION.md` and `docs/ios/CLI-UPGRADE.md`.
+
+### Added
+- Personalize the Inky Studio application password from iPhone build 3.
+  Password changes revoke previous HTTP and WebSocket sessions.
+- Salted scrypt credential storage, legacy migration without changing the
+  existing password, atomic writes and explicit local reset/recovery.
+
+### Fixed
+- Keep first-boot password images private and retry an interrupted welcome.
+- Allow a manually installed candidate to discover its matching final release.
+- Reject downgrade/reinstall requests in the updater itself, including direct
+  API calls, before downloading or changing the installation.
+
+### Maintenance
+- Install a small CLI launcher so future updates also update command behavior.
+- Publish candidate tags as prereleases without replacing the stable release.
+- Include isolated on-Pi authentication qualification without driving the screen.
+
+Bluetooth Wi-Fi provisioning is not included in this candidate.
+
 ## [0.4.2] - 2026-09-26
 
 ### Fixed

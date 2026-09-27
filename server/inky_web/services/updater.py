@@ -83,6 +83,26 @@ def _fetch_latest_release() -> dict[str, Any] | None:
         return None
 
 
+def _is_newer_release(current: str, latest: str | None) -> bool:
+    """Use the same version decision for discovery and the actual installation.
+
+    Keep the historical different-label fallback for unversioned development
+    builds (for example ``dev``/``unknown``), which have no ordered version.
+    Published releases use numeric versions and cannot downgrade or reinstall
+    the same stable version. A candidate can advance to its matching final.
+    """
+    if not latest:
+        return False
+    cur_t, lat_t = _parse_version(current), _parse_version(latest)
+    if cur_t and lat_t:
+        current_candidate = "-" in current.split("+")[0]
+        latest_stable = "-" not in latest.split("+")[0]
+        return lat_t > cur_t or (
+            lat_t == cur_t and current_candidate and latest_stable
+        )
+    return latest != current
+
+
 def get_status(*, use_cache: bool = True) -> dict[str, Any]:
     """Return ``{current, latest, update_available}`` (latest may be ``None``)."""
     now = time.time()
@@ -94,11 +114,7 @@ def get_status(*, use_cache: bool = True) -> dict[str, Any]:
     latest = (release.get("tag_name") or "").lstrip("vV") or None if release else None
 
     current = __version__
-    if latest is None:
-        update_available = False
-    else:
-        cur_t, lat_t = _parse_version(current), _parse_version(latest)
-        update_available = lat_t > cur_t if (cur_t and lat_t) else (latest != current)
+    update_available = _is_newer_release(current, latest)
 
     value = {"current": current, "latest": latest, "update_available": update_available}
     _status_cache.update(at=now, value=value)
@@ -283,8 +299,18 @@ async def perform_update(emit: EmitFn, *, install_dir: Path | None = None) -> bo
         if not release:
             _emit(emit, "error", "Impossible de contacter GitHub.")
             return False
-        tag = str(release.get("tag_name") or "?")
+        tag = str(release.get("tag_name") or "")
         version = tag.lstrip("vV")
+        # The authenticated POST route calls this function directly, and Latest
+        # can change after a prior status check. Check the release just fetched
+        # before downloading or mutating code, dependencies and the service.
+        if not _is_newer_release(__version__, version):
+            _emit(
+                emit, "error",
+                f"Aucune mise à jour plus récente à installer (actuelle : {__version__} ; "
+                f"dernière disponible : {version or 'inconnue'}). Le cadre est inchangé.",
+            )
+            return False
         asset = _pick_tarball_asset(release)
         if not asset:
             _emit(emit, "error", "Aucune archive (.tar.gz) dans la release.")

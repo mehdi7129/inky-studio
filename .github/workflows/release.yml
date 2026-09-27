@@ -27,15 +27,41 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Validate release version and channel
+        id: channel
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          if not re.fullmatch(r"v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?", tag):
+              raise SystemExit("Unsupported release tag format")
+          version = tag[1:]
+          module = Path("server/inky_web/__init__.py").read_text()
+          declared = re.search(r'__version__ = "([^"]+)"', module).group(1)
+          package = tomllib.loads(Path("server/pyproject.toml").read_text())["project"]["version"]
+          expected_package = re.sub(r"-(alpha|beta|rc)\.(\d+)$", lambda m: {"alpha": "a", "beta": "b", "rc": "rc"}[m[1]] + m[2], version)
+          if declared != version or package != expected_package:
+              raise SystemExit("Tag, API version and package version disagree")
+          candidate = "-" in version
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"prerelease={str(candidate).lower()}\n")
+              output.write(f"make_latest={str(not candidate).lower()}\n")
+          PY
+
       - name: Validate backend
         run: |
           cd server
           python -m pip install -e ".[dev]"
           ruff check .
           pytest -q
+          python ../scripts/qualify-password-upgrade.py
 
       - name: Validate installer and CLI
-        run: shellcheck install.sh scripts/inky-studio-cli scripts/uninstall.sh
+        run: shellcheck install.sh scripts/inky-studio-cli scripts/inky-studio-launcher scripts/uninstall.sh
 
       - name: Build frontend
         run: |
@@ -72,3 +98,5 @@ jobs:
         with:
           files: inky-studio-*.tar.gz
           generate_release_notes: true
+          prerelease: ${{ steps.channel.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.channel.outputs.make_latest }}

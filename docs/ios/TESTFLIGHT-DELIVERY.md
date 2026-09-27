@@ -65,8 +65,10 @@ build-specific testing notes are saved. No public or external distribution.
 
 This beta preserves the original rounded layout, removes photo filenames, fixes
 the empty title area, follows system appearance, stays in portrait and adds the
-camera/photo-library choice plus the approved icon A. Physical camera capture
-and this build's iPhone acceptance remain to be tested.
+camera/photo-library choice plus the approved icon A. Mehdi accepted the physical
+iPhone test step on 2026-09-27 ("je valide le 1") and authorized continuation.
+This is user acceptance, not an instrumented log of every physical camera/Face ID
+scenario. PR #8 was merged as `b31046d` after this acceptance.
 
 Password personalization is present but hidden with the currently deployed
 v0.4.2 server; the matching backend and installed CLI must be deployed separately.
