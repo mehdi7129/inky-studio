@@ -8,6 +8,8 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -55,25 +57,28 @@ class AuthMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    app.state.sessions = auth.SessionStore()
+    app.state.auth_service = auth.CredentialService(
+        auth.load_or_create_credentials(data_dir()), app.state.sessions,
+    )
+    app.state.login_limiter = auth.LoginRateLimiter()
+    app.state.password_change_limiter = auth.LoginRateLimiter()
     app.state.bus = EventBus()
     app.state.display = DisplayController()
     app.state.display.initialize()
     app.state.scheduler = Scheduler(app.state.display, app.state.bus)
     welcome_task = None
-    credentials_existed = (data_dir() / "credentials.json").is_file()
-    app.state.credentials = auth.load_or_create_credentials(data_dir())
-    app.state.sessions = auth.SessionStore()
-    app.state.login_limiter = auth.LoginRateLimiter()
     if not auth.auth_disabled():
         logger = logging.getLogger(__name__)
         logger.info(
             "Auth enabled. Credentials persisted in %s",
-            app.state.credentials.path,
+            app.state.auth_service.credentials.path,
         )
 
-    # On first boot (credentials freshly generated AND nothing ever displayed),
-    # push the welcome screen so the user sees the URL + password on the Inky.
-    if not credentials_existed and not auth.auth_disabled():
+    # Retry bootstrap display after a power interruption between credential
+    # persistence and the first successful screen refresh. Never reveal a
+    # personalized password, or overwrite a frame that already has history.
+    if app.state.auth_service.credentials.bootstrap_password and not auth.auth_disabled():
         # No history yet → show welcome. Run in a thread so lifespan stays snappy.
         from inky_web.services import history as history_service
         from inky_web.welcome import show_welcome
@@ -102,6 +107,16 @@ app = FastAPI(
     description="Web UI for the Inky e-ink photo frame",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    if request.url.path in {"/api/auth/login", "/api/auth/password"}:
+        # FastAPI otherwise echoes the supplied secret in the validation input.
+        errors = [{key: error[key] for key in ("type", "loc", "msg")} for error in exc.errors()]
+        return JSONResponse(status_code=422, content={"detail": errors})
+    return await request_validation_exception_handler(request, exc)
+
 
 app.add_middleware(AuthMiddleware)
 app.add_middleware(

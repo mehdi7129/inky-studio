@@ -15,7 +15,9 @@ display is connected (mac dev), it logs the image bytes instead.
 from __future__ import annotations
 
 import logging
+import os
 import socket
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -84,7 +86,7 @@ def render_welcome_image(
     height: int,
     *,
     url: str,
-    password: str,
+    password: str | None,
 ) -> Image.Image:
     """Render the welcome PIL image at the given dimensions. Pure function."""
     img = Image.new("RGB", (width, height), color="white")
@@ -110,9 +112,10 @@ def render_welcome_image(
 
     # Password block
     y += int(height * 0.06)
-    y = _draw_centered(draw, "Mot de passe", y, label_font, width, "black")
+    label = "Mot de passe initial" if password else "Mot de passe personnalisé"
+    y = _draw_centered(draw, label, y, label_font, width, "black")
     y += int(height * 0.01)
-    y = _draw_centered(draw, password, y, password_font, width, (160, 32, 32))  # Spectra-friendly red
+    y = _draw_centered(draw, password or "Non consultable", y, password_font, width, (160, 32, 32))
 
     # Separator + hint
     y += int(height * 0.05)
@@ -132,7 +135,14 @@ def show_welcome(display: DisplayController | None = None) -> None:
     if display is None:
         display = DisplayController()
         display.initialize()
+    try:
+        _show_welcome(display)
+    finally:
+        if owns_display:
+            display.shutdown()
 
+
+def _show_welcome(display: DisplayController) -> None:
     info = display.info()
     creds = load_or_create_credentials(default_data_dir())
     url = f"http://{_detect_ip()}:8000"
@@ -141,24 +151,27 @@ def show_welcome(display: DisplayController | None = None) -> None:
         info["width"],
         info["height"],
         url=url,
-        password=creds.password,
+        password=creds.bootstrap_password,
     )
 
-    if display.is_mock:
-        debug_path = default_data_dir() / "welcome_preview.png"
-        img.save(debug_path)
-        logger.info("[mock] Saved welcome preview to %s — would push to display", debug_path)
-    else:
-        tmp_path = default_data_dir() / "_welcome_tmp.png"
-        img.save(tmp_path)
-        try:
+    tmp_path = None
+    try:
+        # The image may contain the initial secret. Create it privately before
+        # writing pixels; chmod after save would leave a readable time window.
+        with tempfile.NamedTemporaryFile(dir=default_data_dir(), prefix=".welcome-", suffix=".png", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+            os.fchmod(tmp.fileno(), 0o600)
+            img.save(tmp, format="PNG")
+        if display.is_mock:
+            debug_path = default_data_dir() / "welcome_preview.png"
+            os.replace(tmp_path, debug_path)
+            logger.info("[mock] Saved private welcome preview to %s", debug_path)
+        else:
             display.display_image(tmp_path)
             logger.info("Welcome screen pushed to display")
-        finally:
+    finally:
+        if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
-
-    if owns_display:
-        display.shutdown()
 
 
 def main() -> int:

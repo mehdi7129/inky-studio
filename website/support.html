@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f5f5f2">
+  <title>Aide et contact — Inky Studio</title>
+  <meta name="description" content="Installer et connecter Inky Studio : réseau Wi-Fi, Raspberry Pi, mot de passe, Face ID, import HEIC et dépannage. Contacter le support.">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="fr_FR">
+  <meta property="og:site_name" content="Inky Studio">
+  <meta property="og:title" content="Aide et contact — Inky Studio">
+  <meta property="og:description" content="Installer et connecter Inky Studio : réseau Wi-Fi, Raspberry Pi, mot de passe, Face ID, import HEIC et dépannage. Contacter le support.">
+  <meta property="og:url" content="https://inky-studio.netlify.app/support.html">
+  <link rel="canonical" href="https://inky-studio.netlify.app/support.html">
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <a class="skip" href="#contenu">Aller au contenu</a>
+  <header class="header"><div class="wrap header-inner">
+    <a class="brand" href="index.html" aria-label="Inky Studio — accueil"><img src="assets/mark.svg" alt="" width="28" height="28">Inky Studio</a>
+    <nav class="nav" aria-label="Navigation principale"><a href="index.html" >L’app</a><a href="support.html" aria-current="page">Aide</a><a href="confidentialite.html" >Confidentialité</a></nav>
+  </div></header>
+  <main id="contenu" class="wrap">
+
+    <header class="page-intro"><p class="eyebrow blue-text">Un coup de main</p><h1>Votre cadre,<br>en quelques étapes.</h1><p class="lede">Les repères pour démarrer, retrouver votre connexion et profiter de vos photos.</p></header>
+    <nav class="jump-links" aria-label="Rubriques d’aide"><a href="#premiers-pas">Premiers pas</a><a href="#connexion">Connexion</a><a href="#photos">Photos et écran</a><a href="#donnees">Données</a><a href="#contact">Contact</a></nav>
+    <section id="premiers-pas" aria-label="Premiers pas"><div class="help-start">
+      <article class="card"><span class="step-label">01 · Le matériel</span><h3>Préparer le cadre.</h3><p>Un iPhone sous iOS 18 ou plus, un Raspberry avec Inky Studio v0.4.2 ou plus et un écran Inky Impression compatible.</p><a class="text-link" href="https://github.com/mehdi7129/inky-studio#readme">Guide d’installation <span aria-hidden="true">↗</span></a></article>
+      <article class="card"><span class="step-label">02 · Le réseau</span><h3>Se retrouver en Wi-Fi.</h3><p>Connectez l’iPhone et le Raspberry au même réseau local. Le Pi Zero 2 W se connecte en 2,4 GHz. Évitez un réseau invité qui isole les appareils.</p></article>
+      <article class="card"><span class="step-label">03 · L’app</span><h3>Ajouter votre cadre.</h3><p>Saisissez son adresse, par exemple <code>inky.local:8000</code>, en remplaçant le nom par celui de votre appareil ou son adresse IP. Entrez le mot de passe du cadre et autorisez l’accès au réseau local quand iOS le demande.</p></article>
+    </div></section>
+    <div class="reading-layout"><aside class="aside-note"><p><strong>Version actuelle</strong><br>L’app iPhone est en bêta privée sur TestFlight. Son accès se fait sur invitation.</p><p>Le fonctionnement à distance, la découverte automatique et la configuration du Wi-Fi du Raspberry depuis l’app ne font pas partie de cette version.</p></aside><div class="reading">
+      <section id="connexion"><h2>Connexion et Face ID</h2>
+        <details class="faq" open><summary>Quel mot de passe dois-je saisir ?</summary><div><p>Le mot de passe <strong>Inky Studio du cadre</strong>. Il est différent du mot de passe Wi-Fi et du mot de passe de votre compte sur le Raspberry.</p><p>Il est indiqué lors de l’installation et sur l’écran d’accueil du cadre au premier démarrage. Depuis un terminal sur votre Raspberry, <code>inky-studio password</code> affiche le mot de passe actuel. Gardez-le privé.</p></div></details>
+        <details class="faq"><summary>Le cadre est introuvable ou l’app affiche « injoignable ».</summary><div><ol><li>Vérifiez que le Raspberry est allumé et connecté au réseau local de l’iPhone.</li><li>Vérifiez l’adresse et le port du serveur, généralement <code>8000</code>. Essayez son adresse IP si le nom en <code>.local</code> ne répond pas.</li><li>Dans les réglages iOS d’Inky Studio, autorisez <strong>Réseau local</strong>.</li><li>Vérifiez que le réseau invité, l’isolation des appareils ou un VPN ne bloque pas la communication.</li><li>Sur le Raspberry, <code>inky-studio status</code> permet de vérifier le service.</li></ol><p>L’app peut conserver des données précédentes lorsqu’elle est hors ligne. Utilisez « Réessayer » après avoir rétabli la connexion.</p></div></details>
+        <details class="faq"><summary>Mon iPhone doit-il aussi être connecté en 2,4 GHz ?</summary><div><p>Le Raspberry Pi Zero 2 W utilise le Wi-Fi 2,4 GHz. L’iPhone peut utiliser une autre bande si votre routeur relie bien les appareils au <strong>même réseau local</strong>. Le nom du réseau à lui seul ne garantit pas cette communication.</p></div></details>
+        <details class="faq"><summary>Comment activer Face ID ?</summary><div><p>Lors de la première connexion, activez l’option Face ID, puis entrez le mot de passe du cadre. Vous pouvez aussi l’activer depuis les réglages de l’app en confirmant ce mot de passe.</p><p>Le mot de passe est conservé dans le trousseau de l’iPhone, protégé par la biométrie. Touch ID est utilisé sur les appareils compatibles. L’app ne reçoit jamais les données de votre visage ou de votre empreinte.</p></div></details>
+        <details class="faq"><summary>Face ID ne fonctionne plus ou le mot de passe a changé.</summary><div><p>Choisissez <strong>Utiliser le mot de passe</strong>. Une modification des données biométriques enregistrées sur l’iPhone peut rendre l’ancien accès inutilisable : reconnectez-vous et réactivez l’option si nécessaire.</p><p>Si vous avez changé le mot de passe du cadre, reconnectez-vous avec le nouveau mot de passe et l’option Face ID activée. Pour générer un nouveau mot de passe depuis le Raspberry, la commande <code>inky-studio reset-password</code> redémarre le service et affiche le nouveau secret.</p></div></details>
+      </section>
+      <section id="photos"><h2>Photos et écran</h2>
+        <details class="faq"><summary>Puis-je utiliser les photos HEIC de mon iPhone ?</summary><div><p>Oui. L’app prend en charge les formats HEIC, JPEG et PNG via le sélecteur Photos natif. Elle adapte l’orientation, le cadrage et les dimensions au panneau, puis envoie un PNG au Raspberry.</p><p>Une photo conservée sur iCloud peut demander une connexion Internet et un délai de chargement. Si l’import échoue, vérifiez cette connexion puis sélectionnez à nouveau la photo.</p></div></details>
+        <details class="faq"><summary>Pourquoi ma photo ne s’affiche-t-elle pas immédiatement ?</summary><div><p>« Ajouter à la file » place la photo dans la file d’attente. Elle sera affichée à son tour, selon votre programmation. La commande <strong>Suivante</strong> demande au cadre de passer à la prochaine photo.</p><p>Un rafraîchissement e-ink prend du temps et peut faire clignoter l’écran. Attendez la fin de l’opération avant de demander un autre changement.</p></div></details>
+        <details class="faq"><summary>Pourquoi les couleurs diffèrent-elles de l’iPhone ?</summary><div><p>L’écran e-ink utilise une palette limitée, différente d’un écran d’iPhone. Le Raspberry adapte la photo à la palette du panneau Inky. Vous pouvez ajuster la saturation dans les réglages de l’app.</p></div></details>
+        <details class="faq"><summary>Comment programmer les changements de photo ?</summary><div><p>Dans <strong>Réglages → Programmation</strong>, choisissez Quotidien, Intervalle ou Manuel, puis enregistrez. L’heure quotidienne suit l’heure locale du Raspberry. Le serveur du Raspberry doit rester en fonctionnement pour appliquer la programmation.</p></div></details>
+        <details class="faq"><summary>L’app fonctionne-t-elle quand je quitte la maison ?</summary><div><p>La version actuelle est prévue pour un iPhone et un Raspberry sur le même réseau local. Elle ne configure ni accès distant, ni relais cloud. N’exposez pas directement le serveur HTTP du cadre sur Internet.</p></div></details>
+      </section>
+      <section id="donnees"><h2>Vos données, vos appareils</h2>
+        <details class="faq"><summary>Que suppriment « Se déconnecter » et « Oublier ce cadre » ?</summary><div><p>La déconnexion ferme la session locale. Elle conserve l’adresse et le mot de passe protégé si vous aviez activé la biométrie, pour faciliter une reconnexion.</p><p><strong>Oublier ce cadre</strong> supprime l’adresse et le mot de passe enregistré par l’app sur cet iPhone. Ces actions ne suppriment pas les photos du Raspberry.</p></div></details>
+        <details class="faq"><summary>Supprimer une entrée efface-t-il le fichier photo ?</summary><div><p>Non. Retirer une photo de la file ou supprimer une entrée de l’historique enlève cette entrée. Le PNG peut rester stocké sur le Raspberry.</p><p>L’effacement des fichiers nécessite une action explicite sur le stockage du Raspberry. Le script de désinstallation du serveur conserve également les photos et les identifiants. Pour un effacement complet, sauvegardez ce que vous souhaitez garder et gérez ce stockage avec précaution. <a href="https://github.com/mehdi7129/inky-studio#readme">Consulter la documentation du serveur</a>.</p></div></details>
+        <p><a class="text-link" href="confidentialite.html">Lire la politique de confidentialité <span aria-hidden="true">↗</span></a></p>
+      </section>
+      <section id="contact" class="card contact"><h2>On vous aide.</h2><p>Pour une question ou une demande liée à vos données, écrivez à <a href="mailto:mehdi071292@gmail.com">mehdi071292@gmail.com</a>. Le projet est maintenu par <strong>Mehdi Guiard</strong>.</p><p>Pour signaler un problème technique, vous pouvez aussi ouvrir une issue GitHub en précisant le modèle du panneau, les versions de l’app et du serveur, et les étapes pour reproduire le problème.</p><p><strong>Les issues GitHub sont publiques.</strong> N’y publiez pas de mot de passe, de photo privée ou de journal contenant des informations personnelles.</p><div class="actions"><a class="button primary" href="mailto:mehdi071292@gmail.com">Écrire au support <span aria-hidden="true">↗</span></a><a class="text-link" href="https://github.com/mehdi7129/inky-studio/issues">Signaler un problème sur GitHub <span aria-hidden="true">↗</span></a></div></section>
+    </div></div>
+
+  </main>
+  <footer class="footer"><div class="wrap">
+    <div class="footer-top"><a class="brand" href="index.html" aria-label="Inky Studio — accueil"><img src="assets/mark.svg" alt="" width="28" height="28">Inky Studio</a><nav aria-label="Liens utiles"><a href="support.html">Aide et contact</a><a href="confidentialite.html">Confidentialité</a><a href="https://github.com/mehdi7129/inky-studio">GitHub <span aria-hidden="true">↗</span></a></nav></div>
+    <p class="footer-note">Un projet indépendant de Mehdi Guiard. Non affilié à Apple, Raspberry Pi ou Pimoroni.<br>© 2026 Inky Studio · Compagnon iPhone en bêta privée.</p>
+  </div></footer>
+</body>
+</html>

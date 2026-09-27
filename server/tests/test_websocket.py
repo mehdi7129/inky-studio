@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import anyio
 import pytest
 
+from inky_web import auth
 from inky_web.api.ws import websocket_endpoint
 from inky_web.events import EventBus
 
@@ -123,5 +124,45 @@ async def test_repeated_cancellation_releases_subscription():
         assert not bus._subscribers
     finally:
         allow_receive_cleanup.set()
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_worker_revocation_closes_idle_socket_and_releases_watchers(monkeypatch):
+    monkeypatch.delenv("INKY_STUDIO_DISABLE_AUTH", raising=False)
+    bus = EventBus()
+    sessions = auth.SessionStore()
+    token = sessions.create()
+    waiting = asyncio.Event()
+    closed = []
+
+    class IdleWebSocket:
+        app = SimpleNamespace(state=SimpleNamespace(bus=bus, sessions=sessions))
+        cookies = {auth.COOKIE_NAME: token}
+
+        async def accept(self):
+            pass
+
+        async def send_json(self, value):
+            assert value["type"] == "hello"
+
+        async def receive(self):
+            waiting.set()
+            await asyncio.Future()
+
+        async def close(self, *, code):
+            closed.append(code)
+
+    task = asyncio.create_task(websocket_endpoint(IdleWebSocket()))
+    try:
+        await asyncio.wait_for(waiting.wait(), timeout=1)
+        # No queue event and no client traffic: only the worker notification
+        # must wake the route, much sooner than its 30-second expiry poll.
+        await asyncio.to_thread(sessions.invalidate_all)
+        await asyncio.wait_for(task, timeout=1)
+        assert closed == [1008]
+        assert not bus._subscribers
+        assert not sessions._watchers
+    finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)

@@ -1,0 +1,653 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		046F2D2DC1D55EDCF47EF397 /* PasswordChangeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F9B8BA3B9133B1D6B08D881 /* PasswordChangeView.swift */; };
+		0989724E668DF98501F3C34A /* APITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F0845EFD539104F9AFDB591 /* APITests.swift */; };
+		15FB4F08AC6270798050824A /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E93EF9A28792AD9A812ED7 /* QueueView.swift */; };
+		17CD43BAAB9443573CCC5A30 /* InkyStudioUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715F2C31B5B7575A987628A5 /* InkyStudioUITests.swift */; };
+		21841F1B618C6413AFEC2FD0 /* CameraCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1402A8E3BA91BF9537C24A /* CameraCaptureView.swift */; };
+		2F7AC99D1BA003EFA4DB94FC /* InkyAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D591853F3004F95469F34EA /* InkyAPI.swift */; };
+		5DA5EACB32570669F29B66A8 /* InkyStudioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908ED9879C756D9FD754E54A /* InkyStudioApp.swift */; };
+		5E0735A767035D2E7F09E1B6 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94A820224492220A3DA35B5 /* AppStore.swift */; };
+		6315C6AAC9CCE221CDBB7C3E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 38533D2848E2229ACC99D7D2 /* PrivacyInfo.xcprivacy */; };
+		800831B4D34FD5DFF3206C01 /* PhotoPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 317510685DBCBA4B459AD2F4 /* PhotoPipeline.swift */; };
+		87F09C526C4734656AAFBC69 /* AppStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A80B1FAF2DB2CA2E44D4488 /* AppStoreTests.swift */; };
+		8A4E908BD023391144DC44FD /* FrameAddress.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD13D09A34D1301851C4A1C2 /* FrameAddress.swift */; };
+		959307E4C6B9A8E0D8EC3439 /* PhotoPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 803409E6940A2CDA8D8B108A /* PhotoPipelineTests.swift */; };
+		99B0D501918389EDD369038C /* PhotoImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B279A23E97D7C75C41E4069F /* PhotoImportView.swift */; };
+		9CC39CDC8AAA4024792222BF /* CropGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB92DA5929F75D3CA8F8C3A /* CropGeometry.swift */; };
+		A0044C08941B57E21663EC19 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 521ACA1E2D923359CD42DBDD /* Models.swift */; };
+		B1CD487B42DBC2A80B24DAEC /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E7E1EBB19CAD90394EE3A69 /* DashboardView.swift */; };
+		BDA9790D16F044E74CD03A26 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9EE38F9C4815EE8B81A82971 /* Assets.xcassets */; };
+		CB37F0565CDD0759B962195C /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 499D47C314B26D19A55DBE5B /* HistoryView.swift */; };
+		CFB066BEAEAC949806104B3C /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF609B8AA1F8E3DFDC9893A4 /* ConnectionView.swift */; };
+		DE5974B2422D93AFCF97C154 /* APIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2AFCEF5039DACCE31F0E5C3 /* APIError.swift */; };
+		DEA3FBA95CC9E3AE659549B0 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D0313FF291E89F24013700 /* SettingsView.swift */; };
+		E2419ACE2BDCF78FE510845A /* Bento.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB7F251A4078603A5EA5E0F2 /* Bento.swift */; };
+		F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */; };
+		F5694A3C7477B58FC87E90EF /* BiometricVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FF7DADE10BCADD5C93B141 /* BiometricVault.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		2AFF0B6B8E56B5F24896FA89 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A98D079006A1C7686A815077 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EC2BD3D43FC04CFB294CB209;
+			remoteInfo = InkyStudio;
+		};
+		A9962770A04C464802FF9F0B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A98D079006A1C7686A815077 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EC2BD3D43FC04CFB294CB209;
+			remoteInfo = InkyStudio;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0E7E1EBB19CAD90394EE3A69 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		1AB92DA5929F75D3CA8F8C3A /* CropGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CropGeometry.swift; sourceTree = "<group>"; };
+		2F9B8BA3B9133B1D6B08D881 /* PasswordChangeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordChangeView.swift; sourceTree = "<group>"; };
+		317510685DBCBA4B459AD2F4 /* PhotoPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPipeline.swift; sourceTree = "<group>"; };
+		349A1501C7C3147D64A647BE /* InkyStudioUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InkyStudioUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		38533D2848E2229ACC99D7D2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		3A80B1FAF2DB2CA2E44D4488 /* AppStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreTests.swift; sourceTree = "<group>"; };
+		499D47C314B26D19A55DBE5B /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		4D591853F3004F95469F34EA /* InkyAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkyAPI.swift; sourceTree = "<group>"; };
+		521ACA1E2D923359CD42DBDD /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		6F0845EFD539104F9AFDB591 /* APITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APITests.swift; sourceTree = "<group>"; };
+		715F2C31B5B7575A987628A5 /* InkyStudioUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkyStudioUITests.swift; sourceTree = "<group>"; };
+		803409E6940A2CDA8D8B108A /* PhotoPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPipelineTests.swift; sourceTree = "<group>"; };
+		81D0313FF291E89F24013700 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		82E93EF9A28792AD9A812ED7 /* QueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueView.swift; sourceTree = "<group>"; };
+		8DCEA26471F9019C266D0935 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		8DD2E779AB549D13992CC463 /* InkyStudio.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = InkyStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		908ED9879C756D9FD754E54A /* InkyStudioApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkyStudioApp.swift; sourceTree = "<group>"; };
+		98FF7DADE10BCADD5C93B141 /* BiometricVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricVault.swift; sourceTree = "<group>"; };
+		9EE38F9C4815EE8B81A82971 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AB7F251A4078603A5EA5E0F2 /* Bento.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bento.swift; sourceTree = "<group>"; };
+		AC1402A8E3BA91BF9537C24A /* CameraCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCaptureView.swift; sourceTree = "<group>"; };
+		AD13D09A34D1301851C4A1C2 /* FrameAddress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameAddress.swift; sourceTree = "<group>"; };
+		B279A23E97D7C75C41E4069F /* PhotoImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoImportView.swift; sourceTree = "<group>"; };
+		B2AFCEF5039DACCE31F0E5C3 /* APIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIError.swift; sourceTree = "<group>"; };
+		C94A820224492220A3DA35B5 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
+		CEBAE54AB02AF5191ABFCB85 /* InkyStudioTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InkyStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CF609B8AA1F8E3DFDC9893A4 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
+		EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCaptureTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0DA3FD3B0D0B227EDC6A92CC /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				98FF7DADE10BCADD5C93B141 /* BiometricVault.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		10504FB4353C8B344A08C918 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				B2AFCEF5039DACCE31F0E5C3 /* APIError.swift */,
+				AD13D09A34D1301851C4A1C2 /* FrameAddress.swift */,
+				4D591853F3004F95469F34EA /* InkyAPI.swift */,
+				521ACA1E2D923359CD42DBDD /* Models.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		25F1B53B567B11547A2C3211 = {
+			isa = PBXGroup;
+			children = (
+				516A9F0AB4FF329A9708A4A6 /* InkyStudio */,
+				5C0109F5C6F43B84414CE7F3 /* InkyStudioTests */,
+				F34C578588F9FA8DE635B0BE /* InkyStudioUITests */,
+				E9C2FBC6D85BA13B13FBEAE3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		3DEC576385E3FAB03D2F340A /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C94A820224492220A3DA35B5 /* AppStore.swift */,
+				908ED9879C756D9FD754E54A /* InkyStudioApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		516A9F0AB4FF329A9708A4A6 /* InkyStudio */ = {
+			isa = PBXGroup;
+			children = (
+				3DEC576385E3FAB03D2F340A /* App */,
+				0DA3FD3B0D0B227EDC6A92CC /* Auth */,
+				10504FB4353C8B344A08C918 /* Core */,
+				977B928B194A6A57F9CC8500 /* Photos */,
+				EC8E2792E911F0E64A20553C /* Resources */,
+				7670A8866E3118F693B74C1F /* UI */,
+			);
+			path = InkyStudio;
+			sourceTree = "<group>";
+		};
+		5C0109F5C6F43B84414CE7F3 /* InkyStudioTests */ = {
+			isa = PBXGroup;
+			children = (
+				6F0845EFD539104F9AFDB591 /* APITests.swift */,
+				3A80B1FAF2DB2CA2E44D4488 /* AppStoreTests.swift */,
+				EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */,
+				803409E6940A2CDA8D8B108A /* PhotoPipelineTests.swift */,
+			);
+			path = InkyStudioTests;
+			sourceTree = "<group>";
+		};
+		7670A8866E3118F693B74C1F /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				AB7F251A4078603A5EA5E0F2 /* Bento.swift */,
+				CF609B8AA1F8E3DFDC9893A4 /* ConnectionView.swift */,
+				0E7E1EBB19CAD90394EE3A69 /* DashboardView.swift */,
+				499D47C314B26D19A55DBE5B /* HistoryView.swift */,
+				2F9B8BA3B9133B1D6B08D881 /* PasswordChangeView.swift */,
+				82E93EF9A28792AD9A812ED7 /* QueueView.swift */,
+				81D0313FF291E89F24013700 /* SettingsView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		977B928B194A6A57F9CC8500 /* Photos */ = {
+			isa = PBXGroup;
+			children = (
+				AC1402A8E3BA91BF9537C24A /* CameraCaptureView.swift */,
+				1AB92DA5929F75D3CA8F8C3A /* CropGeometry.swift */,
+				B279A23E97D7C75C41E4069F /* PhotoImportView.swift */,
+				317510685DBCBA4B459AD2F4 /* PhotoPipeline.swift */,
+			);
+			path = Photos;
+			sourceTree = "<group>";
+		};
+		E9C2FBC6D85BA13B13FBEAE3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8DD2E779AB549D13992CC463 /* InkyStudio.app */,
+				CEBAE54AB02AF5191ABFCB85 /* InkyStudioTests.xctest */,
+				349A1501C7C3147D64A647BE /* InkyStudioUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		EC8E2792E911F0E64A20553C /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				9EE38F9C4815EE8B81A82971 /* Assets.xcassets */,
+				8DCEA26471F9019C266D0935 /* Info.plist */,
+				38533D2848E2229ACC99D7D2 /* PrivacyInfo.xcprivacy */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		F34C578588F9FA8DE635B0BE /* InkyStudioUITests */ = {
+			isa = PBXGroup;
+			children = (
+				715F2C31B5B7575A987628A5 /* InkyStudioUITests.swift */,
+			);
+			path = InkyStudioUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1BF1B5D8930AA39D66D8BAB4 /* InkyStudioUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1DA5A2A028950BCAABD06F8A /* Build configuration list for PBXNativeTarget "InkyStudioUITests" */;
+			buildPhases = (
+				547C174A7AC2E5CA366A606B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				EFE566A3644FAA30ED6E5B42 /* PBXTargetDependency */,
+			);
+			name = InkyStudioUITests;
+			packageProductDependencies = (
+			);
+			productName = InkyStudioUITests;
+			productReference = 349A1501C7C3147D64A647BE /* InkyStudioUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		63E721E2D8E96E46AE0C3D2D /* InkyStudioTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E1A6C75693CFBEDB72341ABA /* Build configuration list for PBXNativeTarget "InkyStudioTests" */;
+			buildPhases = (
+				5CB5232C2D4458F798D9FED5 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5F194AB4097D03676CEAED06 /* PBXTargetDependency */,
+			);
+			name = InkyStudioTests;
+			packageProductDependencies = (
+			);
+			productName = InkyStudioTests;
+			productReference = CEBAE54AB02AF5191ABFCB85 /* InkyStudioTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		EC2BD3D43FC04CFB294CB209 /* InkyStudio */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DF5F08F294B69559997BD443 /* Build configuration list for PBXNativeTarget "InkyStudio" */;
+			buildPhases = (
+				7B4E857A78FEFD67425A941E /* Sources */,
+				D65C4262B2A27B2EF1CDA5CE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = InkyStudio;
+			packageProductDependencies = (
+			);
+			productName = InkyStudio;
+			productReference = 8DD2E779AB549D13992CC463 /* InkyStudio.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A98D079006A1C7686A815077 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					1BF1B5D8930AA39D66D8BAB4 = {
+						DevelopmentTeam = X524H8XA4L;
+						TestTargetID = EC2BD3D43FC04CFB294CB209;
+					};
+					63E721E2D8E96E46AE0C3D2D = {
+						DevelopmentTeam = X524H8XA4L;
+					};
+					EC2BD3D43FC04CFB294CB209 = {
+						DevelopmentTeam = X524H8XA4L;
+					};
+				};
+			};
+			buildConfigurationList = 4AF5E22922DBAC8591D34580 /* Build configuration list for PBXProject "InkyStudio" */;
+			developmentRegion = fr;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				fr,
+			);
+			mainGroup = 25F1B53B567B11547A2C3211;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E9C2FBC6D85BA13B13FBEAE3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				EC2BD3D43FC04CFB294CB209 /* InkyStudio */,
+				63E721E2D8E96E46AE0C3D2D /* InkyStudioTests */,
+				1BF1B5D8930AA39D66D8BAB4 /* InkyStudioUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D65C4262B2A27B2EF1CDA5CE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BDA9790D16F044E74CD03A26 /* Assets.xcassets in Resources */,
+				6315C6AAC9CCE221CDBB7C3E /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		547C174A7AC2E5CA366A606B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				17CD43BAAB9443573CCC5A30 /* InkyStudioUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5CB5232C2D4458F798D9FED5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0989724E668DF98501F3C34A /* APITests.swift in Sources */,
+				87F09C526C4734656AAFBC69 /* AppStoreTests.swift in Sources */,
+				F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */,
+				959307E4C6B9A8E0D8EC3439 /* PhotoPipelineTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7B4E857A78FEFD67425A941E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DE5974B2422D93AFCF97C154 /* APIError.swift in Sources */,
+				5E0735A767035D2E7F09E1B6 /* AppStore.swift in Sources */,
+				E2419ACE2BDCF78FE510845A /* Bento.swift in Sources */,
+				F5694A3C7477B58FC87E90EF /* BiometricVault.swift in Sources */,
+				21841F1B618C6413AFEC2FD0 /* CameraCaptureView.swift in Sources */,
+				CFB066BEAEAC949806104B3C /* ConnectionView.swift in Sources */,
+				9CC39CDC8AAA4024792222BF /* CropGeometry.swift in Sources */,
+				B1CD487B42DBC2A80B24DAEC /* DashboardView.swift in Sources */,
+				8A4E908BD023391144DC44FD /* FrameAddress.swift in Sources */,
+				CB37F0565CDD0759B962195C /* HistoryView.swift in Sources */,
+				2F7AC99D1BA003EFA4DB94FC /* InkyAPI.swift in Sources */,
+				5DA5EACB32570669F29B66A8 /* InkyStudioApp.swift in Sources */,
+				A0044C08941B57E21663EC19 /* Models.swift in Sources */,
+				046F2D2DC1D55EDCF47EF397 /* PasswordChangeView.swift in Sources */,
+				99B0D501918389EDD369038C /* PhotoImportView.swift in Sources */,
+				800831B4D34FD5DFF3206C01 /* PhotoPipeline.swift in Sources */,
+				15FB4F08AC6270798050824A /* QueueView.swift in Sources */,
+				DEA3FBA95CC9E3AE659549B0 /* SettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5F194AB4097D03676CEAED06 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EC2BD3D43FC04CFB294CB209 /* InkyStudio */;
+			targetProxy = 2AFF0B6B8E56B5F24896FA89 /* PBXContainerItemProxy */;
+		};
+		EFE566A3644FAA30ED6E5B42 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EC2BD3D43FC04CFB294CB209 /* InkyStudio */;
+			targetProxy = A9962770A04C464802FF9F0B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		000AF44ADB10610814C31585 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = fr.mehdiguiard.InkyStudioTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/InkyStudio.app/InkyStudio";
+			};
+			name = Debug;
+		};
+		196FB66E5A7C045146414C11 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = fr.mehdiguiard.InkyStudioTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/InkyStudio.app/InkyStudio";
+			};
+			name = Release;
+		};
+		2A89CE453414DFCAFFE84F09 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = fr.mehdiguiard.InkyStudioUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = InkyStudio;
+			};
+			name = Release;
+		};
+		2C3B65453E1B4E6DEED18292 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = InkyStudio/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = fr.mehdiguiard.inkystudio;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		8BF23DEDFE9BD3D3A07914A7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 3;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = X524H8XA4L;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		C376619B2940674268E0A21C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = InkyStudio/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = fr.mehdiguiard.inkystudio;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		DFA552509CB52C661D2527B0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 3;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = X524H8XA4L;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		F8EFCA47CD167B1B2E1DF172 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = fr.mehdiguiard.InkyStudioUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = InkyStudio;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1DA5A2A028950BCAABD06F8A /* Build configuration list for PBXNativeTarget "InkyStudioUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F8EFCA47CD167B1B2E1DF172 /* Debug */,
+				2A89CE453414DFCAFFE84F09 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		4AF5E22922DBAC8591D34580 /* Build configuration list for PBXProject "InkyStudio" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8BF23DEDFE9BD3D3A07914A7 /* Debug */,
+				DFA552509CB52C661D2527B0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		DF5F08F294B69559997BD443 /* Build configuration list for PBXNativeTarget "InkyStudio" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2C3B65453E1B4E6DEED18292 /* Debug */,
+				C376619B2940674268E0A21C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E1A6C75693CFBEDB72341ABA /* Build configuration list for PBXNativeTarget "InkyStudioTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000AF44ADB10610814C31585 /* Debug */,
+				196FB66E5A7C045146414C11 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A98D079006A1C7686A815077 /* Project object */;
+}
