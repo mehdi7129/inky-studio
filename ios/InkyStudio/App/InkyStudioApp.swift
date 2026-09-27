@@ -3,19 +3,9 @@ import SwiftUI
 @main
 struct InkyStudioApp: App {
     @StateObject private var store = AppStore()
-    init() {
-        let appearance = UITabBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = .white
-        UITabBar.appearance().standardAppearance = appearance
-        UITabBar.appearance().scrollEdgeAppearance = appearance
-        UISegmentedControl.appearance().selectedSegmentTintColor = .black
-        UISegmentedControl.appearance().setTitleTextAttributes([.foregroundColor: UIColor.white], for: .selected)
-        UISegmentedControl.appearance().setTitleTextAttributes([.foregroundColor: UIColor.black], for: .normal)
-    }
     var body: some Scene {
         WindowGroup {
-            RootView().environmentObject(store).preferredColorScheme(.light).tint(Bento.ink)
+            RootView().environmentObject(store).tint(Bento.ink)
         }
     }
 }

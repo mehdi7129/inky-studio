@@ -2,6 +2,7 @@ import SwiftUI
 
 struct QueueView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var importing = false
     @State private var editing = false
     @State private var deleting: QueueEntry?
@@ -14,17 +15,18 @@ struct QueueView: View {
                             .listRowBackground(Color.clear).listRowSeparator(.hidden)
                     }
                     ForEach(Array(store.queue.enumerated()), id: \.element.id) { index, entry in
-                        HStack(spacing: 12) {
-                            FramePhoto(photo: entry.photo).frame(width: 98)
+                        rowLayout {
+                            FramePhoto(photo: entry.photo, accessibilityDescription: "Photo \(index + 1) dans la file")
+                                .frame(width: dynamicTypeSize.isAccessibilitySize ? nil : 98)
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(String(format: "%02d", index + 1)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                                Text(entry.photo.displayName).font(.headline).lineLimit(2)
+                                Text(String(format: "%02d", index + 1)).font(.headline.monospacedDigit())
                                 if index == 0 { Text("Prochaine photo").font(.caption).foregroundStyle(Bento.blue) }
                             }
-                            Spacer(minLength: 0)
-                            if !editing { Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary).accessibilityHidden(true) }
+                            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
                         }.padding(.vertical, 8).accessibilityIdentifier("queue.row.\(entry.photo.id)")
-                            .listRowBackground(Color.white)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("Photo \(index + 1) dans la file\(index == 0 ? ", prochaine photo" : "")")
+                            .listRowBackground(Bento.surface)
                             .swipeActions { Button("Retirer", role: .destructive) { deleting = entry }.accessibilityIdentifier("queue.remove.\(entry.photo.id)").disabled(!store.canMutate) }
                             .contextMenu {
                                 if store.canMutate, index > 0 { Button("Monter", systemImage: "arrow.up") { move(index, by: -1) } }
@@ -50,9 +52,10 @@ struct QueueView: View {
                         Text("Maintenez une photo pour la déplacer, ou choisissez Modifier la file.").font(.caption).foregroundStyle(.secondary)
                         Button(editing ? "Terminer" : "Modifier la file") { withAnimation { editing.toggle() } }
                             .accessibilityIdentifier("queue.edit").disabled(!store.canMutate).frame(maxWidth: .infinity, minHeight: 44)
-                    }.listRowBackground(Color.white)
+                    }.listRowBackground(Bento.surface)
                 }
             }.listStyle(.insetGrouped).scrollContentBackground(.hidden).screenBackground()
+                .contentMargins(.bottom, 24, for: .scrollContent)
                 .environment(\.editMode, .constant(editing ? .active : .inactive))
                 .navigationTitle("À suivre").toolbar {
                     ToolbarItem(placement: .topBarTrailing) { Button { importing = true } label: { Image(systemName: "plus.circle.fill").foregroundStyle(Bento.blue) }.accessibilityLabel("Ajouter une photo").disabled(!store.canMutate) }
@@ -63,6 +66,9 @@ struct QueueView: View {
                 } message: { Text("Elle restera disponible dans l’historique si elle a déjà été affichée.") }
                 .sheet(isPresented: $importing) { PhotoImportView(panelWidth: store.panelWidth, panelHeight: store.panelHeight) { data, filename in try await store.upload(data, filename: filename) } }
         }
+    }
+    private var rowLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(spacing: 12))
     }
     private func move(_ index: Int, by delta: Int) {
         var entries = store.queue

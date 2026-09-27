@@ -11,6 +11,7 @@ final class AppStore: ObservableObject {
     @Published var busy = false
     @Published var displayBusy = false
     @Published var biometricEnabled = false
+    @Published var passwordChangeSupported = false
     @Published var errorMessage: String?
     @Published var notice: String?
     @Published var state: DisplayState?
@@ -38,6 +39,7 @@ final class AppStore: ObservableObject {
     private var active = true
     private var requestedRefresh = false
     private var connectionError = false
+    private var passwordRotating = false
 
     init(defaults: UserDefaults = .standard,
          makeAPI: @escaping @MainActor (URL) -> InkyAPI = { InkyAPI(baseURL: $0) },
@@ -124,6 +126,7 @@ final class AppStore: ObservableObject {
             address = normalized
             defaults.set(address, forKey: "frameAddress")
             authenticated = true
+            passwordChangeSupported = status.authRequired && status.passwordChangeSupported == true
             connected = false
             imageCache.removeAllObjects()
             await refresh()
@@ -184,6 +187,71 @@ final class AppStore: ObservableObject {
         } catch { handle(error) }
     }
 
+    /// Rotate exactly once. A lost response must not replay this mutation or
+    /// silently restore an old Keychain password after the frame has changed it.
+    func changePassword(current: String, new: String) async -> PasswordChangeResult {
+        guard canMutate, !displayBusy, passwordChangeSupported, let api else {
+            return .failure("Reconnectez-vous au cadre avant de modifier son mot de passe.")
+        }
+        stopMonitoring()
+        // Retire in-flight refreshes and thumbnails using the previous session.
+        generation = UUID()
+        let epoch = generation
+        passwordRotating = true
+        refreshID = nil
+        refreshing = false
+        requestedRefresh = false
+        historyRevision = UUID()
+        loadingHistory = false
+        busy = true
+        errorMessage = nil
+        let credentialAddress = address
+        let remember = biometricEnabled
+        defer {
+            if epoch == generation {
+                passwordRotating = false
+                busy = false
+                startMonitoring()
+            }
+        }
+        do {
+            let result = try await api.changePassword(current: current, new: new)
+            guard epoch == generation else { return .failure("La connexion au cadre a changé.") }
+            guard result.authenticated else { throw APIError.invalidResponse }
+            var message = "Le mot de passe du cadre a été modifié. Les autres connexions ont été fermées."
+            if remember {
+                do { try vault.save(password: new, address: credentialAddress) }
+                catch {
+                    biometricEnabled = false
+                    defaults.set(false, forKey: "biometricEnabled")
+                    message += " Face ID n’a pas pu être mis à jour. Utilisez votre nouveau mot de passe et réactivez-le dans Réglages."
+                }
+            }
+            connected = true
+            return .success(message)
+        } catch {
+            guard epoch == generation else { return .failure("La connexion au cadre a changé.") }
+            if (error as? APIError)?.isUnauthorized == true {
+                handle(error)
+                return .failure("Votre session a expiré. Reconnectez-vous au cadre.")
+            }
+            if let apiError = error as? APIError, case .http(let status, _) = apiError, status < 500 {
+                return .failure(apiError.localizedDescription)
+            }
+            // Success may have reached the Pi without reaching this phone. Do not
+            // keep offering an old biometric credential in this ambiguous state.
+            if remember {
+                try? vault.remove(address: credentialAddress)
+                biometricEnabled = false
+                defaults.set(false, forKey: "biometricEnabled")
+            }
+            resetSession()
+            let message = "Le résultat n’a pas pu être confirmé. Essayez de vous reconnecter avec le nouveau mot de passe ; s’il est refusé, utilisez l’ancien."
+            errorMessage = message
+            return .failure(message)
+        }
+    }
+
     func logout(forget: Bool = false) async {
         let client = api
         let credentialAddress = address
@@ -209,6 +277,8 @@ final class AppStore: ObservableObject {
         pendingClient = nil
         api = nil
         authenticated = false
+        passwordChangeSupported = false
+        passwordRotating = false
         connected = false
         connecting = false
         refreshing = false
@@ -234,7 +304,7 @@ final class AppStore: ObservableObject {
     }
 
     func refresh() async {
-        guard authenticated, let api else { return }
+        guard authenticated, !passwordRotating, let api else { return }
         guard !refreshing else { requestedRefresh = true; return }
         refreshing = true
         let epoch = generation
@@ -295,7 +365,7 @@ final class AppStore: ObservableObject {
     }
 
     func loadMoreHistory() async {
-        guard authenticated, let api, !loadingHistory, !refreshing, hasMoreHistory else { return }
+        guard authenticated, !passwordRotating, let api, !loadingHistory, !refreshing, hasMoreHistory else { return }
         let epoch = generation
         let revision = historyRevision
         loadingHistory = true
@@ -318,7 +388,7 @@ final class AppStore: ObservableObject {
     }
 
     private func startMonitoring() {
-        guard active, authenticated, let api, monitoringID == nil else { return }
+        guard active, authenticated, !passwordRotating, let api, monitoringID == nil else { return }
         let epoch = generation
         let identifier = UUID()
         monitoringID = identifier
@@ -366,7 +436,7 @@ final class AppStore: ObservableObject {
 
     func image(for photo: Photo) async -> UIImage? {
         if let image = imageCache.object(forKey: photo.id as NSString) { return image }
-        guard let api else { return nil }
+        guard !passwordRotating, let api else { return nil }
         let epoch = generation
         do {
             let data = try await api.photoData(id: photo.id)
@@ -499,4 +569,9 @@ final class AppStore: ObservableObject {
             }
         } else { errorMessage = error.localizedDescription }
     }
+}
+
+enum PasswordChangeResult: Equatable {
+    case success(String)
+    case failure(String)
 }

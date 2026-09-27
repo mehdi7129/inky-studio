@@ -66,6 +66,7 @@ class Fixture:
                     pass
             self.sockets.clear()
             self.sessions: set[str] = set()
+            self.password = PASSWORD
             self.login_attempts: list[float] = []
             self.settings = {"change_mode": "daily", "change_hour": 8, "change_interval_minutes": 60, "saturation": 1.0}
             self.photos: dict[str, dict] = {}
@@ -223,7 +224,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         authenticated = self.token in FIXTURE.sessions
         if path == "/api/auth/status" and method == "GET":
-            self.reply(200, {"authenticated": authenticated, "auth_required": True})
+            self.reply(200, {"authenticated": authenticated, "auth_required": True, "password_change_supported": True})
             return
         if path == "/api/auth/login" and method == "POST":
             with FIXTURE.lock:
@@ -233,7 +234,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.failure(429, "Trop de tentatives — réessaye dans une minute")
                     return
                 FIXTURE.login_attempts.append(now)
-            if body.get("password") != PASSWORD:
+            if body.get("password") != FIXTURE.password:
                 self.failure(401, "Mot de passe incorrect")
                 return
             token = secrets.token_urlsafe(32)
@@ -243,6 +244,22 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not authenticated:
             self.failure(401, "Authentification requise")
+            return
+        if path == "/api/auth/password" and method == "POST":
+            with FIXTURE.lock:
+                if body.get("current_password") != FIXTURE.password:
+                    self.failure(403, "Mot de passe actuel incorrect")
+                    return
+                new = body.get("new_password")
+                if not isinstance(new, str) or not 8 <= len(new) <= 64:
+                    self.failure(422, "Le mot de passe doit contenir entre 8 et 64 caractères.")
+                    return
+                FIXTURE.password = new
+                FIXTURE.sessions.clear()
+                token = secrets.token_urlsafe(32)
+                FIXTURE.sessions.add(token)
+            self.reply(200, {"authenticated": True, "auth_required": True, "password_change_supported": True}, cookie=f"inky_session={token}; HttpOnly; Max-Age=2592000; Path=/; SameSite=Strict")
+            FIXTURE.emit("auth_changed", {})
             return
         if path == "/api/ws" and method == "GET":
             self.websocket()

@@ -54,6 +54,8 @@ struct DisplayState: Codable, Equatable, Sendable {
 struct AuthStatus: Codable, Equatable, Sendable {
     var authenticated: Bool
     var authRequired: Bool
+    // Absent on older frame versions; never infer support from a version string.
+    var passwordChangeSupported: Bool?
 }
 
 struct HealthResponse: Codable, Equatable, Sendable {

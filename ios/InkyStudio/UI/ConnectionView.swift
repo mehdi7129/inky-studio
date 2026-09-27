@@ -39,7 +39,7 @@ struct ConnectionView: View {
                         .font(.system(size: 84, weight: .ultraLight)).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity).padding(.vertical, 28).accessibilityHidden(true)
                     Button { Task { await store.loginWithBiometrics() } } label: {
-                        if store.connecting { ProgressView().tint(.white) }
+                        if store.connecting { ProgressView().tint(Bento.actionText) }
                         else { Label("Se connecter avec \(store.biometricName)", systemImage: store.biometricName == "Face ID" ? "faceid" : "touchid") }
                     }.buttonStyle(PrimaryButtonStyle()).disabled(store.connecting).accessibilityIdentifier("connection.biometric")
                     Button("Utiliser le mot de passe") { showPassword = true; passwordFocused = true }
@@ -56,7 +56,7 @@ struct ConnectionView: View {
                         }
                     }.bentoCard()
                     Button(action: connect) {
-                        if store.connecting { ProgressView().tint(.white) }
+                        if store.connecting { ProgressView().tint(Bento.actionText) }
                         else { Text("Se connecter") }
                     }.buttonStyle(PrimaryButtonStyle()).disabled(store.connecting || store.address.trimmingCharacters(in: .whitespaces).isEmpty)
                         .accessibilityIdentifier("connection.submit")

@@ -7,9 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		046F2D2DC1D55EDCF47EF397 /* PasswordChangeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F9B8BA3B9133B1D6B08D881 /* PasswordChangeView.swift */; };
 		0989724E668DF98501F3C34A /* APITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F0845EFD539104F9AFDB591 /* APITests.swift */; };
 		15FB4F08AC6270798050824A /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E93EF9A28792AD9A812ED7 /* QueueView.swift */; };
 		17CD43BAAB9443573CCC5A30 /* InkyStudioUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715F2C31B5B7575A987628A5 /* InkyStudioUITests.swift */; };
+		21841F1B618C6413AFEC2FD0 /* CameraCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1402A8E3BA91BF9537C24A /* CameraCaptureView.swift */; };
 		2F7AC99D1BA003EFA4DB94FC /* InkyAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D591853F3004F95469F34EA /* InkyAPI.swift */; };
 		5DA5EACB32570669F29B66A8 /* InkyStudioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908ED9879C756D9FD754E54A /* InkyStudioApp.swift */; };
 		5E0735A767035D2E7F09E1B6 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94A820224492220A3DA35B5 /* AppStore.swift */; };
@@ -28,6 +30,7 @@
 		DE5974B2422D93AFCF97C154 /* APIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2AFCEF5039DACCE31F0E5C3 /* APIError.swift */; };
 		DEA3FBA95CC9E3AE659549B0 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D0313FF291E89F24013700 /* SettingsView.swift */; };
 		E2419ACE2BDCF78FE510845A /* Bento.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB7F251A4078603A5EA5E0F2 /* Bento.swift */; };
+		F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */; };
 		F5694A3C7477B58FC87E90EF /* BiometricVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FF7DADE10BCADD5C93B141 /* BiometricVault.swift */; };
 /* End PBXBuildFile section */
 
@@ -51,6 +54,7 @@
 /* Begin PBXFileReference section */
 		0E7E1EBB19CAD90394EE3A69 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		1AB92DA5929F75D3CA8F8C3A /* CropGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CropGeometry.swift; sourceTree = "<group>"; };
+		2F9B8BA3B9133B1D6B08D881 /* PasswordChangeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordChangeView.swift; sourceTree = "<group>"; };
 		317510685DBCBA4B459AD2F4 /* PhotoPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPipeline.swift; sourceTree = "<group>"; };
 		349A1501C7C3147D64A647BE /* InkyStudioUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InkyStudioUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		38533D2848E2229ACC99D7D2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -69,12 +73,14 @@
 		98FF7DADE10BCADD5C93B141 /* BiometricVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricVault.swift; sourceTree = "<group>"; };
 		9EE38F9C4815EE8B81A82971 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AB7F251A4078603A5EA5E0F2 /* Bento.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bento.swift; sourceTree = "<group>"; };
+		AC1402A8E3BA91BF9537C24A /* CameraCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCaptureView.swift; sourceTree = "<group>"; };
 		AD13D09A34D1301851C4A1C2 /* FrameAddress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameAddress.swift; sourceTree = "<group>"; };
 		B279A23E97D7C75C41E4069F /* PhotoImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoImportView.swift; sourceTree = "<group>"; };
 		B2AFCEF5039DACCE31F0E5C3 /* APIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIError.swift; sourceTree = "<group>"; };
 		C94A820224492220A3DA35B5 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
 		CEBAE54AB02AF5191ABFCB85 /* InkyStudioTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InkyStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CF609B8AA1F8E3DFDC9893A4 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
+		EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCaptureTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -134,6 +140,7 @@
 			children = (
 				6F0845EFD539104F9AFDB591 /* APITests.swift */,
 				3A80B1FAF2DB2CA2E44D4488 /* AppStoreTests.swift */,
+				EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */,
 				803409E6940A2CDA8D8B108A /* PhotoPipelineTests.swift */,
 			);
 			path = InkyStudioTests;
@@ -146,6 +153,7 @@
 				CF609B8AA1F8E3DFDC9893A4 /* ConnectionView.swift */,
 				0E7E1EBB19CAD90394EE3A69 /* DashboardView.swift */,
 				499D47C314B26D19A55DBE5B /* HistoryView.swift */,
+				2F9B8BA3B9133B1D6B08D881 /* PasswordChangeView.swift */,
 				82E93EF9A28792AD9A812ED7 /* QueueView.swift */,
 				81D0313FF291E89F24013700 /* SettingsView.swift */,
 			);
@@ -155,6 +163,7 @@
 		977B928B194A6A57F9CC8500 /* Photos */ = {
 			isa = PBXGroup;
 			children = (
+				AC1402A8E3BA91BF9537C24A /* CameraCaptureView.swift */,
 				1AB92DA5929F75D3CA8F8C3A /* CropGeometry.swift */,
 				B279A23E97D7C75C41E4069F /* PhotoImportView.swift */,
 				317510685DBCBA4B459AD2F4 /* PhotoPipeline.swift */,
@@ -269,11 +278,11 @@
 				};
 			};
 			buildConfigurationList = 4AF5E22922DBAC8591D34580 /* Build configuration list for PBXProject "InkyStudio" */;
-			developmentRegion = en;
+			developmentRegion = fr;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
-				en,
+				fr,
 			);
 			mainGroup = 25F1B53B567B11547A2C3211;
 			minimizedProjectReferenceProxies = 1;
@@ -316,6 +325,7 @@
 			files = (
 				0989724E668DF98501F3C34A /* APITests.swift in Sources */,
 				87F09C526C4734656AAFBC69 /* AppStoreTests.swift in Sources */,
+				F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */,
 				959307E4C6B9A8E0D8EC3439 /* PhotoPipelineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -328,6 +338,7 @@
 				5E0735A767035D2E7F09E1B6 /* AppStore.swift in Sources */,
 				E2419ACE2BDCF78FE510845A /* Bento.swift in Sources */,
 				F5694A3C7477B58FC87E90EF /* BiometricVault.swift in Sources */,
+				21841F1B618C6413AFEC2FD0 /* CameraCaptureView.swift in Sources */,
 				CFB066BEAEAC949806104B3C /* ConnectionView.swift in Sources */,
 				9CC39CDC8AAA4024792222BF /* CropGeometry.swift in Sources */,
 				B1CD487B42DBC2A80B24DAEC /* DashboardView.swift in Sources */,
@@ -336,6 +347,7 @@
 				2F7AC99D1BA003EFA4DB94FC /* InkyAPI.swift in Sources */,
 				5DA5EACB32570669F29B66A8 /* InkyStudioApp.swift in Sources */,
 				A0044C08941B57E21663EC19 /* Models.swift in Sources */,
+				046F2D2DC1D55EDCF47EF397 /* PasswordChangeView.swift in Sources */,
 				99B0D501918389EDD369038C /* PhotoImportView.swift in Sources */,
 				800831B4D34FD5DFF3206C01 /* PhotoPipeline.swift in Sources */,
 				15FB4F08AC6270798050824A /* QueueView.swift in Sources */,
@@ -463,7 +475,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = X524H8XA4L;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -551,7 +563,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = X524H8XA4L;
 				ENABLE_NS_ASSERTIONS = NO;

@@ -53,6 +53,11 @@ final class InkyAPI {
         return try await send("POST", path: "/api/auth/login", body: Login(password: password), timeout: 12)
     }
 
+    func changePassword(current: String, new: String) async throws -> AuthStatus {
+        struct Change: Encodable { var currentPassword: String; var newPassword: String }
+        return try await send("POST", path: "/api/auth/password", body: Change(currentPassword: current, newPassword: new))
+    }
+
     func logout() async throws -> AuthStatus {
         defer { clearSession() }
         let data = try await perform(request("POST", path: "/api/auth/logout"))

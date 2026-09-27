@@ -4,6 +4,7 @@ struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var draft = FrameSettings()
     @State private var enableBiometric = false
+    @State private var changePassword = false
     @State private var confirmUpdate = false
     @State private var confirmForget = false
     @State private var loaded = false
@@ -43,8 +44,8 @@ struct SettingsView: View {
                         Text("La couleur est adaptée au panneau lors de l’affichage.").font(.caption).foregroundStyle(.secondary)
                     }.bentoCard()
                     Button { Task { await store.saveSettings(draft) } } label: {
-                        if store.busy { ProgressView().tint(.white) } else { Text("Enregistrer les réglages") }
-                    }.buttonStyle(PrimaryButtonStyle()).disabled(!dirty || !store.canMutate).opacity(dirty ? 1 : 0.45).accessibilityIdentifier("settings.save")
+                        if store.busy { ProgressView().tint(Bento.actionText) } else { Text("Enregistrer les réglages") }
+                    }.buttonStyle(PrimaryButtonStyle()).disabled(!dirty || !store.canMutate).accessibilityIdentifier("settings.save")
                     VStack(alignment: .leading, spacing: 12) {
                         Label("Connexion", systemImage: "wifi").font(.headline)
                         Toggle(isOn: Binding(get: { store.biometricEnabled }, set: { enabled in
@@ -54,6 +55,14 @@ struct SettingsView: View {
                         }.tint(Bento.blue).disabled(store.vault.capability == nil && !store.biometricEnabled).accessibilityIdentifier("settings.biometric")
                         Text(store.vault.capability == nil ? "Configurez Face ID ou Touch ID dans les réglages de votre iPhone pour l’activer." : "Utiliser le mot de passe enregistré.")
                             .font(.caption).foregroundStyle(.secondary)
+                        if store.passwordChangeSupported {
+                            Divider()
+                            Button { changePassword = true } label: {
+                                Label("Changer le mot de passe du cadre", systemImage: "key")
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }.disabled(!store.canMutate || store.displayBusy)
+                                .accessibilityIdentifier("settings.password")
+                        }
                     }.bentoCard()
                     VStack(alignment: .leading, spacing: 14) {
                         Label("Mon cadre", systemImage: "photo.artframe").font(.headline)
@@ -80,6 +89,12 @@ struct SettingsView: View {
                         Button("Se déconnecter", role: .destructive) { Task { await store.logout() } }
                             .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44).accessibilityIdentifier("settings.logout")
                     }.bentoCard()
+                    HStack(spacing: 12) {
+                        Image(systemName: "circle.lefthalf.filled").foregroundStyle(.secondary)
+                        Text("Apparence")
+                        Spacer()
+                        Text("Système").foregroundStyle(.secondary)
+                    }.font(.subheadline).bentoCard().accessibilityElement(children: .combine)
                     Button("Oublier ce cadre", role: .destructive) { confirmForget = true }.font(.subheadline).frame(minHeight: 44)
                     Text("Inky Studio pour iPhone · \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")")
                         .font(.caption).foregroundStyle(.secondary).padding(.bottom, 16)
@@ -88,6 +103,7 @@ struct SettingsView: View {
                 .task { if !loaded, let settings = store.settings { draft = settings; loaded = true } }
                 .onChange(of: store.settings) { old, new in if !loaded || draft == old { if let new { draft = new; loaded = true } } }
                 .sheet(isPresented: $enableBiometric) { BiometricSetupView() }
+                .sheet(isPresented: $changePassword) { PasswordChangeView() }
                 .confirmationDialog("Mettre à jour le Raspberry ?", isPresented: $confirmUpdate) {
                     Button("Installer la mise à jour") { Task { await store.startUpdate() } }
                 } message: { Text("Le service va redémarrer. Une reconnexion sera ensuite nécessaire.") }
@@ -110,7 +126,7 @@ private struct BiometricSetupView: View {
                 SecureField("Mot de passe du cadre", text: $password).textContentType(.password).textFieldStyle(.roundedBorder)
                 Button {
                     Task { await store.enableBiometrics(password: password); if store.biometricEnabled { dismiss() } }
-                } label: { if store.busy { ProgressView().tint(.white) } else { Text("Activer") } }
+                } label: { if store.busy { ProgressView().tint(Bento.actionText) } else { Text("Activer") } }
                     .buttonStyle(PrimaryButtonStyle()).disabled(password.isEmpty || store.busy)
                 if let error = store.errorMessage { Text(error).font(.subheadline).foregroundStyle(.red) }
                 Spacer()

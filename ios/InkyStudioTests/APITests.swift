@@ -81,6 +81,36 @@ final class APITests: XCTestCase {
         api.clearSession()
     }
 
+    func testPasswordRotationReplacesCookieAndEncodesSecretsInBodyOnly() async throws {
+        let stub = APIStub { request in
+            if request.url?.path == "/api/auth/login" {
+                return .json(Self.authJSON, headers: ["Set-Cookie": "inky_session=old-session; Path=/; HttpOnly"])
+            }
+            XCTAssertEqual(request.url?.path, "/api/auth/password")
+            XCTAssertNil(request.url?.query)
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Cookie"), "inky_session=old-session")
+            let body = try JSONSerialization.jsonObject(with: request.bodyData) as? [String: String]
+            XCTAssertEqual(body, ["current_password": "previous-test-password", "new_password": "new+é-test-password"])
+            return .json(Self.authJSON, headers: ["Set-Cookie": "inky_session=new-session; Path=/; HttpOnly"])
+        }
+        let api = client(stub)
+        _ = try await api.login(password: "previous-test-password")
+        _ = try await api.changePassword(current: "previous-test-password", new: "new+é-test-password")
+        XCTAssertEqual(stub.requests.count, 2, "The rotation must not be replayed.")
+        XCTAssertEqual(try api.eventRequest().value(forHTTPHeaderField: "Cookie"), "inky_session=new-session")
+        api.clearSession()
+    }
+
+    func testLegacyAuthStatusDoesNotEnablePasswordRotation() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let legacy = try decoder.decode(AuthStatus.self, from: Data(Self.authJSON.utf8))
+        XCTAssertNil(legacy.passwordChangeSupported)
+        let current = try decoder.decode(AuthStatus.self, from: Data(#"{"authenticated":true,"auth_required":true,"password_change_supported":true}"#.utf8))
+        XCTAssertEqual(current.passwordChangeSupported, true)
+    }
+
     func testCookieJarIsSharedByHTTPPhotoAndWSButIsolatedPerConnectionAndPort() async throws {
         let stub = APIStub { request in
             if request.url?.path == "/api/auth/login" {

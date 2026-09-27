@@ -7,10 +7,12 @@ final class InkyStudioUITests: XCTestCase {
     private var app: XCUIApplication!
     private let fixtureURL = URL(string: "http://127.0.0.1:8765")!
 
-    private func launchFixtureApp() {
+    private func launchFixtureApp(resetCamera: Bool = false) {
         continueAfterFailure = false
         resetFixture()
         app = XCUIApplication()
+        // Resetting a protected resource terminates an already-running app.
+        if resetCamera { app.resetAuthorizationStatus(for: .camera) }
         app.launchArguments = ["--uitesting", "--frame-address", fixtureURL.absoluteString]
         app.launch()
         addTeardownBlock { @MainActor [weak self] () async throws in
@@ -40,7 +42,7 @@ final class InkyStudioUITests: XCTestCase {
         remember.tap()
         XCTAssertEqual(remember.value as? String, "1")
         login()
-        tab("settings", fallback: "Réglages").tap()
+        selectTab("settings", fallback: "Réglages")
         let biometric = app.switches["settings.biometric"]
         scrollTo(biometric)
         XCTAssertEqual(biometric.value as? String, "1", "The opted-in password must be saved in the biometric Keychain.")
@@ -67,14 +69,14 @@ final class InkyStudioUITests: XCTestCase {
         }.resume()
         wait(for: [matched], timeout: 15)
         XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10), "A matching simulated face must retrieve the Keychain password and reconnect to the frame.")
-        tab("settings", fallback: "Réglages").tap()
+        selectTab("settings", fallback: "Réglages")
         scrollTo(logout)
         logout.tap()
         XCTAssertTrue(faceID.waitForExistence(timeout: 10))
         app.buttons["Utiliser le mot de passe"].tap()
         XCTAssertTrue(app.secureTextFields["connection.password"].waitForExistence(timeout: 5))
         login()
-        tab("settings", fallback: "Réglages").tap()
+        selectTab("settings", fallback: "Réglages")
         scrollTo(biometric)
         biometric.tap()
         XCTAssertEqual(biometric.value as? String, "0")
@@ -90,6 +92,9 @@ final class InkyStudioUITests: XCTestCase {
         let addPhoto = app.buttons["frame.add"]
         scrollTo(addPhoto)
         addPhoto.tap()
+        let choosePhoto = app.buttons["choose-photo"]
+        XCTAssertTrue(choosePhoto.waitForExistence(timeout: 5))
+        choosePhoto.tap()
         // Seed the simulator with scripts/seed-simulator-photo.py before this suite.
         let selectedPhoto = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
         XCTAssertTrue(selectedPhoto.waitForExistence(timeout: 15), "PhotosPicker needs a seeded simulator photo.\n\(app.debugDescription)")
@@ -103,7 +108,7 @@ final class InkyStudioUITests: XCTestCase {
         capture("05 Cadrage")
         upload.tap()
         XCTAssertTrue(upload.waitForNonExistence(timeout: 15), "A successful upload must dismiss the crop sheet.")
-        tab("queue", fallback: "File").tap()
+        selectTab("queue", fallback: "File")
         XCTAssertTrue(app.staticTexts["3 photos dans la file"].waitForExistence(timeout: 10), "The newly cropped PNG must join the queue.")
     }
 
@@ -122,15 +127,16 @@ final class InkyStudioUITests: XCTestCase {
         password.typeText("test-password")
         app.buttons["connection.submit"].tap()
         XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10))
+        dismissPasswordSavePrompt()
         capture("01 Cadre")
 
-        tab("queue", fallback: "File").tap()
+        selectTab("queue", fallback: "File")
         XCTAssertTrue(element("queue.row.a11050000002").waitForExistence(timeout: 5))
         capture("02 File")
-        tab("history", fallback: "Historique").tap()
+        selectTab("history", fallback: "Historique")
         XCTAssertTrue(app.buttons["history.requeue.2"].waitForExistence(timeout: 5))
         capture("03 Historique")
-        tab("settings", fallback: "Réglages").tap()
+        selectTab("settings", fallback: "Réglages")
         XCTAssertTrue(element("settings.save").waitForExistence(timeout: 5))
         capture("06 Réglages")
     }
@@ -138,7 +144,7 @@ final class InkyStudioUITests: XCTestCase {
     func testQueueRemovalAndHistoryRequeue() {
         launchFixtureApp()
         login()
-        tab("queue", fallback: "File").tap()
+        selectTab("queue", fallback: "File")
         let row = element("queue.row.a11050000002")
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         app.buttons["queue.edit"].tap()
@@ -152,18 +158,18 @@ final class InkyStudioUITests: XCTestCase {
         let confirmation = app.sheets.buttons["Retirer"]
         if confirmation.waitForExistence(timeout: 2) { confirmation.tap() }
         XCTAssertTrue(row.waitForNonExistence(timeout: 5), "Removing a queued photo must update the list.")
-        tab("history", fallback: "Historique").tap()
+        selectTab("history", fallback: "Historique")
         let requeue = app.buttons["history.requeue.2"]
         XCTAssertTrue(requeue.waitForExistence(timeout: 5))
         requeue.tap()
-        tab("queue", fallback: "File").tap()
+        selectTab("queue", fallback: "File")
         XCTAssertTrue(element("queue.row.c0a570000001").waitForExistence(timeout: 10), "A displayed photo can be put back in the queue.")
     }
 
     func testSettingsSaveAndLogout() {
         launchFixtureApp()
         login()
-        tab("settings", fallback: "Réglages").tap()
+        selectTab("settings", fallback: "Réglages")
         let manual = app.segmentedControls["settings.mode"].buttons["Manuel"]
         XCTAssertTrue(manual.waitForExistence(timeout: 5))
         manual.tap()
@@ -191,8 +197,8 @@ final class InkyStudioUITests: XCTestCase {
         scrollTo(next)
         XCTAssertTrue(next.isHittable)
         next.tap()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Lac d'Allos")).firstMatch.waitForExistence(timeout: 10))
-        tab("queue", fallback: "File").tap()
+        XCTAssertTrue(app.staticTexts["Le cadre est à jour."].waitForExistence(timeout: 10))
+        selectTab("queue", fallback: "File")
         XCTAssertTrue(element("queue.row.a11050000002").waitForNonExistence(timeout: 5))
         XCTAssertTrue(element("queue.row.5ad000000003").exists)
     }
@@ -221,6 +227,101 @@ final class InkyStudioUITests: XCTestCase {
         password.typeText("test-password")
         app.buttons["connection.submit"].tap()
         XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10), "Login must reveal the frame dashboard.")
+        dismissPasswordSavePrompt()
+    }
+
+    private func dismissPasswordSavePrompt() {
+        if #available(iOS 27, *) {
+            let later = app.buttons["Plus tard"]
+            if later.waitForExistence(timeout: 6) {
+                later.tap()
+                XCTAssertTrue(later.waitForNonExistence(timeout: 5))
+                return
+            }
+            let systemLater = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Plus tard"]
+            if systemLater.waitForExistence(timeout: 2) {
+                systemLater.tap()
+                XCTAssertTrue(systemLater.waitForNonExistence(timeout: 5))
+            }
+        }
+    }
+
+    func testPhotoSourceCameraPermissionAndCancel() {
+        launchFixtureApp(resetCamera: true)
+        login()
+        let addPhoto = app.buttons["frame.add"]
+        scrollTo(addPhoto)
+        addPhoto.tap()
+        let camera = app.buttons["take-photo"]
+        XCTAssertTrue(camera.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["choose-photo"].exists)
+        camera.tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        // Some Simulator runtimes expose a camera. Permission belongs to the
+        // system application; never assume the source is universally absent.
+        if springboard.alerts.firstMatch.waitForExistence(timeout: 3) {
+            let deny = springboard.alerts.buttons.matching(NSPredicate(format: "label IN %@", ["Ne pas autoriser", "Don’t Allow", "Don't Allow"])).firstMatch
+            XCTAssertTrue(deny.exists)
+            deny.tap()
+        }
+        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
+        capture("07 Appareil photo — permission ou indisponibilité")
+        let later = app.alerts.buttons["Plus tard"]
+        if later.exists { later.tap() } else { app.alerts.buttons["Annuler"].tap() }
+        app.buttons["cancel-photo-import"].tap()
+        XCTAssertTrue(addPhoto.waitForExistence(timeout: 5))
+    }
+
+    func testRoundedTabsWithoutFilenamesAndPortrait() {
+        XCUIDevice.shared.orientation = .portrait
+        launchFixtureApp()
+        login()
+        for (identifier, label, title) in [("frame", "Cadre", "Inky Studio"), ("queue", "File", "À suivre"), ("history", "Historique", "Historique"), ("settings", "Réglages", "Réglages")] {
+            selectTab(identifier, fallback: label)
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5), "A compact visible title must identify each tab.")
+            for name in ["Un matin à Cassis", "Lac d'Allos", "Ombres d'été"] {
+                XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch.exists, "Photo filenames must not clutter the interface.")
+            }
+            capture("Bento arrondi — \(label)")
+            XCUIDevice.shared.orientation = .landscapeLeft
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 3))
+            XCTAssertLessThan(app.windows.firstMatch.frame.width, app.windows.firstMatch.frame.height, "The app must remain in portrait.")
+            XCUIDevice.shared.orientation = .portrait
+        }
+        selectTab("frame", fallback: "Cadre")
+        let add = app.buttons["frame.add"]
+        scrollTo(add)
+        XCTAssertTrue(add.isHittable)
+        XCTAssertLessThanOrEqual(add.frame.maxY, app.tabBars.firstMatch.frame.minY + 1, "The main action must not be covered by the tab bar.")
+    }
+
+    func testChangeFramePasswordAndReconnect() {
+        launchFixtureApp()
+        login()
+        selectTab("settings", fallback: "Réglages")
+        let change = app.buttons["settings.password"]
+        scrollTo(change)
+        XCTAssertTrue(change.isHittable)
+        change.tap()
+        for (field, value) in [("current", "test-password"), ("new", "my-new-frame-password"), ("confirmation", "my-new-frame-password")] {
+            let input = app.secureTextFields["password.\(field)"]
+            XCTAssertTrue(input.waitForExistence(timeout: 5))
+            input.tap(); input.typeText(value)
+        }
+        let save = app.buttons["password.save"]
+        scrollTo(save)
+        save.tap()
+        XCTAssertTrue(app.staticTexts["password.success"].waitForExistence(timeout: 10))
+        capture("08 Mot de passe personnalisé")
+        app.buttons["Terminer"].tap()
+        let logout = app.buttons["settings.logout"]
+        scrollTo(logout)
+        logout.tap()
+        let password = app.secureTextFields["connection.password"]
+        XCTAssertTrue(password.waitForExistence(timeout: 5))
+        password.tap(); password.typeText("my-new-frame-password")
+        app.buttons["connection.submit"].tap()
+        XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10))
     }
 
     private func element(_ identifier: String) -> XCUIElement {
@@ -230,6 +331,28 @@ final class InkyStudioUITests: XCTestCase {
     private func tab(_ identifier: String, fallback: String) -> XCUIElement {
         let identified = app.buttons["tab.\(identifier)"]
         return identified.exists ? identified : app.tabBars.buttons[fallback]
+    }
+
+    private func selectTab(_ identifier: String, fallback: String) {
+        let target = tab(identifier, fallback: fallback)
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        if #available(iOS 27, *) {
+            // The floating native tab bar reports a valid AX frame but XCTest's
+            // automatic hit point can be {-1,-1}. Use its observed frame and
+            // verify the actual selection; no model-specific coordinates.
+            let window = app.windows.firstMatch
+            let rect = target.frame
+            XCTAssertTrue(window.frame.contains(rect))
+            XCTAssertGreaterThan(rect.width, 0)
+            window.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: rect.midX - window.frame.minX, dy: rect.midY - window.frame.minY)).tap()
+        } else { target.tap() }
+        XCTAssertTrue(waitForSelected(target), "The tab must actually become selected.")
+    }
+
+    private func waitForSelected(_ element: XCUIElement) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: element)
+        return XCTWaiter.wait(for: [expectation], timeout: 5) == .completed
     }
 
     private func scrollTo(_ target: XCUIElement) {

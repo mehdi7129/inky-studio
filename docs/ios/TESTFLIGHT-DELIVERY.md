@@ -14,7 +14,7 @@ test before preparing a public App Store release.
 | TestFlight group | **Mehdi — test iPhone**, internal, automatic distribution disabled |
 | Build assignment | Two builds assigned; one tester, Mehdi, marked **Invité** |
 | Test information | French beta description, feedback address and build-specific physical-device checklist saved |
-| Hardware installation | Pending Mehdi accepting the invitation and installing in TestFlight |
+| Hardware installation | Mehdi reports the app works on his iPhone; the subsequent UI/camera changes need a new beta test |
 | Public App Store | Not submitted or released; no external/public beta link created |
 
 [Open TestFlight](https://appstoreconnect.apple.com/teams/03da9ef5-608a-40ef-9367-b987b26ea06d/apps/6816637620/testflight/ios).
@@ -25,7 +25,7 @@ installation on the iPhone are separate from server-side delivery.
 ## First device test
 
 1. Open Apple's TestFlight invitation on the iPhone and install **Inky Studio
-   1.0.0 (1)**. Use iOS 18 or later.
+   1.0.0 (2)**. Use iOS 18 or later.
 2. Connect to the home network shared with the Raspberry and allow local-network
    access. Enter the real frame's address and existing password, not the local
    simulator fixture address or password.

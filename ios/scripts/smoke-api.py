@@ -66,7 +66,7 @@ def main() -> None:
     assert request("/__test/reset", "POST", {}) == {"reset": True}
     connection = None
     try:
-        assert request("/api/auth/status") == {"authenticated": False, "auth_required": True}
+        assert request("/api/auth/status") == {"authenticated": False, "auth_required": True, "password_change_supported": True}
         assert request("/api/state", expected=401)["detail"] == "Authentification requise"
         assert request("/api/auth/login", "POST", {"password": "wrong"}, expected=401)["detail"] == "Mot de passe incorrect"
         assert request("/api/auth/login", "POST", {"password": "test-password"})["authenticated"]
@@ -120,6 +120,13 @@ def main() -> None:
         request("/api/history", "DELETE", expected=204)
         assert request("/api/history") == []
         assert request("/api/state")["current"] is None
+        assert request("/api/auth/password", "POST", {
+            "current_password": "test-password", "new_password": "personal-frame-password"
+        })["authenticated"]
+        assert next(cookie for cookie in jar if cookie.name == "inky_session").value != cookie.value
+        assert request("/api/auth/status")["authenticated"]
+        request("/api/auth/login", "POST", {"password": "test-password"}, expected=401)
+        assert request("/api/auth/login", "POST", {"password": "personal-frame-password"})["authenticated"]
         assert not request("/api/auth/logout", "POST")["authenticated"]
         request("/api/queue", expected=401)
         assert not request("/api/auth/status")["authenticated"]

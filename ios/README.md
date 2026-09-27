@@ -1,6 +1,6 @@
 # Inky Studio for iPhone
 
-Native SwiftUI companion for Inky Studio v0.4.2+. Requires iOS 18 or newer and a Raspberry reachable on the same Wi-Fi network. No third-party Swift dependencies, cloud account or backend migration.
+Native SwiftUI companion for Inky Studio v0.4.2+. Requires iOS 18 or newer and a Raspberry reachable on the same Wi-Fi network. No third-party Swift dependencies or cloud account. The optional password-change feature requires a compatible updated server; normal photo workflows remain compatible with v0.4.2.
 
 ## Run
 
@@ -22,7 +22,9 @@ Enter the Raspberry hostname (for example `inkyold.local:8000`) or its IP addres
 - **File:** add photos, reorder with drag handles or accessible context actions, remove entries.
 - **Historique:** dates, paginated history, requeue original PNG bytes, delete an entry or clear history.
 - **Réglages:** daily/interval/manual schedule, whole-hour Pi-local schedule, saturation, optional biometrics, device information, Pi release check/update, logout and forget frame.
-- Native Photos picker, HEIC/JPEG/PNG decoding, EXIF orientation, pan/pinch crop, zoom/reset, exact panel dimensions, SDR/sRGB PNG without private source metadata. The Pi alone handles palette quantization.
+- Rounded Bento interface, automatic system light/dark appearance, portrait only, no technical filenames in photo cards.
+- Native camera capture or Photos picker, HEIC/JPEG/PNG decoding, EXIF orientation, pan/pinch crop, zoom/reset, exact panel dimensions, SDR/sRGB PNG without private source metadata. Camera permission is requested on use; captures are not automatically saved to Photos. The Pi alone handles palette quantization.
+- Authenticated password change when the server advertises support, renewed session and updated biometric credential. A lost response requires an explicit reconnect instead of repeating the mutation.
 - Foreground WebSocket updates, reconnect with capped backoff, state refresh after return, independent polling to recover missed events, readable errors and offline state.
 
 ## Credentials and transport
@@ -32,6 +34,10 @@ First pairing uses the existing Pi password. Face ID or Touch ID is opt-in. The 
 Only the frame address and biometric preference are stored in UserDefaults. Cookies are private, in memory and isolated per origin/client, shared by JSON, PNG and WebSocket requests. Relaunching the app requires login (Face ID when enabled). Logout keeps the optional saved credential; disabling biometrics or forgetting the frame removes it. No session is shared with Safari. The Pi invalidates sessions when it restarts.
 
 The default Pi uses HTTP on the local network. `NSAllowsLocalNetworking` permits local origins; public HTTP hosts are not exempted from ATS, and TLS certificate checks are never bypassed. Cross-origin redirects cannot forward passwords or cookies. Do not expose the Pi's HTTP service directly on the internet.
+
+Bluetooth Wi-Fi provisioning is not yet integrated into the app. The independent
+[Mac/Pi diagnostic bench](../docs/ios/BLUETOOTH-BENCH.md) validates transport only;
+it must never carry Wi-Fi or frame credentials.
 
 ## Tests
 

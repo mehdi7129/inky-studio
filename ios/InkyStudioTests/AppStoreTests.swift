@@ -3,6 +3,90 @@ import XCTest
 
 @MainActor
 final class AppStoreTests: XCTestCase {
+    func testForegroundAndPhotoReadsWaitForPasswordRotation() async throws {
+        let fixture = StoreFixture(totals: ["frame.local": 101])
+        defer { fixture.dispose() }
+        let store = fixture.store
+        await fixture.login("frame.local")
+        let photo = try XCTUnwrap(store.history.first?.photo)
+        let gate = fixture.stub.hold(host: "frame.local", path: "/api/auth/password", method: "POST")
+        let changing = Task { await store.changePassword(current: "previous-test-password", new: "new-test-password") }
+        await fulfillment(of: [gate.started], timeout: 3)
+        let before = fixture.stub.requests.count
+        store.sceneActive(true)
+        await store.refresh()
+        await store.loadMoreHistory()
+        _ = await store.image(for: photo)
+        await Task.yield()
+        XCTAssertEqual(fixture.stub.requests.count, before, "Foreground refreshes must not use the old cookie during rotation.")
+        store.sceneActive(false)
+        gate.release()
+        guard case .success = await changing.value else { return XCTFail("Expected successful rotation") }
+        XCTAssertTrue(store.authenticated)
+        XCTAssertTrue(store.connected)
+        await store.refresh()
+        XCTAssertGreaterThan(fixture.stub.requests.count, before)
+    }
+
+    func testPasswordRotationKeepsSessionAndRejectsOldRefresh() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let store = fixture.store
+        await fixture.login("frame.local")
+        XCTAssertTrue(store.passwordChangeSupported)
+        let gate = fixture.stub.hold(host: "frame.local", path: "/api/state")
+        let refresh = Task { await store.refresh() }
+        await fulfillment(of: [gate.started], timeout: 3)
+        let result = await store.changePassword(current: "previous-test-password", new: "new-test-password")
+        guard case .success = result else { return XCTFail("Expected successful rotation") }
+        gate.release(status: 401)
+        await refresh.value
+        XCTAssertTrue(store.authenticated, "A refresh sent before rotation must not revoke the new session.")
+        XCTAssertTrue(store.connected)
+        XCTAssertFalse(store.busy)
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == "/api/auth/password" }.count, 1)
+    }
+
+    func testWrongCurrentPasswordDoesNotSignOut() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("frame.local")
+        let gate = fixture.stub.hold(host: "frame.local", path: "/api/auth/password", method: "POST")
+        let changing = Task { await fixture.store.changePassword(current: "wrong", new: "new-test-password") }
+        await fulfillment(of: [gate.started], timeout: 3)
+        gate.release(status: 403)
+        guard case .failure = await changing.value else { return XCTFail("Expected rejection") }
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.connected)
+        XCTAssertFalse(fixture.store.busy)
+    }
+
+    func testUnconfirmedPasswordRotationRequiresExplicitReconnect() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("frame.local")
+        fixture.store.biometricEnabled = true
+        let gate = fixture.stub.hold(host: "frame.local", path: "/api/auth/password", method: "POST")
+        let changing = Task { await fixture.store.changePassword(current: "previous-test-password", new: "new-test-password") }
+        await fulfillment(of: [gate.started], timeout: 3)
+        gate.release(status: 502)
+        guard case .failure(let message) = await changing.value else { return XCTFail("Expected uncertain result") }
+        XCTAssertTrue(message.contains("nouveau mot de passe"))
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.biometricEnabled)
+        XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == "/api/auth/password" }.count, 1)
+    }
+
+    func testLegacyFrameDoesNotOfferOrSendPasswordRotation() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("legacy-frame.local")
+        XCTAssertFalse(fixture.store.passwordChangeSupported)
+        guard case .failure = await fixture.store.changePassword(current: "old", new: "new-test-password") else { return XCTFail("Expected unsupported operation") }
+        XCTAssertFalse(fixture.stub.requests.contains { $0.url?.path == "/api/auth/password" })
+    }
+
     func testBiometricPreferenceIsPreservedUnlessExplicitlyDisabledAfterSuccessfulLogin() async throws {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
@@ -283,8 +367,8 @@ private final class StoreStub: @unchecked Sendable {
         let gate = lock.withLock { calls.append(request); return gates.removeValue(forKey: key) }
         let body: Any
         switch path {
-        case "/api/auth/status", "/api/auth/logout": body = ["authenticated": false, "auth_required": true]
-        case "/api/auth/login": body = ["authenticated": true, "auth_required": true]
+        case "/api/auth/status", "/api/auth/logout": body = ["authenticated": false, "auth_required": true, "password_change_supported": host != "legacy-frame.local"]
+        case "/api/auth/login", "/api/auth/password": body = ["authenticated": true, "auth_required": true, "password_change_supported": host != "legacy-frame.local"]
         case "/api/health": body = ["status": "ok", "version": "0.4.2"]
         case "/api/state": body = ["display": ["model": host, "width": 800, "height": 480, "colors": 6, "is_mock": true], "current": NSNull(), "queue_count": 0, "next_change_at": NSNull()]
         case "/api/settings": body = ["change_mode": "daily", "change_hour": 5, "change_interval_minutes": 60, "saturation": 1]
