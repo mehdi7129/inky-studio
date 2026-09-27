@@ -70,8 +70,9 @@ iPhone test step on 2026-09-27 ("je valide le 1") and authorized continuation.
 This is user acceptance, not an instrumented log of every physical camera/Face ID
 scenario. PR #8 was merged as `b31046d` after this acceptance.
 
-Password personalization is present but hidden with the currently deployed
-v0.4.2 server; the matching backend and installed CLI must be deployed separately.
+Password personalization is now enabled by server `0.5.0-rc.1`, deployed after
+the CLI migration. The existing password still authenticates; Mehdi chooses when
+to personalize it. See [server delivery](SERVER-CANDIDATE-DELIVERY.md).
 BLE Wi-Fi provisioning is not in this beta.
 
 - [Build 3 in App Store Connect](https://appstoreconnect.apple.com/teams/03da9ef5-608a-40ef-9367-b987b26ea06d/apps/6816637620/testflight/ios/ac86cdc7-736b-4061-a940-58a290d41b2d)

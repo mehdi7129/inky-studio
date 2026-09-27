@@ -1,0 +1,70 @@
+{
+  "scope": "synthetic-memory-buffers-only-no-radio-no-pi",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "python": "3.13.3",
+  "openssl": "OpenSSL 3.6.3 9 Jun 2026",
+  "mbedtls": "4.1.1",
+  "dylib_stripped_bytes": 637784,
+  "source": {
+    "url": "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-4.1.1/mbedtls-4.1.1.tar.bz2",
+    "sha256": "3359a349e23db3d5536fcee032ae7b2ecbfc08972fab643089b5cbf2a375c98c",
+    "bytes": 7099934
+  },
+  "cases": [
+    {
+      "name": "pinned-tls13-fragmented-echo",
+      "pass": true,
+      "tls": "TLSv1.3",
+      "cipher": "TLS_AES_256_GCM_SHA384",
+      "pin": "SHA256(DER SubjectPublicKeyInfo)",
+      "pre_handshake_write_refused": true,
+      "handshake_ms": 7.709,
+      "total_ms": 8.384,
+      "application_bytes_each_way": 600,
+      "max_fragment_bytes": 20,
+      "chunks": {
+        "client_to_server": 49,
+        "server_to_client": 76
+      },
+      "encrypted_bytes": {
+        "client_to_server": 944,
+        "server_to_client": 1484
+      }
+    },
+    {
+      "name": "wrong-pin-no-payload",
+      "pass": true,
+      "pin_rejected": true,
+      "application_bytes_sent": 0,
+      "client_error": "X509 - Certificate verification failed, e.g. CRL, CA or signature check failed",
+      "elapsed_ms": 3.537,
+      "chunks": {
+        "client_to_server": 12,
+        "server_to_client": 35
+      },
+      "max_fragment_bytes": 20
+    },
+    {
+      "name": "corrupt-encrypted-record",
+      "pass": true,
+      "tls": "TLSv1.3",
+      "corrupt_record_rejected": true,
+      "server_application_bytes_received": 0,
+      "server_error": {
+        "type": "SSLError",
+        "message": "[SSL] record layer failure (_ssl.c:2648)",
+        "errno": 1,
+        "reason": null
+      },
+      "handshake_ms": 4.912,
+      "max_fragment_bytes": 20
+    }
+  ],
+  "limitations": [
+    "Native macOS C/ctypes, not Swift/iOS or BLE",
+    "Synthetic CA supplied independently; QR-only trust/X509 policy not qualified",
+    "No ownership, revocation, persistence, Wi-Fi or failure recovery",
+    "Default library crypto configuration, static link/dead strip; not minimum iOS size"
+  ]
+}

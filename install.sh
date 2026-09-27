@@ -132,6 +132,55 @@ try: print(json.load(sys.stdin).get("tag_name",""))
 except Exception: pass' 2>/dev/null || true)
   [[ -z "${asset}" ]] && return 1
 
+  # Latest excludes prereleases: re-running this bootstrap must not overwrite a
+  # newer installed candidate. Read version literals; never import installed code.
+  # Status 42 is terminal at the caller, not a reason to fetch main instead.
+  if ! python3 - "${INSTALL_DIR}" "${tag}" <<'PY'
+import ast
+import re
+import sys
+from pathlib import Path
+
+def version_key(value):
+    match = re.fullmatch(
+        r"v?(\d+)\.(\d+)\.(\d+)(?:-?(alpha|beta|a|b|rc)[.-]?(\d+))?(?:\+[\w.-]+)?",
+        value.strip(), re.IGNORECASE,
+    )
+    if not match:
+        raise ValueError("unrecognized version")
+    major, minor, patch, stage, serial = match.groups()
+    rank = {"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2}
+    return (int(major), int(minor), int(patch),
+            rank[stage.lower()] if stage else 3, int(serial or 0))
+
+root = Path(sys.argv[1])
+module = root / "server/inky_web/__init__.py"
+marker = root / "VERSION"
+if not module.exists() and not marker.exists():
+    sys.exit(0)
+try:
+    current = None
+    if module.exists():
+        for node in ast.parse(module.read_text()).body:
+            if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "__version__"
+                for target in node.targets
+            ):
+                current = ast.literal_eval(node.value)
+                break
+    if current is None and marker.exists():
+        current = marker.read_text().strip()
+    if not isinstance(current, str) or version_key(sys.argv[2]) < version_key(current):
+        raise ValueError("installed version is newer or cannot be determined")
+except (OSError, SyntaxError, ValueError, TypeError) as error:
+    print(f"Inky Studio: refusing to replace the installed application with {sys.argv[2]}: {error}.", file=sys.stderr)
+    print("No application files were copied. Use a compatible release; no source fallback was attempted.", file=sys.stderr)
+    sys.exit(1)
+PY
+  then
+    return 42
+  fi
+
   say "Downloading release ${tag}…"
   tmp=$(mktemp -d)
   curl -fsSL -o "${tmp}/release.tar.gz" "${asset}" || { rm -rf "${tmp}"; return 1; }
@@ -182,7 +231,11 @@ fetch_source() {
 if [[ "${CHANNEL}" == "source" ]]; then
   fetch_source
 else
-  if ! fetch_release; then
+  if fetch_release; then
+    :
+  else
+    release_status=$?
+    [[ "${release_status}" -eq 42 ]] && exit 1
     echo "⚠️  No prebuilt release found — falling back to building from source."
     fetch_source
   fi
@@ -218,7 +271,49 @@ sudo visudo -cf /etc/sudoers.d/inky-studio >/dev/null
 say "Installing CLI at /usr/local/bin/inky-studio…"
 # Keep only a stable dispatcher outside the release tree. Later updates replace
 # the delegated CLI automatically; paths are quoted literally by the generator.
-bash "${INSTALL_DIR}/scripts/inky-studio-launcher" --install "${INSTALL_DIR}" "${DATA_DIR}"
+if [[ -f "${INSTALL_DIR}/scripts/inky-studio-launcher" && -r "${INSTALL_DIR}/scripts/inky-studio-launcher" ]]; then
+  bash "${INSTALL_DIR}/scripts/inky-studio-launcher" --install "${INSTALL_DIR}" "${DATA_DIR}"
+else
+  # A newer bootstrap can download an older stable payload (v0.4.2 has the CLI
+  # but no launcher generator). Keep this fallback self-contained for curl | bash;
+  # do not fetch a second script from a moving branch or copy the legacy CLI.
+  (
+    if [[ "${INSTALL_DIR}" != /* || "${DATA_DIR}" != /* ]]; then
+      echo "Inky Studio: INSTALL_DIR and DATA_DIR must be absolute paths." >&2
+      exit 2
+    fi
+    if [[ ! -f "${INSTALL_DIR}/scripts/inky-studio-cli" || ! -r "${INSTALL_DIR}/scripts/inky-studio-cli" ]]; then
+      echo "Inky Studio: scripts/inky-studio-cli must exist in INSTALL_DIR before installing the launcher." >&2
+      exit 1
+    fi
+    CLI_TMP=$(mktemp)
+    trap 'rm -f "${CLI_TMP}"' EXIT
+    {
+      cat <<'HEADER'
+#!/usr/bin/env bash
+# Inky Studio stable launcher: application updates replace the delegated script.
+# Run as the normal service user; privileged service commands use scoped sudo.
+set -euo pipefail
+HEADER
+      printf 'INKY_DEFAULT_INSTALL_DIR=%q\n' "${INSTALL_DIR}"
+      printf 'INKY_DEFAULT_DATA_DIR=%q\n' "${DATA_DIR}"
+      cat <<'BODY'
+export INKY_STUDIO_INSTALL_DIR="${INKY_STUDIO_INSTALL_DIR:-${INKY_DEFAULT_INSTALL_DIR}}"
+export INKY_STUDIO_DATA_DIR="${INKY_STUDIO_DATA_DIR:-${INKY_DEFAULT_DATA_DIR}}"
+inky_cli="${INKY_STUDIO_INSTALL_DIR}/scripts/inky-studio-cli"
+if [[ ! -f "${inky_cli}" || ! -r "${inky_cli}" ]]; then
+  printf 'Inky Studio: command script missing or unreadable: %s\n' "${inky_cli}" >&2
+  echo 'Restore the installation or correct INKY_STUDIO_INSTALL_DIR. No service was changed.' >&2
+  exit 127
+fi
+exec /bin/bash -- "${inky_cli}" "$@"
+BODY
+    } > "${CLI_TMP}"
+    /bin/bash -n "${CLI_TMP}"
+    sudo install -o root -g root -m 0755 "${CLI_TMP}" /usr/local/bin/inky-studio
+    echo "Installed stable Inky Studio launcher at /usr/local/bin/inky-studio."
+  )
+fi
 
 # ── 11. systemd unit ─────────────────────────────────────────────────────────
 say "Writing systemd unit…"
