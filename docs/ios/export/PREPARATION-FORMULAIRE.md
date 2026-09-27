@@ -1,6 +1,8 @@
 # Formulaire ANSSI pour Inky Studio — préparation non signée
 
-Recherche primaire du 27 septembre 2026. Aucun contact externe, envoi ou signature.
+Recherche primaire du 27 septembre 2026. Aucun formulaire signé ou déposé.
+Une demande de précision a ensuite été envoyée à Apple Developer Support avec
+l'accord de Mehdi ; voir l'état des échanges ci-dessous.
 Les coordonnées fournies ensuite par Mehdi servent uniquement au brouillon local
 privé ; elles ne sont pas reproduites dans ce document ni dans Git. L’[annexe technique](ANNEXE-TECHNIQUE.md) et l’[inventaire de configuration](build4-crypto-configuration.json)
 sont préparés séparément ; ce mémo fournit le formulaire, les rubriques
@@ -132,3 +134,22 @@ brochures/guides. [Formulaires et modalités](https://cyber.gouv.fr/reglementati
 Point encore ouvert : nature précise du justificatif qu’Apple acceptera pour
 ce dossier et, si le titulaire est un particulier, adaptation de la liste E.
 Aucune garantie de déblocage Apple n’est attachée au seul brouillon.
+
+## Demandes de précision — état du 27 septembre 2026
+
+La demande Apple a été envoyée via le formulaire officiel **Configuration
+d’app → Chiffrement**. L'interface a confirmé la réception et attribué un numéro
+de dossier, conservé avec le texte et la capture dans les preuves privées.
+Elle demande si Apple attend le formulaire signé, une preuve de dépôt, un
+récépissé/une autorisation ANSSI ou un autre justificatif, ainsi que le format
+de l'annexe. Elle contient les informations techniques publiques et le contact
+de support choisi par Mehdi. Aucun formulaire personnel n'a été joint.
+
+La question préalable ANSSI est préparée ; son envoi attend la confirmation du
+compte expéditeur, distinct de l'adresse publique de support. Elle porte sur
+les formalités applicables au produit final, les pièces d'une personne physique
+et un éventuel classement grand public. Aucun dépôt signé n'a été effectué.
+
+Une demande de renseignement ou son accusé de réception ne constitue ni une
+réponse sur le classement, ni une approbation documentaire Apple. Le build 4
+reste en attente de conformité.

@@ -85,6 +85,7 @@ struct ConnectionView: View {
                     Button("Changer de cadre") { Task { await store.logout(forget: true); showPassword = false; password = ""; remember = false } }
                         .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 8).disabled(store.connecting)
                 }
+                SupportPrivacyLinks(identifierPrefix: "connection")
             }.padding(20).frame(maxWidth: 540)
                 .frame(maxWidth: .infinity)
         }.background(Bento.background).scrollDismissesKeyboard(.interactively)
@@ -97,4 +98,39 @@ struct ConnectionView: View {
             }
     }
     private func connect() { passwordFocused = false; Task { await store.login(password: password, rememberBiometric: remember) } }
+}
+
+struct SupportPrivacyLinks: View {
+    let identifierPrefix: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Aide et confidentialité").font(.headline).accessibilityAddTraits(.isHeader)
+            Link(destination: URL(string: "https://inky-studio.netlify.app/support.html")!) {
+                linkLabel("Support", systemImage: "questionmark.circle")
+            }
+            .accessibilityLabel("Support Inky Studio")
+            .accessibilityHint("Ouvre le site de support dans le navigateur.")
+            .accessibilityIdentifier("\(identifierPrefix).support")
+            Divider()
+            Link(destination: URL(string: "https://inky-studio.netlify.app/confidentialite.html")!) {
+                linkLabel("Confidentialité", systemImage: "hand.raised")
+            }
+            .accessibilityLabel("Politique de confidentialité")
+            .accessibilityHint("Ouvre la politique de confidentialité dans le navigateur.")
+            .accessibilityIdentifier("\(identifierPrefix).privacy")
+        }.buttonStyle(.plain).bentoCard()
+    }
+
+    private func linkLabel(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Image(systemName: "arrow.up.right").foregroundStyle(.secondary).accessibilityHidden(true)
+        }
+        .font(.body).foregroundStyle(Bento.blue)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+    }
 }

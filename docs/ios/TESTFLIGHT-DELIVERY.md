@@ -14,6 +14,9 @@ test before preparing a public App Store release.
 - The private official-form draft has 49 populated fields; its XFA rendering
   is unverified. A separate five-page review companion passed visual QA.
   Neither document is signed or submitted, and neither is Apple approval.
+- Apple Developer Support has acknowledged a clarification request about the
+  exact French evidence required. No answer or compliance approval is recorded
+  yet. The preliminary ANSSI question awaits sender-account confirmation.
 
 ## Historical delivery: build 2
 
@@ -120,6 +123,14 @@ Mode enabled. Mehdi explicitly prefers TestFlight and Simulator checks; this
 direct-install alternative is therefore not being pursued. The phone was still
 unavailable at the last device check.
 No physical iPhone Bluetooth adoption or actual Wi-Fi transition is claimed.
+
+Once the required documentation is approved, associate it with the existing
+build 4 before assigning the internal group. Approval does not itself distribute
+the build. Apple's [beta compliance procedure](https://developer.apple.com/help/app-store-connect/test-a-beta-version/provide-export-compliance-information-for-beta-builds)
+allows previously approved documentation to be attached to a build; a new upload
+is not established as a prerequisite for this candidate. Source changes made
+after build 4, such as the native support/privacy links, require a later numbered
+build and are not present in the already-uploaded archive.
 
 - [Build 4 in App Store Connect](https://appstoreconnect.apple.com/teams/03da9ef5-608a-40ef-9367-b987b26ea06d/apps/6816637620/testflight/ios/ffcfb92e-e664-4ffb-b7f2-b447c7f4e453)
 - Signed archive: ignored `build/ios/archives/InkyStudio-1.0.0-4.xcarchive`.

@@ -7,6 +7,9 @@ Il est marqué `testFlightInternalTestingOnly=true`, mais reste en
 conformité exige des documents avec les réponses décrites ci-dessous.
 L’upload du binaire a bien eu lieu ; aucun document de conformité ni déclaration
 administrative n’a été envoyé. L’ancien build `1.0.0 (3)` n’intègre pas Mbed TLS.
+Une demande de précision sur les justificatifs a été envoyée à Apple Developer
+Support ; sa réception est confirmée, sans réponse ni approbation à ce stade.
+Voir [l'état des échanges](export/PREPARATION-FORMULAIRE.md#demandes-de-précision--état-du-27-septembre-2026).
 
 | Usage | Implémentation du nouveau code |
 |---|---|
@@ -138,8 +141,9 @@ protège aussi la confidentialité du mot de passe Wi-Fi.
 - Incertitudes restantes : applicabilité des exceptions au **produit logiciel
   complet** et aux opérations envisagées ; pièces qu’Apple accepterait pour une
   exemption française. Le résultat du questionnaire du build 4 est désormais
-  connu. Les points non résolus peuvent être soumis aux interlocuteurs
-  Apple/ANSSI, sans présumer leur réponse.
+  connu. La question sur le justificatif a été envoyée à Apple. La demande
+  préalable ANSSI est préparée, en attente du choix du compte expéditeur.
+  Aucune réponse de ces interlocuteurs n'est présumée.
 - Un export de développement signé du build 4 est prêt ; le branchement d’un
   iPhone a été demandé pour la qualification sur appareil. Le backend Bluetooth `0.5.0-rc.2` a ensuite été déployé et vérifié sur le
   cadre de qualification ; aucun essai réel de changement Wi-Fi n’est déclaré

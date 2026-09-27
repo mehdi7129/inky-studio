@@ -104,6 +104,7 @@ struct SettingsView: View {
                         Spacer()
                         Text("Système").foregroundStyle(.secondary)
                     }.font(.subheadline).bentoCard().accessibilityElement(children: .combine)
+                    SupportPrivacyLinks(identifierPrefix: "settings")
                     Button("Oublier ce cadre", role: .destructive) { confirmForget = true }.font(.subheadline).frame(minHeight: 44)
                     Text("Inky Studio pour iPhone · \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")")
                         .font(.caption).foregroundStyle(.secondary).padding(.bottom, 16)

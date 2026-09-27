@@ -136,8 +136,12 @@ no demo action may mutate a connected real frame. Approval is not guaranteed.
   session, from later Bluetooth Wi-Fi recovery by an already-adopted phone.
   Publish a verified hardware matrix; one 800×480 panel does not validate all
   Inky displays. Do not imply cellular remote access.
-- Add **Support** and **Privacy** links before login and in settings. The privacy
-  manifest does not replace a public policy. Apple's
+- **Support** and **Privacy** links are now implemented in source before login
+  and in settings, using the existing rounded card and system colors. Their
+  HTTPS destinations both returned 200. This source addition is newer than the
+  uploaded build 4; it needs a future numbered beta/public candidate and must
+  not be claimed as already delivered through TestFlight. The privacy manifest
+  does not replace a public policy. Apple's
   [sections 1.5 and 5.1.1(i)](https://developer.apple.com/app-store/review/guidelines/)
   cover contact information and accessible privacy links.
 - Validate VoiceOver, Dynamic Type through accessibility sizes, contrast, reduced
@@ -355,7 +359,31 @@ the current available beta and subsequent user feedback are recorded in section 
 
 The website is live with authentic beta screenshots, the approved public email,
 setup/troubleshooting and an accurate privacy policy. Its publication does not
-publish the iPhone app. Add its support/privacy links inside the next public
-candidate before App Review. Operationally, honor the published support-message
+publish the iPhone app. Include the subsequent native support/privacy link
+addition in the future tested public candidate before App Review.
+Operationally, honor the published support-message
 retention period (up to one year after resolution), without deleting account
 messages as part of this delivery.
+
+
+### Support/privacy follow-up — 27 September 2026
+
+The native links compile with Xcode 27.0 for iPhone Simulator. Two existing UI
+regressions pass on iOS 27.0: invalid-password/login/tab navigation, and settings
+save/logout (2 tests, 0 failures or skips). These tests do not open the external
+links; their HTTPS destinations were checked separately. Local evidence is kept
+under ignored `build/ios/support-links-validation/`. No new archive was uploaded.
+
+The website source now distinguishes the initial password from a personalized
+password and explains Bluetooth key storage, Wi-Fi recovery data, HTTPS after
+adoption, and local forgetting versus server revocation. It explicitly separates
+the available build 3 from build 4 awaiting qualification/distribution. HTML,
+31 local links/resources and desktop rendering were checked. The reviewed ZIP
+is in ignored `build/website/2026-09-27-support-privacy/`, with a source manifest
+and Netlify `_headers` generated from `netlify.toml`.
+
+This website revision is **not deployed**: Chrome's upload tool requires the
+extension's file-URL access permission, which was unavailable. No upload or
+production switch completed. The existing public site remains on its previous
+camera-privacy revision. Verify the production content and headers after the
+pending upload before marking the website follow-up delivered.
