@@ -5,6 +5,7 @@ struct SettingsView: View {
     @State private var draft = FrameSettings()
     @State private var enableBiometric = false
     @State private var changePassword = false
+    @State private var bluetoothSetup = false
     @State private var confirmUpdate = false
     @State private var confirmForget = false
     @State private var loaded = false
@@ -55,6 +56,14 @@ struct SettingsView: View {
                         }.tint(Bento.blue).disabled(store.vault.capability == nil && !store.biometricEnabled).accessibilityIdentifier("settings.biometric")
                         Text(store.vault.capability == nil ? "Configurez Face ID ou Touch ID dans les réglages de votre iPhone pour l’activer." : "Utiliser le mot de passe enregistré.")
                             .font(.caption).foregroundStyle(.secondary)
+                        if store.bluetoothSupported || !store.connected {
+                            Divider()
+                            Button { bluetoothSetup = true } label: {
+                                Label("Configurer le Wi-Fi du cadre", systemImage: "wifi")
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }.disabled(store.busy || store.displayBusy)
+                                .accessibilityIdentifier("settings.bluetooth")
+                        }
                         if store.passwordChangeSupported {
                             Divider()
                             Button { changePassword = true } label: {
@@ -95,6 +104,7 @@ struct SettingsView: View {
                         Spacer()
                         Text("Système").foregroundStyle(.secondary)
                     }.font(.subheadline).bentoCard().accessibilityElement(children: .combine)
+                    SupportPrivacyLinks(identifierPrefix: "settings")
                     Button("Oublier ce cadre", role: .destructive) { confirmForget = true }.font(.subheadline).frame(minHeight: 44)
                     Text("Inky Studio pour iPhone · \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")")
                         .font(.caption).foregroundStyle(.secondary).padding(.bottom, 16)
@@ -104,6 +114,13 @@ struct SettingsView: View {
                 .onChange(of: store.settings) { old, new in if !loaded || draft == old { if let new { draft = new; loaded = true } } }
                 .sheet(isPresented: $enableBiometric) { BiometricSetupView() }
                 .sheet(isPresented: $changePassword) { PasswordChangeView() }
+                .sheet(isPresented: $bluetoothSetup) {
+                    BluetoothSetupView(beginWindow: store.connected && store.bluetoothSupported ? {
+                        try await store.beginBluetoothAdoption()
+                    } : nil) { endpoint, owner in
+                        await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
+                    }
+                }
                 .confirmationDialog("Mettre à jour le Raspberry ?", isPresented: $confirmUpdate) {
                     Button("Installer la mise à jour") { Task { await store.startUpdate() } }
                 } message: { Text("Le service va redémarrer. Une reconnexion sera ensuite nécessaire.") }

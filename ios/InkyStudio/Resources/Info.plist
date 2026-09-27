@@ -11,9 +11,11 @@
 <key>LSRequiresIPhoneOS</key><true/>
 <key>UILaunchScreen</key><dict/>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
-<key>NSCameraUsageDescription</key><string>Photographiez un moment pour l’envoyer sur votre cadre Inky. La photo n’est pas enregistrée automatiquement dans votre photothèque.</string>
+<key>NSCameraUsageDescription</key><string>Prenez une photo pour votre cadre ou scannez son QR de connexion Bluetooth. Les images ne sont pas enregistrées automatiquement dans votre photothèque.</string>
+<key>NSBluetoothAlwaysUsageDescription</key><string>Inky Studio utilise le Bluetooth pour reconnaître votre cadre et configurer son réseau Wi-Fi, même hors de votre réseau habituel.</string>
 <key>NSLocalNetworkUsageDescription</key><string>Inky Studio se connecte à votre Raspberry sur le même réseau Wi-Fi pour gérer les photos de votre cadre.</string>
 <key>NSFaceIDUsageDescription</key><string>Face ID autorise l’utilisation du mot de passe de votre cadre enregistré sur cet iPhone.</string>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
-<key>ITSAppUsesNonExemptEncryption</key><false/>
+<!-- Mbed TLS adds bundled encryption. Answer the App Store Connect export
+     questionnaire for this build; do not reuse the former OS-only declaration. -->
 </dict></plist>

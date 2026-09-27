@@ -3,9 +3,9 @@ name: iOS
 on:
   push:
     branches: [main]
-    paths: ["ios/**", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "scripts/build-mbedtls-apple.sh", "scripts/test-bluetooth-channel.sh", "scripts/test-https-wire.sh", "scripts/https-wire-bench/**", "server/inky_web/provisioning/**", ".github/workflows/ios.yml"]
   pull_request:
-    paths: ["ios/**", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "scripts/build-mbedtls-apple.sh", "scripts/test-bluetooth-channel.sh", "scripts/test-https-wire.sh", "scripts/https-wire-bench/**", "server/inky_web/provisioning/**", ".github/workflows/ios.yml"]
   workflow_dispatch:
 
 concurrency:
@@ -24,6 +24,24 @@ jobs:
       - uses: actions/checkout@v4
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Prepare synthetic TLS fixtures
+        run: |
+          python3 -m pip install 'cryptography>=44,<51'
+          echo "INKY_TLS_TEST_PYTHON=$(command -v python3)" >> "$GITHUB_ENV"
+          echo "INKY_TLS_PYTHON=$(command -v python3)" >> "$GITHUB_ENV"
+          echo "INKY_HTTPS_PYTHON=$(command -v python3)" >> "$GITHUB_ENV"
+          INKY_TLS_TEST_PYTHON="$(command -v python3)" bash ios/Packages/InkyTLS/Tests/InkyTLSTests/Support/generate-fixtures.sh
+      - name: Build pinned TLS dependency
+        run: scripts/build-mbedtls-apple.sh
+      - name: Test TLS bridge
+        run: swift test --package-path ios/Packages/InkyTLS
+      - name: Test Bluetooth channel against Python GATT transport
+        run: scripts/test-bluetooth-channel.sh
+      - name: Test adopted HTTPS identity over real loopback sockets
+        run: scripts/test-https-wire.sh
       - name: Start isolated frame fixture
         run: |
           python3 ios/scripts/mock-server.py > /tmp/inky-fixture.log 2>&1 &

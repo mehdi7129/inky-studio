@@ -1,0 +1,49 @@
+{
+  "ok": true,
+  "checks": [
+    "dual_loopback_listeners",
+    "normal_auth",
+    "shared_http_https_session",
+    "https_tls13",
+    "real_helper_health",
+    "private_mock_qr",
+    "in_process_gatt_tls13_claim",
+    "owner_status",
+    "mock_qr_restored",
+    "helper_mutations_blocked",
+    "single_lifecycle_cleanup"
+  ],
+  "bluez": "real",
+  "gatt_stream": "in_process",
+  "spi_calls": 0,
+  "helper_operations": [
+    "health"
+  ],
+  "display": {
+    "display_initialize": 1,
+    "mock_images": 2,
+    "local_cancel_noop": 1,
+    "display_shutdown": 1
+  },
+  "wifi_scan": "skipped",
+  "date": "2026-09-27",
+  "candidate_commit": "9351ae82a132323b797befee204febec38754356",
+  "device": "Raspberry Pi Zero 2 W",
+  "production_service_after": "active",
+  "network_helper_after": "active",
+  "data": "private temporary directory removed",
+  "physical_display": "mock only; no SPI",
+  "radio_transport": "separately qualified in ble-radio.json",
+  "rerun_after_pi_extras": "PASS: 11 checks, still forced mock display, no SPI",
+  "candidate_driver_versions": {
+    "inky": "2.3.0",
+    "gpiod": "2.4.2",
+    "gpiodevice": "0.0.5",
+    "RPi.GPIO": "0.7.1",
+    "spidev": "3.8",
+    "smbus2": "0.6.1",
+    "numpy": "2.4.6",
+    "pillow": "12.2.0"
+  },
+  "candidate_dependencies": "pip check PASS; hardware library versions retained from production; not physically initialized"
+}

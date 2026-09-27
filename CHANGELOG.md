@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0-rc.2] - Unreleased
+
+Candidate for physical Bluetooth/Wi-Fi qualification, not a public release.
+
+### Added
+- Pair an iPhone with the frame's physical QR code, then configure WPA2 Wi-Fi
+  over authenticated TLS 1.3 on Bluetooth. Confirm the same frame over HTTPS
+  before preserving the new NetworkManager profile.
+- Isolated network helper, rollback checkpoints, durable recovery journal,
+  and revocable phone ownership tied to the personalized frame password.
+- iPhone build 4 with rounded light/dark setup screens and bundled TLS notices.
+
+### Validation
+- Automated backend, iOS, TLS and HTTPS tests; real Mac/Pi Bluetooth bench;
+  isolated backend qualification on Pi with the actual network helper.
+- Physical iPhone adoption, Wi-Fi commit/rollback and power interruption remain
+  open. TestFlight build 4 is uploaded but requires Apple's export documentation.
+
 ## [0.5.0-rc.1] - 2026-09-27
 
 Candidate for controlled installation; not offered by the stable updater.

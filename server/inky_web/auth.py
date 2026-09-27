@@ -280,6 +280,7 @@ class CredentialService:
         self.credentials = credentials
         self.sessions = sessions
         self._lock = threading.Lock()
+        self.prepare_owner_rotation = None
 
     def login(self, password: str) -> str:
         with self._lock:
@@ -287,13 +288,21 @@ class CredentialService:
                 raise HTTPException(status_code=401, detail="Mot de passe incorrect")
             return self.sessions.create()
 
-    def change_password(self, token: str | None, current_password: str, new_password: str) -> str:
+    def change_password(self, token: str | None, current_password: str, new_password: str,
+                        actor_owner_id: str | None = None) -> str:
         with self._lock:
             if not self.sessions.validate(token):
                 raise HTTPException(status_code=401, detail="Authentification requise")
             if not self.credentials.verify(current_password):
                 raise HTTPException(status_code=403, detail="Le mot de passe actuel est incorrect")
             replacement = _new_credentials(self.credentials.path.parent, new_password)
+            if self.prepare_owner_rotation is not None:
+                try:
+                    # Prepare the caller's new epoch BEFORE the atomic password
+                    # replace. All other owners remain bound to the old epoch.
+                    self.prepare_owner_rotation(replacement, actor_owner_id)
+                except Exception:
+                    raise HTTPException(status_code=503, detail="Stockage Bluetooth indisponible. Le mot de passe actuel reste valable.") from None
             try:
                 _write_credentials(replacement)
             except CredentialStorageError as exc:
@@ -358,6 +367,24 @@ def main() -> int:
     raw = os.environ.get("INKY_STUDIO_DATA_DIR")
     directory = Path(raw).expanduser() if raw else Path(__file__).resolve().parent.parent / "data"
     try:
+        if args.command == "reset-password" and (
+            os.environ.get("INKY_STUDIO_BLUETOOTH") == "1"
+            or (directory / "provisioning").exists()
+            or (directory / "provisioning").is_symlink()
+        ):
+            # The service wrapper has stopped GATT, but the separate helper can
+            # still finish a previously confirmed transaction. Its acknowledgement
+            # must precede the new epoch, even if service shutdown was interrupted.
+            # Persisted state detects Bluetooth when its service env is absent in
+            # this shell. Legacy frames without provisioning need no helper.
+            from inky_web.provisioning.network import NetworkClient, NetworkUnavailable
+
+            try:
+                NetworkClient().cancel_pending_sync()
+            except NetworkUnavailable:
+                print("Annulation Wi-Fi indisponible. Reset annulé ; les identifiants restent inchangés. "
+                      "Vérifie inky-network.service ; après installation Bluetooth, ouvre une nouvelle session SSH pour actualiser les groupes.")
+                return 1
         password = (reset_credentials(directory).bootstrap_password
                     if args.command == "reset-password" else display_password(directory))
     except (OSError, CredentialFormatError):
