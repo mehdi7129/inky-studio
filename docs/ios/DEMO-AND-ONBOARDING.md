@@ -13,8 +13,8 @@ build 3 and does not resolve the encryption-document gate for build 4.
   reorder, import/crop and settings use the normal UI and photo pipeline.
 - Three original geometric landscapes are drawn on-device with UIKit. An
   example can be cropped without Photos/camera permission. Personal selections
-  remain temporary within the demo; leaving, resetting or terminating the app
-  discards that session. Normal Photos imports may use their existing temporary
+  remain temporary within the demo; exiting or resetting the demo, or terminating
+  the app, discards that session. Backgrounding alone keeps it. Normal Photos imports may use their existing temporary
   decoding file, removed after preparation; demo frame storage is memory-only.
 - Demo scheduling is editable but never runs automatically. Refresh is simulated;
   no physical e-ink color rendering or refresh delay is represented. Bluetooth,
@@ -36,8 +36,9 @@ guards. Real address, ownership and biometric preferences remain untouched.
 Reset/exit retire the client, invalidate pending store operations, clear the
 image cache and rebuild the tab subtree. Crop upload also checks session identity
 before handing data to the store. Imports are bounded by 30 queue entries,
-10 MiB per encoded image and 32 MiB total stored image bytes. Unreferenced demo
-images are removed; clearing history keeps the current displayed image.
+10 MiB per encoded image and 32 MiB total stored image bytes. History retains the
+latest 100 entries, dropping older rows automatically. Unreferenced demo images
+are removed; clearing history keeps the current displayed image.
 
 ## Review walkthrough
 

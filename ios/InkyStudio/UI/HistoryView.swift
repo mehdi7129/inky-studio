@@ -45,7 +45,7 @@ struct HistoryView: View {
                 }
                 .confirmationDialog("Vider tout l’historique ?", isPresented: $clearAll) {
                     Button("Vider l’historique", role: .destructive) { Task { await store.clearHistory() } }
-                } message: { Text("Cette action ne vide pas la file et n’efface pas la photo sur l’écran physique.") }
+                } message: { Text(store.isDemo ? "Cette action ne vide pas la file et n’efface pas la photo affichée dans la démo." : "Cette action ne vide pas la file et n’efface pas la photo sur l’écran physique.") }
         }
     }
     private var rowLayout: AnyLayout {

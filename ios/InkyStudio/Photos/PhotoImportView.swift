@@ -411,7 +411,7 @@ struct PhotoImportView: View {
             .font(.callout)
             .foregroundStyle(secondary)
             .frame(minHeight: 44)
-            Text("Les couleurs seront adaptées à l’écran.")
+            Text(store.isDemo ? "Sur un vrai cadre, les couleurs seront adaptées à l’écran." : "Les couleurs seront adaptées à l’écran.")
                 .font(.footnote).foregroundStyle(secondary)
         }
         .multilineTextAlignment(.center)
