@@ -216,13 +216,9 @@ sudo visudo -cf /etc/sudoers.d/inky-studio >/dev/null
 
 # ── 10. CLI wrapper ──────────────────────────────────────────────────────────
 say "Installing CLI at /usr/local/bin/inky-studio…"
-sudo install -m 0755 "${INSTALL_DIR}/scripts/inky-studio-cli" /usr/local/bin/inky-studio
-# Bake the real install/data dirs into the global CLI (its built-in defaults
-# assume /home/pi), so `inky-studio …` works for any username.
-sudo sed -i \
-  -e "s#\${INKY_STUDIO_INSTALL_DIR:-/home/pi/inky-studio}#\${INKY_STUDIO_INSTALL_DIR:-${INSTALL_DIR}}#" \
-  -e "s#\${INKY_STUDIO_DATA_DIR:-/var/lib/inky-studio}#\${INKY_STUDIO_DATA_DIR:-${DATA_DIR}}#" \
-  /usr/local/bin/inky-studio
+# Keep only a stable dispatcher outside the release tree. Later updates replace
+# the delegated CLI automatically; paths are quoted literally by the generator.
+bash "${INSTALL_DIR}/scripts/inky-studio-launcher" --install "${INSTALL_DIR}" "${DATA_DIR}"
 
 # ── 11. systemd unit ─────────────────────────────────────────────────────────
 say "Writing systemd unit…"

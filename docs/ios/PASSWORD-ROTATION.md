@@ -95,41 +95,28 @@ but **does not update that installed copy**. Its old `password` command expects
 a plaintext JSON field, and its old reset command deletes the credential file.
 
 Do not ship this backend to a device while leaving that old installed CLI in
-place. A deployment operator must perform the following controlled steps, using
-the device's actual installation and data paths. The service should remain
-stopped while deploying the matching backend and CLI and taking the backup.
+place. The candidate release now provides a thin launcher which delegates to the
+script in the installation tree, preserving the device's installation/data paths.
+Follow [CLI-UPGRADE.md](CLI-UPGRADE.md) to install that launcher once with explicit
+administrator access, **before** migrating the backend. Later updates refresh the
+delegated script without changing the root-owned launcher or sudoers rules.
 
-```bash
-# Set INSTALL_DIR and DATA_DIR to the actual paths before running these commands.
-sudo systemctl stop inky-studio.service
-umask 077
-BACKUP="${DATA_DIR}/credentials.pre-password-rotation.$(date -u +%Y%m%dT%H%M%SZ).json"
-test ! -e "${BACKUP}"
-install -m 0600 "${DATA_DIR}/credentials.json" "${BACKUP}"
+For the controlled backend deployment, stop the service, retain a private backup
+of the previous source tree, installed CLI and credentials (directory 0700, secret
+files 0600), then deploy the matching candidate source and dependencies. Do not
+start the previous server against migrated credentials. The candidate is a GitHub
+prerelease: existing stable updaters continue to see v0.4.2.
 
-# Deploy the reviewed backend/release tree and its dependencies while stopped.
-sudo install -m 0755 "${INSTALL_DIR}/scripts/inky-studio-cli" /usr/local/bin/inky-studio
-cmp "${INSTALL_DIR}/scripts/inky-studio-cli" /usr/local/bin/inky-studio
-sudo systemctl start inky-studio.service
-```
+Before touching production data, run [PASSWORD-QUALIFICATION.md](PASSWORD-QUALIFICATION.md)
+on an isolated synthetic data directory on the Pi. It qualifies the real HTTP
+login/rotation routes and idle WebSocket revocation without starting the main
+application lifespan, display driver or scheduler. Do not test a CLI password
+reset on the live service just to qualify a release.
 
-The backup command assumes an existing installation; a fresh installation has
-no credential file to back up. Run the commands as the service/data owner, with
-the administrative authorization needed to install the CLI. Do not broaden the
-application's scoped sudoers rule. The installer already installs the new CLI on
-fresh/re-run installations. No updater privilege changes are included here.
-
-A thin installed wrapper pointing to the repository script could remove this
-staleness problem for future installations, but would need separate migration
-and ownership/path validation. It is intentionally not part of this change.
-
-After startup, check health and the capability field, log in with the existing
-secret, and qualify rotation, other-device logout, idle WebSocket disconnection,
-CLI read-only behavior and a controlled local reset. Do not print the credential
-file while collecting diagnostics. The synthetic Pi benchmark below qualifies
-the scrypt primitive on the actual hardware. End-to-end login/rotation latency,
-storage durability and behavior during a display refresh still require a
-controlled deployment qualification; the benchmark does not exercise those paths.
+After the controlled upgrade, check health and the capability field, then verify
+that the existing password still authenticates, without printing it. The user
+chooses when to personalize the real password in the app. Power-loss durability
+and behavior during a display refresh remain separate hardware acceptance checks.
 
 ## Rollback and local recovery
 

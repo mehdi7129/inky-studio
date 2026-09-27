@@ -26,13 +26,15 @@ jobs:
         run: ruff check .
       - name: Test
         run: pytest -q
+      - name: Qualify password migration over HTTP and WebSocket
+        run: python ../scripts/qualify-password-upgrade.py
 
   shell:
     name: Installer and CLI (shellcheck)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: shellcheck install.sh scripts/inky-studio-cli scripts/uninstall.sh
+      - run: shellcheck install.sh scripts/inky-studio-cli scripts/inky-studio-launcher scripts/uninstall.sh
 
   frontend:
     name: Frontend (lint + typecheck + test + build)

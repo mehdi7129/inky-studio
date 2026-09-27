@@ -13,8 +13,10 @@ avec signature, exporté pour App Store Connect et **uploadé avec succès à
 **Mehdi — test iPhone** (un testeur), avec les notes françaises enregistrées. L’archive est conservée dans
 `build/ios/archives/InkyStudio-1.0.0-3.xcarchive`.
 La disponibilité dans le groupe TestFlight est vérifiée côté App Store Connect.
-L’installation de ce build sur l’iPhone reste à confirmer ; aucune publication
-publique App Store n’a été effectuée.
+Mehdi a validé l’étape de recette iPhone le 27 septembre (« je valide le 1 »).
+Cette acceptation utilisateur ne constitue pas un relevé instrumenté de chaque
+scénario physique. La PR #8 est fusionnée (`b31046d`) ; aucune publication publique
+App Store n’a été effectuée.
 
 Le backend de personnalisation du mot de passe est développé et testé localement,
 mais **n’est pas déployé sur le Raspberry**, qui répond toujours en **v0.4.2**.

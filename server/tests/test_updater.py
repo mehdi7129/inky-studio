@@ -37,6 +37,21 @@ def test_status_up_to_date(monkeypatch):
     assert status["latest"] == "0.3.0"
 
 
+@pytest.mark.parametrize(("current", "latest", "expected"), [
+    ("0.5.0-rc.1", "v0.5.0", True),
+    ("0.5.0-rc.1", "v0.4.2", False),
+    ("0.5.0", "v0.5.0", False),
+    ("0.5.0+private-build", "v0.5.0", False),
+    ("dev", "v0.5.0", True),
+    ("unknown", "v0.5.0", True),
+    ("dev", "dev", False),
+])
+def test_candidate_can_upgrade_to_final_without_downgrading(monkeypatch, current, latest, expected):
+    monkeypatch.setattr(updater, "__version__", current)
+    monkeypatch.setattr(updater, "_fetch_latest_release", lambda: {"tag_name": latest})
+    assert updater.get_status(use_cache=False)["update_available"] is expected
+
+
 def test_status_network_failure(monkeypatch):
     monkeypatch.setattr(updater, "_fetch_latest_release", lambda: None)
     status = updater.get_status(use_cache=False)
@@ -190,6 +205,80 @@ async def test_concurrent_update_is_rejected_before_network(tmp_path, monkeypatc
         events = []
         assert not await updater.perform_update(lambda *args, **kwargs: events.append(args), install_dir=tmp_path)
     assert events == [("error", "Une mise à jour est déjà en cours.")]
+
+
+@pytest.mark.parametrize(("current", "latest"), [
+    ("0.5.0-rc.1", "v0.4.2"),
+    ("0.5.0", "v0.5.0"),
+    ("0.5.0+private-build", "v0.5.0"),
+])
+async def test_direct_update_refuses_older_or_same_stable_release_before_changing_installation(
+    tmp_path, monkeypatch, current, latest,
+):
+    # This is the route's actual entry point, without a preceding status check.
+    # An installed RC already uses credentials that v0.4.2 cannot understand.
+    credential = tmp_path / "server/data/credentials.json"
+    credential.parent.mkdir(parents=True)
+    credential.write_text('{"version":2,"synthetic":"unchanged"}')
+    installed_code = tmp_path / "server/current.py"
+    installed_code.write_text("existing code")
+    monkeypatch.setattr(updater, "__version__", current)
+    monkeypatch.setattr(updater, "_fetch_latest_release", lambda: {
+        "tag_name": latest, "assets": [{"name": "release.tar.gz", "browser_download_url": "fixture"}],
+    })
+    download, backup, apply = Mock(), Mock(), Mock()
+    pip, restart = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(updater, "_download", download)
+    monkeypatch.setattr(updater, "_backup_current", backup)
+    monkeypatch.setattr(updater, "_apply", apply)
+    monkeypatch.setattr(updater, "_run_streaming", pip)
+    monkeypatch.setattr(updater.asyncio, "create_subprocess_exec", restart)
+    events = []
+    assert not await updater.perform_update(lambda *args, **kwargs: events.append(args), install_dir=tmp_path)
+    for operation in (download, backup, apply, pip, restart):
+        operation.assert_not_called()
+    assert installed_code.read_text() == "existing code"
+    assert credential.read_text() == '{"version":2,"synthetic":"unchanged"}'
+    assert events[-1][0] == "error"
+    assert "inchangé" in events[-1][1]
+
+
+@pytest.mark.parametrize("current", ["0.5.0-rc.1", "dev", "unknown"])
+async def test_direct_update_installs_matching_final_or_replaces_unversioned_development_build(
+    tmp_path, monkeypatch, current,
+):
+    install = tmp_path / "install"
+    install.mkdir()
+    payload = tmp_path / "payload"
+    for name in ["server/pyproject.toml", "server/inky_web/main.py", "client/dist/index.html"]:
+        target = payload / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("final release fixture")
+    (payload / "client/dist/assets").mkdir()
+    archive = tmp_path / "release.tar.gz"
+    with tarfile.open(archive, "w:gz") as tf:
+        for child in payload.iterdir():
+            tf.add(child, arcname=child.name)
+    monkeypatch.setattr(updater, "__version__", current)
+    monkeypatch.setattr(updater, "_fetch_latest_release", lambda: {
+        "tag_name": "v0.5.0", "assets": [{"name": "release.tar.gz", "browser_download_url": "fixture"}],
+    })
+    monkeypatch.setattr(updater, "_download", lambda _url, dest: dest.write_bytes(archive.read_bytes()))
+    pip = AsyncMock(return_value=0)
+    monkeypatch.setattr(updater, "_run_streaming", pip)
+    process = Mock(returncode=0, communicate=AsyncMock(return_value=(b"", b"")))
+    restart = AsyncMock(return_value=process)
+    monkeypatch.setattr(updater.asyncio, "create_subprocess_exec", restart)
+    events = []
+    assert await updater.perform_update(lambda *args, **kwargs: events.append(args), install_dir=install)
+    assert (install / "server/inky_web/main.py").read_text() == "final release fixture"
+    assert (install / "client/dist/index.html").read_text() == "final release fixture"
+    pip.assert_awaited_once()
+    restart.assert_awaited_once_with(
+        "sudo", "systemctl", "--no-block", "restart", updater.SERVICE_NAME,
+        stdout=updater.asyncio.subprocess.PIPE, stderr=updater.asyncio.subprocess.STDOUT,
+    )
+    assert events[-1] == ("restarting", "Redémarrage sur v0.5.0…")
 
 
 async def test_missing_frontend_assets_is_rejected_before_backup_or_apply(tmp_path, monkeypatch):
