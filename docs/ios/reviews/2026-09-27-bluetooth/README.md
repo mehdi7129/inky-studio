@@ -1,5 +1,18 @@
 # Validation C2 — 27 septembre 2026
 
+> **État courant après les étapes ci-dessous :** le backend `0.5.0-rc.2`, source
+> `ae61df1`, est désormais déployé ; ses contrôles de service passent. Le build
+> iOS `1.0.0 (4)` est téléversé et traité, mais reste en **Missing Compliance**,
+> avec **zéro groupe**. Son questionnaire a depuis été consulté et exige des
+> documents approuvés pour les réponses retenues. La bêta disponible reste le
+> build 3. Les tests physiques iPhone/QR et Wi-Fi commit/rollback restent ouverts.
+> Voir [la livraison TestFlight](../../TESTFLIGHT-DELIVERY.md) et
+> [le déploiement actuel](../../SERVER-BLUETOOTH-DELIVERY.md). Ce rapport conserve
+> les résultats et états historiques de ses bancs ; les mentions « non déployé »,
+> « non consulté » et « aucun upload » plus bas décrivent leur étape de préparation.
+
+## Qualification historique avant déploiement
+
 Implémentation candidate : build TestFlight 4 envoyé et traité, mais non distribué
 (conformité documentaire en attente). Backend non déployé sur le service photo du cadre. Les identités, photos et mots de passe des bancs sont
 synthétiques. Les parcours Simulator utilisent des réseaux synthétiques ; le
@@ -73,7 +86,7 @@ Captures iOS 27 : [clair](bluetooth-networks-light-ios27.png),
 [sombre](bluetooth-networks-dark-ios27.png). Revue visuelle : titres et actions
 visibles, cartes arrondies, aucune bande vide supérieure dans le contenu.
 
-## Bêta interne de qualification
+## Préparation historique de la bêta interne de qualification
 
 Une prochaine bêta interne peut servir à exécuter les tests iPhone encore ouverts
 ci-dessous : leur réussite complète n’est donc pas un préalable à cette bêta.
