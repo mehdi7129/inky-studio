@@ -1,6 +1,6 @@
 # iPhone and TestFlight distribution
 
-The native app has an independent version (`1.0.0`, build `3` in the current sources; build `2` is the delivered beta). It does not change the Raspberry release version. Bundle ID: `fr.mehdiguiard.inkystudio`. The project currently uses Mehdi's signing team `X524H8XA4L`; another developer must select their own team and bundle ID.
+The native app has an independent version (`1.0.0`, build `3`). It does not change the Raspberry release version. Bundle ID: `fr.mehdiguiard.inkystudio`. The project currently uses Mehdi's signing team `X524H8XA4L`; another developer must select their own team and bundle ID.
 
 ## Personal iPhone
 
@@ -43,7 +43,7 @@ Archive/export success proves the package can be signed. It does not prove App S
 
 ## Delivered beta and publication roadmap
 
-The private TestFlight build **1.0.0 (2)** is processed and assigned to Mehdi's
+The private TestFlight build **1.0.0 (3)** is processed and assigned to Mehdi's
 internal group. See [delivery evidence](TESTFLIGHT-DELIVERY.md) and the
 [public-release, BLE travel and remote-access plan](APP-STORE-PLAN.md).
 The public app has not been submitted for review. Support and privacy pages are

@@ -55,3 +55,25 @@ Both signed archives are retained under ignored `build/ios/archives/`.
 Public app documentation is live at [inky-studio.netlify.app](https://inky-studio.netlify.app),
 with [support](https://inky-studio.netlify.app/support.html) and
 [privacy](https://inky-studio.netlify.app/confidentialite.html).
+
+## Update: build 3 — rounded design and camera
+
+**1.0.0 (3)**, source `9bd24bd`, was uploaded successfully at **11:24:45 UTC**
+on 2026-09-27. Apple processing is **Terminé**. The build is assigned to the
+existing **Mehdi — test iPhone** internal group, with one tester; French
+build-specific testing notes are saved. No public or external distribution.
+
+This beta preserves the original rounded layout, removes photo filenames, fixes
+the empty title area, follows system appearance, stays in portrait and adds the
+camera/photo-library choice plus the approved icon A. Physical camera capture
+and this build's iPhone acceptance remain to be tested.
+
+Password personalization is present but hidden with the currently deployed
+v0.4.2 server; the matching backend and installed CLI must be deployed separately.
+BLE Wi-Fi provisioning is not in this beta.
+
+- [Build 3 in App Store Connect](https://appstoreconnect.apple.com/teams/03da9ef5-608a-40ef-9367-b987b26ea06d/apps/6816637620/testflight/ios/ac86cdc7-736b-4061-a940-58a290d41b2d)
+- [Detailed tests and screenshots](reviews/2026-09-27-refinement-validation.md)
+- Archive: ignored `build/ios/archives/InkyStudio-1.0.0-3.xcarchive`.
+- Upload/export logs, IPA and screenshot: ignored `build/ios/app-store-evidence/build3/`.
+- Exported IPA SHA-256: `09b3b5806b371a43c4df11897f8220a6c5a5f195399c294375bb08fba4b526f4`.
