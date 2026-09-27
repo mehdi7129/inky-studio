@@ -18,8 +18,9 @@ Cette acceptation utilisateur ne constitue pas un relevé instrumenté de chaque
 scénario physique. La PR #8 est fusionnée (`b31046d`) ; aucune publication publique
 App Store n’a été effectuée.
 
-Le backend de personnalisation du mot de passe est développé et testé localement,
-mais **n’est pas déployé sur le Raspberry**, qui répond toujours en **v0.4.2**.
+Le backend de personnalisation du mot de passe a ensuite été qualifié et déployé
+sur le Raspberry en **v0.5.0-rc.1**, après migration du lanceur. Le secret initial
+fonctionne toujours ; voir [les preuves de livraison](../SERVER-CANDIDATE-DELIVERY.md).
 Le banc Bluetooth C1 a échangé des données réelles entre le Mac et le Pi ;
 la configuration Wi-Fi Bluetooth C2 **n’est pas implémentée**.
 
@@ -91,8 +92,8 @@ cryptographique ; ce n’est pas une mesure de latence HTTP ou de rotation de bo
 en bout. Le coût cryptographique d’une rotation est estimé à environ 0,98 s
 pour la vérification puis le nouveau hash, hors autres traitements.
 
-**Déploiement restant à réaliser** : appliquer la procédure de migration et
-mettre à jour la copie installée du CLI avant la migration des credentials.
+**Déploiement réalisé ensuite** : procédure contrôlée et mise à jour du lanceur
+effectuées avant migration des credentials, avec preuve de connexion conservée.
 Le CLI installé par v0.4.2 n’est pas remplacé automatiquement par l’updater actuel.
 Les prérequis et la procédure de récupération sont explicités dans le document
 de rotation. Aucun changement du mot de passe réel de Mehdi n’a été effectué.

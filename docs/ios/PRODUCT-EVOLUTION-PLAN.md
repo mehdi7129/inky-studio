@@ -4,9 +4,15 @@ Date : 27 septembre 2026. **Direction validée ; réalisation en cours.** Mehdi 
 choisi les thèmes système et l’icône A, en demandant de conserver le style arrondi
 de l’app précédente et de retirer les noms des photos/fichiers. Cette correction
 prime sur les formes et les titres de photos des planches exploratoires.
-La bêta TestFlight 1.0.0 (2) fonctionne sur son iPhone,
-avec un défaut visuel signalé sur Cadre. Aucun nouveau binaire n’est livré par
-cet audit. InkyOS est explicitement une phase ultérieure.
+La bêta TestFlight **1.0.0 (3)** a depuis été livrée et Mehdi a validé la recette
+iPhone. La PR #8 est fusionnée. InkyOS reste explicitement une phase ultérieure.
+
+État au 27 septembre après cette validation : le lot A est livré ; le backend du
+lot B et sa candidate `0.5.0-rc.1` sont testés, y compris sur le Pi avec des données
+synthétiques, puis déployés après migration administrative du lanceur. Le secret
+initial fonctionne toujours ; la personnalisation est disponible dans l’app. Le banc C1 valide le transport réel, pas l’identité.
+C2 est en préparation et ne configure encore aucun Wi-Fi.
+[Livraison serveur et étape restante](SERVER-CANDIDATE-DELIVERY.md).
 
 Visuels : [Bento 2](../../design/ios/2026-09-27-refinement/README.md).
 Audit : [constats et limites](reviews/2026-09-27-ux-audit.md).
@@ -33,6 +39,11 @@ L’usage quotidien reste local, simple, en quatre onglets.
 
 ## 2. Existant vérifié et évolutions nécessaires
 
+Le tableau ci-dessous conserve le **point de départ de l’audit**, avant le build 3.
+Pour les réalisations et limites actuelles, consulter le
+[rapport de validation iPhone](reviews/2026-09-27-refinement-validation.md), la
+livraison serveur ci-dessus et la [décision C2](BLE-C2-SECURITY-DECISION.md).
+
 | Besoin | Existant | Travail nécessaire |
 |---|---|---|
 | Vide supérieur | Les quatre grands titres sont invisibles sur iOS 27 ; ils sont visibles sous iOS 18.5. Le titre compact réapparaît après défilement | Corriger le rendu/navigation et les safe areas ; assertions de géométrie |
@@ -54,7 +65,7 @@ déjà validés par cet audit.
 |---|---|---|---|
 | A — iPhone soigné | Cadre corrigé, quatre onglets harmonisés, portrait, thèmes système, icône, caméra | Validation des planches | Nouveau TestFlight, régression Simulator et test iPhone photo réelle |
 | B — accès personnalisable | Mot de passe choisi, Face ID cohérent, récupération définie | Contrat auth serveur et migration | Ancien secret et anciennes sessions invalides ; aucun verrouillage après erreur |
-| C1 — banc Bluetooth | Mac reconnaît le Pi, vérifie son identité, échange des états | Identité/protocole, BLE Pi | Tests de protocole avant toute bascule Wi-Fi |
+| C1 — banc Bluetooth | Mac découvre le Pi et échange des données synthétiques ; aucune identité authentifiée | Protocole de diagnostic, BLE Pi | Transport et cleanup vérifiés avant conception du provisioning sécurisé |
 | C2 — Wi-Fi depuis l’iPhone | Réseau choisi, configuration, reprise et reconnexion | C1, transport protégé, client iOS | Succès sur nouveau LAN, mot de passe erroné récupérable, interruption récupérable |
 | D — InkyOS, plus tard | microSD prête à l’emploi, démarrage sans Internet, adoption guidée | B/C stabilisés sur matériel réel | Images vierges indépendantes, aucun secret cloné, vrais tests de premier boot |
 | E — sortie publique | App Store, site et documentation cohérents | Lots inclus dans la version qualifiés | Candidat réel testé, App Review et publication manuelle |

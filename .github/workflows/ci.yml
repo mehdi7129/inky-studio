@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: shellcheck install.sh scripts/inky-studio-cli scripts/inky-studio-launcher scripts/uninstall.sh
+      - run: shellcheck install.sh scripts/inky-studio-cli scripts/inky-studio-launcher scripts/uninstall.sh scripts/bt-tls-bench/build.sh
 
   frontend:
     name: Frontend (lint + typecheck + test + build)

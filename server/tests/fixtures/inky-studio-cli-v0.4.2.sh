@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# CLI wrapper for managing the Inky Studio installation on a Pi.
+set -euo pipefail
+
+INSTALL_DIR="${INKY_STUDIO_INSTALL_DIR:-/home/pi/inky-studio}"
+DATA_DIR="${INKY_STUDIO_DATA_DIR:-/var/lib/inky-studio}"
+SERVICE_NAME="inky-studio.service"
+PYTHON="${INSTALL_DIR}/server/.venv/bin/python"
+
+cmd="${1:-help}"
+shift || true
+
+case "${cmd}" in
+  status)
+    systemctl status "${SERVICE_NAME}" --no-pager
+    ;;
+  logs)
+    journalctl -u "${SERVICE_NAME}" -f --no-pager
+    ;;
+  restart)
+    sudo systemctl restart "${SERVICE_NAME}"
+    echo "Restarted."
+    ;;
+  stop)
+    sudo systemctl stop "${SERVICE_NAME}"
+    echo "Stopped."
+    ;;
+  start)
+    sudo systemctl start "${SERVICE_NAME}"
+    echo "Started."
+    ;;
+  welcome)
+    # Need to stop briefly to take the SPI bus
+    sudo systemctl stop "${SERVICE_NAME}"
+    trap 'sudo systemctl start "${SERVICE_NAME}"' EXIT
+    INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${PYTHON}" -m inky_web.welcome
+    sudo systemctl start "${SERVICE_NAME}"
+    trap - EXIT
+    ;;
+  reset-password)
+    # Erase the old credentials file, restart so a new password is generated
+    sudo rm -f "${DATA_DIR}/credentials.json"
+    sudo systemctl restart "${SERVICE_NAME}"
+    sleep 2
+    PASSWORD=$(sudo cat "${DATA_DIR}/credentials.json" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])' 2>/dev/null || echo "(check ${DATA_DIR}/credentials.json)")
+    echo "New password: ${PASSWORD}"
+    ;;
+  password)
+    sudo cat "${DATA_DIR}/credentials.json" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])'
+    ;;
+  update)
+    # Download the latest prebuilt release, swap it in, refresh deps, restart.
+    # Same code path as the in-app one-click update (inky_web.services.updater).
+    INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${PYTHON}" -m inky_web.services.updater
+    ;;
+  info)
+    echo "Install dir : ${INSTALL_DIR}"
+    echo "Data dir    : ${DATA_DIR}"
+    echo "Service     : ${SERVICE_NAME} ($(systemctl is-active "${SERVICE_NAME}"))"
+    echo "Python venv : ${PYTHON}"
+    IP=$(hostname -I | awk '{print $1}')
+    echo "URL         : http://${IP}:8000"
+    ;;
+  help | -h | --help)
+    cat <<EOF
+inky-studio — Inky Studio management CLI
+
+Usage: inky-studio <command>
+
+Commands:
+  status              Show service status
+  logs                Tail service logs
+  start | stop | restart
+  welcome             Re-show the welcome screen on the Inky
+  password            Print the current login password
+  reset-password      Generate a new password (restarts the service)
+  update              Download & install the latest release, then restart
+  info                Show install paths and URL
+  help                This message
+EOF
+    ;;
+  *)
+    echo "Unknown command: ${cmd}" >&2
+    echo "Run 'inky-studio help' for usage." >&2
+    exit 1
+    ;;
+esac

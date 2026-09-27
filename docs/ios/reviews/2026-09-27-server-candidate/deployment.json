@@ -1,0 +1,18 @@
+{
+  "result": "applied",
+  "labels": [
+    "exclusive_update_lock_acquired",
+    "launcher_verified",
+    "archive_payload_dependencies_database_verified",
+    "production_preflight_passed",
+    "service_stopped",
+    "private_backup_completed",
+    "candidate_installed_without_dependency_upgrade",
+    "legacy_migrated_and_snapshot_saved",
+    "candidate_start_requested",
+    "health_verified",
+    "unchanged_password_and_physical_display_verified",
+    "verification_session_closed",
+    "deployment_verified"
+  ]
+}
