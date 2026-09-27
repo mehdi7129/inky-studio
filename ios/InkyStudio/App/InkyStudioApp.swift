@@ -60,13 +60,16 @@ struct RootView: View {
     }
     private var demoBanner: some View {
         HStack(spacing: 12) {
-            Label(dynamicTypeSize.isAccessibilitySize ? "Démo" : "Démo · sur cet iPhone", systemImage: "play.circle")
-                .font(.caption.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+            Group {
+                if dynamicTypeSize.isAccessibilitySize { Text("Démo") }
+                else { Label("Démo · sur cet iPhone", systemImage: "play.circle") }
+            }
+                .font(.caption.weight(.medium)).fixedSize(horizontal: true, vertical: true)
                 .accessibilityLabel("Démonstration locale, aucun cadre connecté")
                 .accessibilityIdentifier("demo.banner")
             Spacer(minLength: 0)
             Button("Quitter") { store.exitDemo() }
-                .font(.caption.weight(.semibold)).frame(minHeight: 44)
+                .font(.caption.weight(.semibold)).fixedSize(horizontal: true, vertical: true).frame(minHeight: 44)
                 .accessibilityLabel("Quitter la démo")
                 .accessibilityIdentifier("demo.exit")
         }.padding(.horizontal, 16).background(Bento.surface)
