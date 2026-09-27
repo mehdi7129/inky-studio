@@ -1,6 +1,6 @@
 # iPhone and TestFlight distribution
 
-The native app has an independent version (`1.0.0`, build `3`). It does not change the Raspberry release version. Bundle ID: `fr.mehdiguiard.inkystudio`. The project currently uses Mehdi's signing team `X524H8XA4L`; another developer must select their own team and bundle ID.
+The native app has an independent version (`1.0.0`, candidate build `4`; delivered beta `3`). It does not change the Raspberry release version. Bundle ID: `fr.mehdiguiard.inkystudio`. The project currently uses Mehdi's signing team `X524H8XA4L`; another developer must select their own team and bundle ID.
 
 ## Personal iPhone
 

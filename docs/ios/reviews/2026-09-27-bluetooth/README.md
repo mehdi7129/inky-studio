@@ -1,7 +1,7 @@
 # Validation C2 — 27 septembre 2026
 
-Implémentation candidate, non distribuée dans TestFlight et non déployée sur le
-service photo du cadre. Les identités, photos et mots de passe des bancs sont
+Implémentation candidate : build TestFlight 4 envoyé et traité, mais non distribué
+(conformité documentaire en attente). Backend non déployé sur le service photo du cadre. Les identités, photos et mots de passe des bancs sont
 synthétiques. Les parcours Simulator utilisent des réseaux synthétiques ; le
 scan WPA2 du helper installé a interrogé le réseau réel sans conserver son nom.
 
@@ -23,8 +23,9 @@ scan WPA2 du helper installé a interrogé le réseau réel sans conserver son n
 | Backend candidat isolé sur Pi Zero 2 W | 11 contrôles PASS, BlueZ réel, listeners HTTP/HTTPS et claim TLS/GATT en mémoire ; écran mock sans SPI, helper limité à `health` |
 
 L’avertissement Python restant vient de la transition `httpx` / `httpx2` de
-Starlette, sans échec de test. Le build iPhone est compilé sans signature pour
-qualification ; aucun upload ou numéro de build TestFlight nouveau n’est annoncé.
+Starlette, sans échec de test. Le build iPhone a ensuite été archivé et signé en version 1.0.0 (4). L’upload
+interne et l’export Development réussissent ; Apple demande encore les documents
+de chiffrement avant distribution. Voir [la livraison](../../TESTFLIGHT-DELIVERY.md).
 
 ## Bugs trouvés et corrigés pendant la qualification
 
@@ -94,3 +95,9 @@ NetworkManager réel. La PR reste draft pendant cette qualification matérielle.
 Les résultats obtenus via la bêta interne peuvent fermer ces critères avant le
 merge final ; la distribution publique reste également soumise à son propre
 parcours de conformité et de review.
+
+CI complète sur `9351ae8` : [backend/frontend](https://github.com/mehdi7129/inky-studio/actions/runs/36323572209) et [iOS](https://github.com/mehdi7129/inky-studio/actions/runs/36323572206), succès.
+
+CI complète du build 4 `70148f5` : [backend/frontend](https://github.com/mehdi7129/inky-studio/actions/runs/36324581335) et [iOS](https://github.com/mehdi7129/inky-studio/actions/runs/36324581369), succès.
+Le passage de la version backend à `0.5.0-rc.2` Unreleased est également
+vérifié localement : Ruff et 329 tests Python 3.13 passent.

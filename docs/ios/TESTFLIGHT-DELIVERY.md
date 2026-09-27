@@ -80,3 +80,35 @@ BLE Wi-Fi provisioning is not in this beta.
 - Archive: ignored `build/ios/archives/InkyStudio-1.0.0-3.xcarchive`.
 - Upload/export logs, IPA and screenshot: ignored `build/ios/app-store-evidence/build3/`.
 - Exported IPA SHA-256: `09b3b5806b371a43c4df11897f8220a6c5a5f195399c294375bb08fba4b526f4`.
+
+
+## Bluetooth candidate build 4 — uploaded, not distributed
+
+**1.0.0 (4)**, source `70148f5`, was uploaded successfully on 2026-09-27 at
+**14:04:25 UTC**, with `testFlightInternalTestingOnly=true`. Apple processing
+completed. This build has **Missing Compliance / Informations manquantes** and
+no assigned group; build 3 remains the available beta. French testing notes are
+saved for the candidate, explicitly identifying the pending backend deployment.
+
+The actual build questionnaire was inspected: standard encryption embedded
+outside Apple's OS, France **Yes**, requires approved export documents in the
+app information section. There was no save action available at that point, only
+the documentation link. The dialog was cancelled. No document, exemption,
+reference number or declaration was submitted. See [the factual inventory](ENCRYPTION-INVENTORY.md).
+
+A signed development export of the same archive also succeeded. It can be
+installed from Xcode once the iPhone is connected, unlocked and has Developer
+Mode enabled. Mehdi explicitly prefers TestFlight and Simulator checks; this
+direct-install alternative is therefore not being pursued. The phone was still
+unavailable at the last device check.
+No physical iPhone Bluetooth adoption or actual Wi-Fi transition is claimed.
+
+- [Build 4 in App Store Connect](https://appstoreconnect.apple.com/teams/03da9ef5-608a-40ef-9367-b987b26ea06d/apps/6816637620/testflight/ios/ffcfb92e-e664-4ffb-b7f2-b447c7f4e453)
+- Signed archive: ignored `build/ios/archives/InkyStudio-1.0.0-4.xcarchive`.
+- Archive/upload/development export logs, signed development IPA and screenshot:
+  ignored `build/ios/app-store-evidence/build4/`.
+- Bundle ID, build number 4, bundled third-party notices and code signature
+  verified. The former automatic encryption exemption flag is absent.
+- The Pi's production photo service remains `0.5.0-rc.1`; its newly installed
+  network helper passed health and scan checks. The candidate backend was tested
+  privately with BlueZ and a forced mock display: [evidence](reviews/2026-09-27-bluetooth/pi-backend.json).

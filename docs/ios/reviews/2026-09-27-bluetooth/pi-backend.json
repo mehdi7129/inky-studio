@@ -33,5 +33,17 @@
   "network_helper_after": "active",
   "data": "private temporary directory removed",
   "physical_display": "mock only; no SPI",
-  "radio_transport": "separately qualified in ble-radio.json"
+  "radio_transport": "separately qualified in ble-radio.json",
+  "rerun_after_pi_extras": "PASS: 11 checks, still forced mock display, no SPI",
+  "candidate_driver_versions": {
+    "inky": "2.3.0",
+    "gpiod": "2.4.2",
+    "gpiodevice": "0.0.5",
+    "RPi.GPIO": "0.7.1",
+    "spidev": "3.8",
+    "smbus2": "0.6.1",
+    "numpy": "2.4.6",
+    "pillow": "12.2.0"
+  },
+  "candidate_dependencies": "pip check PASS; hardware library versions retained from production; not physically initialized"
 }

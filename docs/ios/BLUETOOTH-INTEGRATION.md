@@ -2,7 +2,9 @@
 
 État au 27 septembre 2026 : implémentation sur `codex/bluetooth-wifi-setup`,
 **qualification matérielle encore ouverte**. Le cadre de Mehdi reste en
-`0.5.0-rc.1`, et TestFlight reste en `1.0.0 (3)`. Aucun changement de son réseau,
+`0.5.0-rc.1`. La bêta disponible reste `1.0.0 (3)` ; le build `1.0.0 (4)`
+a été traité par Apple en mode interne uniquement, mais sa distribution attend
+les documents de chiffrement demandés dans le questionnaire du build. Aucun changement de son réseau,
 de ses photos ou de son mot de passe personnalisé pendant le développement.
 Le changement de mot de passe et le rejet de l’ancien/du mauvais mot de passe
 ont été confirmés par Mehdi avant ce lot.
@@ -132,20 +134,24 @@ La prochaine **bêta interne de qualification** peut précisément servir aux te
 iPhone et Wi-Fi encore ouverts. Leur réussite complète ne précède donc pas
 nécessairement cette bêta. Avant de la distribuer, préparer un nouveau numéro de
 build et résoudre le contrôle export avec les réponses exactes et les documents
-effectivement demandés. Le dialogue documentaire au niveau de l’app, avec France
-`Oui`, a demandé un formulaire français puis a été annulé ; le questionnaire du
-nouveau build/TestFlight n’a pas encore été consulté. Ce constat ne suffit pas à
-conclure au blocage de toute bêta interne.
+effectivement demandés. Le build 4 est traité, mais le questionnaire du build
+interne avec algorithmes standard hors OS et France `Oui` exige bien des documents
+approuvés par Apple. Aucun formulaire ni attestation n’a été soumis. Une version
+de développement signée existe, mais Mehdi préfère poursuivre via TestFlight
+et les tests Simulator ; aucune installation directe sur son iPhone n’est prévue.
 
 Le merge final et la release publique attendent la fermeture des critères
 matériels, notamment adoption iPhone et commit/rollback NetworkManager réel.
 La PR reste draft pendant cette qualification ; la bêta interne peut la précéder.
 La sortie publique nécessite également son parcours de conformité et de review.
-InkyOS reste un lot ultérieur. TestFlight demeure en `1.0.0 (3)` à ce stade.
+InkyOS reste un lot ultérieur. Voir [la livraison TestFlight](TESTFLIGHT-DELIVERY.md)
+pour distinguer upload, conformité et disponibilité effective.
 
 Préparation locale sur le Pi : `/home/pi/inky-upgrades/bluetooth-c2-9351ae8/`
 contient les scripts installés et une copie du backend pour qualification isolée.
-Son venv ne partage pas les packages système (`pip check` passe). Il ne contient
-pas encore les dépendances du driver e-ink et ne doit pas remplacer le venv de
-production. Le numéro interne `0.5.0rc1` de cette copie n’en fait pas une release :
+Son venv ne partage pas les packages système (`pip check` passe). Les extras
+Pi ont ensuite été installés en conservant les versions de la chaîne e-ink
+actuellement en production. Le banc isolé repasse ses 11 contrôles avec ces
+packages présents, toujours sans initialiser le SPI. Cet arbre partiel ne
+constitue pas encore une installation complète de remplacement. Le numéro interne `0.5.0rc1` de cette copie n’en fait pas une release :
 la source testée est le commit de PR `9351ae8`.

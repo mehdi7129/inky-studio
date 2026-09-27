@@ -1,7 +1,12 @@
-# Inventaire cryptographique pour le prochain build iOS
+# Inventaire cryptographique et conformité — iOS 1.0.0 (4)
 
-27 septembre 2026 — préparation technique, aucune déclaration administrative
-envoyée par ce document. Le build TestFlight 1.0.0 (3) n’intègre pas Mbed TLS.
+État au 27 septembre 2026 : le build **1.0.0 (4)**, issu de `70148f5`, a été
+téléversé avec succès à **14:04:25 UTC** et son traitement Apple est terminé.
+Il est marqué `testFlightInternalTestingOnly=true`, mais reste en
+**Informations manquantes**, sans groupe de testeurs. Son questionnaire de
+conformité exige des documents avec les réponses décrites ci-dessous.
+L’upload du binaire a bien eu lieu ; aucun document de conformité ni déclaration
+administrative n’a été envoyé. L’ancien build `1.0.0 (3)` n’intègre pas Mbed TLS.
 
 | Usage | Implémentation du nouveau code |
 |---|---|
@@ -23,39 +28,55 @@ pour la seconde catégorie lorsque l’app est distribuée sur l’App Store en 
 [Référence Apple consultée le 27 septembre 2026](https://developer.apple.com/help/app-store-connect/reference/app-information/export-compliance-documentation-for-encryption).
 
 L’ancienne déclaration automatique `ITSAppUsesNonExemptEncryption=false` est
-retirée. Le prochain upload nécessitera les réponses exactes au questionnaire
-App Store Connect et les éventuels documents demandés ; ni exemption, ni référence
-d’autorisation, ni dépôt auprès de l’ANSSI ne sont inventés. Conserver la France
-dans le périmètre souhaité et traiter les formalités avant distribution publique.
+retirée. Aucun numéro d’autorisation, dépôt ANSSI ou code d’approbation Apple
+n’est inventé. La France reste dans le périmètre souhaité.
 
 [Guide du questionnaire et des documents Apple](https://developer.apple.com/help/app-store-connect/manage-app-information/determine-and-upload-app-encryption-documentation).
 
-## Addendum — TestFlight interne et distribution en France
+## Constat App Store Connect pour ce build
 
-Recherche documentaire Apple et ANSSI du 27 septembre 2026, complétée par la
-consultation App Store Connect décrite ci-dessous. Aucun enregistrement ni envoi
-de déclaration, aucune démarche ANSSI engagée. Les sources publiques et le
-parcours observé ne constituent pas une qualification administrative propre à
-Inky Studio.
+Les deux parcours ci-dessous ont été consultés le 27 septembre 2026 puis
+annulés sans enregistrer de déclaration ni joindre de fichier. Aucune démarche
+ANSSI n’a été engagée.
 
-### Consultation réelle d’App Store Connect, annulée sans enregistrement
+### Documents au niveau de l’app
 
-Le 27 septembre 2026, le parcours **Informations sur l’app → Documents de
-chiffrement → Charger** a été ouvert. Une description de l’objectif technique,
-les algorithmes standard hors du système Apple et la disponibilité en France
-(`Oui`) ont été renseignés dans le dialogue, sans enregistrement.
-
-Le dialogue a alors demandé un fichier nommé **« Formulaire français de
+Dans **Informations sur l’app → Documents de chiffrement → Charger**, une
+description de l’objectif technique, les algorithmes standard hors du système
+Apple et la disponibilité en France (`Oui`) ont été renseignés. Le dialogue
+a demandé le **« Formulaire français de
 déclaration et demande d’autorisation d’opérations relatives à un moyen de
 cryptologie »**. Le bouton **Enregistrer** est resté désactivé sans fichier.
-Le parcours a été quitté avec **Annuler** : aucun document téléversé, aucune
-déclaration enregistrée, aucune soumission à Apple ou à l’ANSSI.
+Le parcours a été quitté avec **Annuler**.
 
-Ce constat établit l’exigence de fichier dans **ce parcours documentaire au
-niveau de l’app**, avec ces réponses. Le questionnaire rattaché à un nouveau
-build/TestFlight n’a pas été consulté ; son résultat, notamment pour une bêta
-`Internal Only`, reste inconnu. On ne transpose pas automatiquement le blocage
-du bouton de ce dialogue à toute distribution interne.
+### Questionnaire du build 4 dans TestFlight
+
+Après traitement de l’upload, **Gérer** à côté de la conformité du build 4 a été
+ouvert. Le parcours **algorithmes standard hors du système Apple → Suivant →
+France : Oui** a affiché l’obligation de charger les documents de conformité
+dans **Documents sur le chiffrement des apps**. Le message précise qu’après
+approbation des documents, Apple fournira la valeur de clé à saisir dans Xcode.
+
+Ce dialogue ne proposait aucun bouton **Enregistrer** ; il renvoyait vers la
+page d’informations sur l’app. Il a été quitté avec **Annuler**. Le build 4
+reste en **Informations manquantes**, sans groupe associé.
+
+Preuve privée locale, consultée pour cette synthèse et non ajoutée au dépôt :
+`build/ios/app-store-evidence/build4/apple-export-document-required.png`.
+
+**Conséquence observée : pour notre build 4, y compris marqué Internal Only,
+ce parcours avec France : Oui demande des documents et leur approbation Apple
+avant de résoudre la conformité.** Ce blocage n’est plus une hypothèse tirée de
+la seule documentation générale. Il n’établit pas à lui seul la qualification
+juridique ANSSI du produit ou la pièce qu’Apple accepterait au titre d’une
+éventuelle exemption.
+
+## Documentation générale Apple et ANSSI
+
+La recherche documentaire du 27 septembre 2026 avait laissé ouverte la réponse
+du questionnaire d’une bêta interne. Le constat effectif ci-dessus tranche ce
+point pour notre build, sans transformer les règles publiques en une affirmation
+générale concernant tous les builds internes.
 
 | Point | Fait établi et conséquence pour ce build |
 |---|---|
@@ -76,10 +97,9 @@ une exemption ni une interdiction de distribution.
 
 Aucune source documentaire Apple consultée ne fournit le texte exact d’une
 exemption « stockage/périphériques » ou « fonction accessoire » applicable à ce
-cas. Ces intitulés ne sont donc pas une base retenue pour préremplir le
-questionnaire. Une absence de résultat public ne signifie pas qu’aucune exemption
-n’existe ; le libellé et les conditions du questionnaire du nouveau build
-TestFlight restent à lire avant toute réponse administrative enregistrée.
+cas. Ces intitulés ne sont donc pas une base retenue pour déclarer une exemption.
+Le questionnaire du build 4 a bien été consulté et demande les documents ;
+l’existence et la recevabilité d’une exemption restent à établir séparément.
 
 ### Ce que les sources ANSSI permettent de conclure
 
@@ -105,21 +125,25 @@ protège aussi la confidentialité du mot de passe Wi-Fi.
 
 - Continuer les builds, tests et l’inventaire local est possible. Le code ne
   justifie pas de rétablir automatiquement `ITSAppUsesNonExemptEncryption=false`.
-- Pour une bêta strictement interne, **l’obligation d’obtenir préalablement une
-  attestation française n’est pas démontrée par la seule documentation Apple**.
-  Le contrôle export du build reste à résoudre avec des réponses exactes. Les
-  réponses factuelles sont : chiffrement présent, algorithmes standard embarqués
-  hors OS, TLS pour la configuration d’un cadre, aucun VPN ni algorithme maison.
+- La distribution TestFlight du **build 4** reste suspendue à la résolution de
+  sa conformité : le parcours réel exige les documents puis leur approbation.
+  Les réponses techniques retenues décrivent du chiffrement standard embarqué
+  hors OS, TLS pour la configuration d’un cadre, sans VPN ni algorithme maison.
+  Le mode `Internal Only` n’a pas levé cette exigence pour ce build.
 - Pour la publication française, prévoir le parcours documentaire Apple ; si
   une exemption ANSSI s’applique, sa portée et le justificatif accepté par Apple
   restent à établir. Ni un reçu inexistant ni une classification ne sont fournis
   par cet inventaire. La consultation réelle du dialogue documentaire de l’app
   a confirmé la demande de fichier pour « France : Oui » ; elle a été annulée.
-- Incertitudes précises : applicabilité des exceptions au **produit logiciel
+- Incertitudes restantes : applicabilité des exceptions au **produit logiciel
   complet** et aux opérations envisagées ; pièces qu’Apple accepterait pour une
-  exemption française ; résultat du questionnaire pour un build `Internal Only`
-  avec une future disponibilité française. Ces points peuvent être soumis aux
-  interlocuteurs Apple/ANSSI, sans présumer leur réponse.
+  exemption française. Le résultat du questionnaire du build 4 est désormais
+  connu. Les points non résolus peuvent être soumis aux interlocuteurs
+  Apple/ANSSI, sans présumer leur réponse.
+- Un export de développement signé du build 4 est prêt ; le branchement d’un
+  iPhone a été demandé pour la qualification sur appareil. Aucun déploiement
+  du backend candidat en production ni changement de réseau Wi-Fi n’a été
+  effectué dans cette étape.
 
 Aucun changement de disponibilité géographique enregistré, formulaire soumis, signature,
 attestation d’exemption ou engagement au nom de Mehdi n’est réalisé ici.
@@ -130,7 +154,7 @@ Cette liste est une préparation technique proposée, pas un formulaire officiel
 
 - Description courte du cadre photo, de l’app et du parcours de configuration ;
   guide utilisateur montrant les fonctions réellement accessibles.
-- Version/hash du futur binaire, versions et configurations exactes de Mbed TLS
+- Version/hash du binaire concerné, versions et configurations exactes de Mbed TLS
   et TF-PSA-Crypto, inventaire des primitives compilées et des suites utilisées.
 - Schéma des échanges BLE/TLS et HTTPS ; génération, conservation, distribution
   et validation des clés/certificats ; distinction entre confidentialité,
@@ -149,6 +173,17 @@ Points à confirmer ultérieurement par le titulaire du compte, sans répondre �
 sa place : la bêta est-elle réservée à son usage propre ou à d’autres testeurs ;
 quel périmètre public est effectivement prévu ; le déclarant éventuel est-il une
 personne physique ou une société ; existe-t-il déjà un document de classement
-applicable au produit complet. Aucun de ces points ne bloque la PR d’intégration,
-les builds locaux ou les bancs techniques en cours. Le build publié numéro 3
-n’est pas modifié par cet inventaire.
+applicable au produit complet. Les builds locaux, les bancs techniques et la PR
+d’intégration peuvent avancer ; la distribution TestFlight du build 4 reste
+dans l’état documentaire constaté ci-dessus.
+
+
+## Artifacts préparatoires disponibles
+
+[Annexe technique relue](export/ANNEXE-TECHNIQUE.md),
+[inventaire de configuration du build 4](export/build4-crypto-configuration.json),
+et [formulaire officiel, rubriques et pièces](export/PREPARATION-FORMULAIRE.md).
+Le PDF de l’annexe est un brouillon local non signé, distinct du formulaire
+officiel XFA intact. Les coordonnées et choix administratifs ne sont pas publiés.
+Mehdi préfère TestFlight et les tests Simulator ; l’alternative d’installation
+directe Xcode n’est pas poursuivie.
