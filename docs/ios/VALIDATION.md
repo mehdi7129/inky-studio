@@ -11,7 +11,7 @@ The approved six-screen bento design is implemented in SwiftUI. Minimum iOS vers
 | API unit tests | 15 passed: wire types, cookies/port isolation, redirects, empty 202/204, validation errors, multipart, deadlines/cancellation |
 | Session/state unit tests | 9 passed: biometric preference, logout/forget races, cancellation, late 401/result isolation, refresh/pagination, history beyond 500 entries |
 | Photo pipeline unit tests | 11 passed: native HEIC, EXIF orientation, crop coordinates, exact dimensions, sRGB/SDR, metadata removal, bounded PNG output |
-| End-to-end UI tests, iPhone 16 Pro / iOS 18.5 | **6 passed**, 0 failures, 106.5 seconds |
+| End-to-end UI tests, iPhone 16 Pro / iOS 18.5 | **7 passed**, 0 failures, 138.679 seconds (signed complete suite) |
 | Simulated Face ID end-to-end | Passed: opt-in, protected Keychain save, logout, simulated biometric match, reconnect, password fallback and disabling/removing the credential |
 | Local fixture contract smoke | **41 checks passed**, including authenticated REST and WebSocket events |
 | Real Raspberry native API probe | Passed: login, v0.4.2 health, state (800×480), queue/history/settings, authenticated PNG, WebSocket hello, logout |
@@ -28,10 +28,10 @@ Independent review found and fixed late-session response races, a monitor-task r
 
 Mehdi requested simulator validation instead of connecting a physical iPhone. Physical Face ID, device local-network permission and actual display refresh through the iPhone remain device checks; simulator success cannot prove those hardware behaviors. The production Raspberry probe was read-only apart from creating and closing its own login session.
 
-The exported IPA is ready for App Store Connect, but export is not TestFlight publication. No build has been submitted to Apple or released to testers as part of this implementation. The app record, upload/processing and tester assignment are described in [DISTRIBUTION.md](DISTRIBUTION.md).
+On 2026-09-27, Apple accepted and processed versions **1.0.0 (1)** and **1.0.0 (2)**. Build 2 fixes a black icon export using a compatible opaque sRGB drawing context; the app workflows are unchanged. The build was assigned to the private internal group **Mehdi — test iPhone** with one invited tester. Actual installation and physical-device acceptance remain pending user testing. See [TESTFLIGHT-DELIVERY.md](TESTFLIGHT-DELIVERY.md) for delivery evidence and [APP-STORE-PLAN.md](APP-STORE-PLAN.md) for the public-release plan. The app has not been submitted for public App Review or published on the App Store.
 
 ## Reproduce
 
 Use the checked-in Xcode project, start `ios/scripts/mock-server.py`, boot a simulator and run `ios/scripts/seed-simulator-photo.py <UDID>`, then `xcodebuild test` with test parallelization disabled. The dedicated `.github/workflows/ios.yml` performs the same setup on Xcode 16.4 / iOS 18.5 and also builds an unsigned device Release binary.
 
-Local evidence bundles (outside Git): `/tmp/inky-ios-unit-signed.xcresult`, `/tmp/inky-ios-ui-complete.xcresult`. Signed exports are under the ignored `build/ios/` directory. GitHub Actions retains its test result bundle for 14 days.
+Local evidence bundles (outside Git): `/tmp/inky-ios-unit-signed.xcresult`, `/tmp/inky-ios-ui-signed-complete.xcresult`. Signed exports are under the ignored `build/ios/` directory. GitHub Actions retains its test result bundle for 14 days.

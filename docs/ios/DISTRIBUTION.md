@@ -1,6 +1,6 @@
 # iPhone and TestFlight distribution
 
-The native app has an independent version (`1.0.0`, build `1`). It does not change the Raspberry release version. Bundle ID: `fr.mehdiguiard.inkystudio`. The project currently uses Mehdi's signing team `X524H8XA4L`; another developer must select their own team and bundle ID.
+The native app has an independent version (`1.0.0`, build `2`). It does not change the Raspberry release version. Bundle ID: `fr.mehdiguiard.inkystudio`. The project currently uses Mehdi's signing team `X524H8XA4L`; another developer must select their own team and bundle ID.
 
 ## Personal iPhone
 
@@ -40,3 +40,11 @@ Testing notes: confirm local network permission, first password login, Face ID o
 There is no analytics, advertising, tracking or developer-controlled cloud service. Selected photos are sent only to the user-configured frame. Source photo metadata is removed from exported PNGs. The included privacy manifest declares app-local UserDefaults use (`CA92.1`). The app uses Apple's built-in encryption and declares no non-exempt encryption.
 
 Archive/export success proves the package can be signed. It does not prove App Store Connect upload, Apple processing, TestFlight availability or physical Face ID success; record those separately in the validation log.
+
+## Delivered beta and publication roadmap
+
+The private TestFlight build **1.0.0 (2)** is processed and assigned to Mehdi's
+internal group. See [delivery evidence](TESTFLIGHT-DELIVERY.md) and the
+[public-release, BLE travel and remote-access plan](APP-STORE-PLAN.md).
+The public app has not been submitted for review. Support and privacy pages are
+served at [inky-studio.netlify.app](https://inky-studio.netlify.app).
