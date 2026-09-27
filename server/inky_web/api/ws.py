@@ -28,19 +28,40 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     event_queue = bus.subscribe()
     tasks: list[asyncio.Task] = []
+    sessions = None if auth.auth_disabled() else websocket.app.state.sessions
+    revoked = sessions.watch_revocation() if sessions is not None else None
+    close_lock = asyncio.Lock()
+    closed = False
+
+    async def close_unauthorized() -> None:
+        nonlocal closed
+        async with close_lock:
+            if not closed:
+                closed = True
+                await websocket.close(code=1008)
+
+    async def watch_revocation() -> None:
+        assert revoked is not None
+        while True:
+            # Check before waiting too, to cover revocation while accepting.
+            if not authenticated():
+                await close_unauthorized()
+                return
+            await revoked.wait()
+            revoked.clear()
 
     async def send_events() -> None:
         while True:
             event = await event_queue.get()
             if not authenticated():
-                await websocket.close(code=1008)
+                await close_unauthorized()
                 return
             await websocket.send_json(event)
 
     async def receive_disconnect() -> None:
         while True:
             if not authenticated():
-                await websocket.close(code=1008)
+                await close_unauthorized()
                 return
             try:
                 message = await asyncio.wait_for(websocket.receive(), timeout=30)
@@ -52,6 +73,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         await websocket.send_json({"type": "hello", "payload": {}})
         tasks = [asyncio.create_task(send_events()), asyncio.create_task(receive_disconnect())]
+        if revoked is not None:
+            tasks.append(asyncio.create_task(watch_revocation()))
         done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in done:
             task.result()
@@ -65,6 +88,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         # Unsubscribe before awaiting task cleanup: a second cancellation can
         # interrupt gather, but must never leave this connection on the bus.
         bus.unsubscribe(event_queue)
+        if sessions is not None and revoked is not None:
+            sessions.unwatch_revocation(revoked)
         for task in tasks:
             task.cancel()
         # Preserve the enclosing ASGI cancellation scope while draining tasks.

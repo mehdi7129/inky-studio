@@ -38,15 +38,16 @@ case "${cmd}" in
     trap - EXIT
     ;;
   reset-password)
-    # Erase the old credentials file, restart so a new password is generated
-    sudo rm -f "${DATA_DIR}/credentials.json"
-    sudo systemctl restart "${SERVICE_NAME}"
-    sleep 2
-    PASSWORD=$(sudo cat "${DATA_DIR}/credentials.json" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])' 2>/dev/null || echo "(check ${DATA_DIR}/credentials.json)")
-    echo "New password: ${PASSWORD}"
+    # Stop the sole writer; keep the old file intact until replacement is durable.
+    # Restart also revokes every process-local session, even after a failed reset.
+    sudo systemctl stop "${SERVICE_NAME}"
+    trap 'sudo systemctl start "${SERVICE_NAME}"' EXIT
+    INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${PYTHON}" -m inky_web.auth reset-password
+    sudo systemctl start "${SERVICE_NAME}"
+    trap - EXIT
     ;;
   password)
-    sudo cat "${DATA_DIR}/credentials.json" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])'
+    INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${PYTHON}" -m inky_web.auth password
     ;;
   update)
     # Download the latest prebuilt release, swap it in, refresh deps, restart.
@@ -72,7 +73,7 @@ Commands:
   logs                Tail service logs
   start | stop | restart
   welcome             Re-show the welcome screen on the Inky
-  password            Print the current login password
+  password            Print the initial password, if still recoverable
   reset-password      Generate a new password (restarts the service)
   update              Download & install the latest release, then restart
   info                Show install paths and URL

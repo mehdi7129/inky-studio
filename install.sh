@@ -259,8 +259,7 @@ fi
 
 # ── 12. Report ───────────────────────────────────────────────────────────────
 IP=$(hostname -I | awk '{print $1}' || echo "<your-pi-ip>")
-PWD_FILE="${DATA_DIR}/credentials.json"
-PASSWORD=$(sudo cat "${PWD_FILE}" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])' 2>/dev/null || echo "(check ${PWD_FILE})")
+PASSWORD=$(INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${INSTALL_DIR}/server/.venv/bin/python" -m inky_web.auth password 2>/dev/null || echo "Run inky-studio password once the service has started")
 
 echo
 echo "════════════════════════════════════════════════════════════════"
