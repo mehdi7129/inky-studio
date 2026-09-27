@@ -382,8 +382,15 @@ the available build 3 from build 4 awaiting qualification/distribution. HTML,
 is in ignored `build/website/2026-09-27-support-privacy/`, with a source manifest
 and Netlify `_headers` generated from `netlify.toml`.
 
-This website revision is **not deployed**: Chrome's upload tool requires the
-extension's file-URL access permission, which was unavailable. No upload or
-production switch completed. The existing public site remains on its previous
-camera-privacy revision. Verify the production content and headers after the
-pending upload before marking the website follow-up delivered.
+This website revision is **published** on the existing Netlify site after the
+maintainer enabled the browser extension's upload permission. Production deploy
+`6ab945ef3d8845400107aadc` contains the reviewed source. All three HTML pages and
+five assets return HTTPS 200; the HTML is equivalent after Netlify's pretty-URL
+rewriting, the five asset hashes match, and all configured security/cache headers
+pass. Evidence: ignored `build/website/2026-09-27-support-privacy/live-validation.json`
+and `published-support.png`. Previous deploy `6ab8fe8839e44c58d6f12688` remains
+available for rollback. This publication does not distribute an iPhone build.
+
+Both GitHub workflows passed on the latest code commit `f9c842e`: general CI
+and iOS (including Simulator tests, TLS/GATT/HTTPS checks and iPhone Release).
+Subsequent delivery-state documentation changes do not alter the tested app.

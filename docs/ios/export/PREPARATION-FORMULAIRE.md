@@ -145,10 +145,12 @@ récépissé/une autorisation ANSSI ou un autre justificatif, ainsi que le forma
 de l'annexe. Elle contient les informations techniques publiques et le contact
 de support choisi par Mehdi. Aucun formulaire personnel n'a été joint.
 
-La question préalable ANSSI est préparée ; son envoi attend la confirmation du
-compte expéditeur, distinct de l'adresse publique de support. Elle porte sur
-les formalités applicables au produit final, les pièces d'une personne physique
-et un éventuel classement grand public. Aucun dépôt signé n'a été effectué.
+La question préalable ANSSI a été envoyée le 27 septembre à 18 h 34 depuis
+l’adresse publique de support explicitement choisie par Mehdi. Gmail a confirmé
+l’envoi et la copie envoyée a été consultée. Elle porte sur les formalités
+applicables au produit final, les pièces d’une personne physique et un éventuel
+classement grand public. Seuls le texte technique public et ses liens GitHub
+ont été transmis, sans pièce jointe personnelle. Aucun dépôt signé n’a été effectué.
 
 Une demande de renseignement ou son accusé de réception ne constitue ni une
 réponse sur le classement, ni une approbation documentaire Apple. Le build 4

@@ -16,7 +16,8 @@ test before preparing a public App Store release.
   Neither document is signed or submitted, and neither is Apple approval.
 - Apple Developer Support has acknowledged a clarification request about the
   exact French evidence required. No answer or compliance approval is recorded
-  yet. The preliminary ANSSI question awaits sender-account confirmation.
+  yet. The preliminary ANSSI question was sent from the maintainer’s chosen
+  public contact; Gmail confirmed sending. It is not a signed filing.
 
 ## Historical delivery: build 2
 
