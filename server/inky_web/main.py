@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import signal
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -20,6 +22,8 @@ from inky_web.api import router as api_router
 from inky_web.db import data_dir, init_db
 from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
+from inky_web.provisioning.api import CONFIRM_PATH
+from inky_web.provisioning.api import router as provisioning_router
 from inky_web.services.scheduler import Scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -38,6 +42,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not path.startswith("/api"):
             return await call_next(request)
         if path in auth.PUBLIC_PATHS:
+            return await call_next(request)
+        if path == CONFIRM_PATH:
+            # Strict HTTPS + owner authentication is performed inside the route.
             return await call_next(request)
         # WebSocket auth is checked separately inside the route — Starlette doesn't
         # pass WS through HTTP middleware uniformly across versions, so we no-op here.
@@ -67,6 +74,7 @@ async def lifespan(app: FastAPI):
     app.state.display = DisplayController()
     app.state.display.initialize()
     app.state.scheduler = Scheduler(app.state.display, app.state.bus)
+    app.state.provisioning = None
     welcome_task = None
     if not auth.auth_disabled():
         logger = logging.getLogger(__name__)
@@ -90,13 +98,28 @@ async def lifespan(app: FastAPI):
             welcome_task = asyncio.create_task(asyncio.to_thread(show_welcome, app.state.display))
 
     try:
+        if os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled():
+            from inky_web.provisioning.runtime import ProvisioningRuntime
+            app.state.provisioning = ProvisioningRuntime(
+                data_dir() / "provisioning", app.state.auth_service, app.state.display,
+                getattr(app.state, "frame_identity", None),
+            )
+            app.state.auth_service.prepare_owner_rotation = app.state.provisioning.prepare_rotation
+            try:
+                await app.state.provisioning.start()
+            except Exception:
+                logging.getLogger(__name__).error("Bluetooth unavailable; existing frame API remains active")
         await app.state.scheduler.start()
         yield
     finally:
         try:
-            await app.state.scheduler.stop()
-            if welcome_task is not None:
-                await welcome_task
+            try:
+                if app.state.provisioning is not None:
+                    await app.state.provisioning.stop()
+            finally:
+                await app.state.scheduler.stop()
+                if welcome_task is not None:
+                    await welcome_task
         finally:
             app.state.display.shutdown()
 
@@ -111,7 +134,7 @@ app = FastAPI(
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError):
-    if request.url.path in {"/api/auth/login", "/api/auth/password"}:
+    if request.url.path in {"/api/auth/login", "/api/auth/password"} or request.url.path.startswith("/api/provisioning/"):
         # FastAPI otherwise echoes the supplied secret in the validation input.
         errors = [{key: error[key] for key in ("type", "loc", "msg")} for error in exc.errors()]
         return JSONResponse(status_code=422, content={"detail": errors})
@@ -133,6 +156,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
+app.include_router(provisioning_router, prefix="/api")
 
 async def spa_fallback(full_path: str) -> FileResponse:
     root = CLIENT_DIST.resolve()
@@ -150,6 +174,9 @@ if CLIENT_DIST.is_dir():
 
 
 def run() -> None:
+    if os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled():
+        asyncio.run(serve_with_https())
+        return
     uvicorn.run(
         "inky_web.main:app",
         host="0.0.0.0",
@@ -159,6 +186,62 @@ def run() -> None:
         # (used by the in-app update) hang until systemd's SIGKILL timeout.
         timeout_graceful_shutdown=10,
     )
+
+
+async def serve_with_https() -> None:
+    """Two listeners, one lifespan, one scheduler and one hardware owner."""
+    from contextlib import contextmanager
+
+    from inky_web.provisioning.identity import load_or_create_identity
+
+    class ManagedServer(uvicorn.Server):
+        @contextmanager
+        def capture_signals(self):
+            yield
+
+        async def serve(self, sockets=None):
+            try:
+                await super().serve(sockets=sockets)
+            except BaseException as exc:
+                # Uvicorn uses SystemExit for bind failures. Letting it escape
+                # an asyncio task cancels the shared lifespan before its workers
+                # can drain. Treat this listener failure as an ordinary error.
+                if self.started:
+                    await self.shutdown(sockets=sockets)
+                if isinstance(exc, SystemExit):
+                    raise RuntimeError("Frame listener failed to start") from exc
+                raise
+
+    app.state.frame_identity = load_or_create_identity(data_dir() / "provisioning")
+    cert, key = app.state.frame_identity.materialize_tls_files()
+    async with lifespan(app):
+        common = dict(app=app, host="0.0.0.0", lifespan="off", timeout_graceful_shutdown=10)
+        http = uvicorn.Config(port=8000, **common)
+        https = uvicorn.Config(port=8443, ssl_certfile=str(cert), ssl_keyfile=str(key), **common)
+        https.load()
+        # Share the exact context with BLE, including subsequent certificate
+        # renewals. An already established TLS session keeps its own handshake.
+        https.ssl = app.state.provisioning.tls_context
+        servers = [ManagedServer(http), ManagedServer(https)]
+        loop = asyncio.get_running_loop()
+        def shutdown():
+            for server in servers:
+                server.should_exit = True
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, shutdown)
+        tasks = [asyncio.create_task(server.serve()) for server in servers]
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            shutdown()
+            try:
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+            finally:
+                for sig in (signal.SIGTERM, signal.SIGINT):
+                    loop.remove_signal_handler(sig)
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
 
 
 if __name__ == "__main__":

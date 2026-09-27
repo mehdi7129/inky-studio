@@ -9,27 +9,44 @@
 /* Begin PBXBuildFile section */
 		046F2D2DC1D55EDCF47EF397 /* PasswordChangeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F9B8BA3B9133B1D6B08D881 /* PasswordChangeView.swift */; };
 		0989724E668DF98501F3C34A /* APITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F0845EFD539104F9AFDB591 /* APITests.swift */; };
+		1006BC8D40E57ADA2432DC39 /* OwnershipVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CB6FE548F76B8089B50EA4F /* OwnershipVault.swift */; };
 		15FB4F08AC6270798050824A /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E93EF9A28792AD9A812ED7 /* QueueView.swift */; };
 		17CD43BAAB9443573CCC5A30 /* InkyStudioUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715F2C31B5B7575A987628A5 /* InkyStudioUITests.swift */; };
+		186FAAADBE0460E7C2BE3C37 /* BluetoothSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49B1DDA6CD675954525687AE /* BluetoothSetupView.swift */; };
+		20F6786F93563A852473726C /* SecureBluetoothChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF3D11F5A6E0F44A610709CC /* SecureBluetoothChannel.swift */; };
 		21841F1B618C6413AFEC2FD0 /* CameraCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1402A8E3BA91BF9537C24A /* CameraCaptureView.swift */; };
+		25B80AA3199AE33F4DC01392 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 2A2F4D0111059422485B70B8 /* ThirdPartyNotices.txt */; };
 		2F7AC99D1BA003EFA4DB94FC /* InkyAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D591853F3004F95469F34EA /* InkyAPI.swift */; };
 		5DA5EACB32570669F29B66A8 /* InkyStudioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908ED9879C756D9FD754E54A /* InkyStudioApp.swift */; };
 		5E0735A767035D2E7F09E1B6 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94A820224492220A3DA35B5 /* AppStore.swift */; };
+		5FAB3E4A3344A8589C1056F6 /* BluetoothSetupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CFBE17AACB997A4E14D675B /* BluetoothSetupUITests.swift */; };
 		6315C6AAC9CCE221CDBB7C3E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 38533D2848E2229ACC99D7D2 /* PrivacyInfo.xcprivacy */; };
+		673060D0141C55284669ABD2 /* PinnedFrameTrust.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1DDCCB56C35BA702C6413F /* PinnedFrameTrust.swift */; };
+		7195E1B6323DD7180FDDFC37 /* InkyTLS in Frameworks */ = {isa = PBXBuildFile; productRef = 6AB361F21F483CAD11FC312F /* InkyTLS */; };
+		79FEA0CF36DD2B420BA306F4 /* PinnedFrameTrustTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6000FA45E4E44E5673B2505 /* PinnedFrameTrustTests.swift */; };
 		800831B4D34FD5DFF3206C01 /* PhotoPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 317510685DBCBA4B459AD2F4 /* PhotoPipeline.swift */; };
+		830D01584B435478285A585A /* BluetoothSetupCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5ADFD190C12461AC95A6AB3 /* BluetoothSetupCoordinatorTests.swift */; };
 		87F09C526C4734656AAFBC69 /* AppStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A80B1FAF2DB2CA2E44D4488 /* AppStoreTests.swift */; };
+		88DF6751DB3134A77E600EC7 /* BluetoothChannelInteropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4270798D8720AD8EA20CEDFB /* BluetoothChannelInteropTests.swift */; };
 		8A4E908BD023391144DC44FD /* FrameAddress.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD13D09A34D1301851C4A1C2 /* FrameAddress.swift */; };
+		9493AB0361A4E54558813731 /* FrameIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C1AD736F7DF35F699D1E2AF /* FrameIdentity.swift */; };
 		959307E4C6B9A8E0D8EC3439 /* PhotoPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 803409E6940A2CDA8D8B108A /* PhotoPipelineTests.swift */; };
 		99B0D501918389EDD369038C /* PhotoImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B279A23E97D7C75C41E4069F /* PhotoImportView.swift */; };
 		9CC39CDC8AAA4024792222BF /* CropGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB92DA5929F75D3CA8F8C3A /* CropGeometry.swift */; };
 		A0044C08941B57E21663EC19 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 521ACA1E2D923359CD42DBDD /* Models.swift */; };
+		AB182E3BD1569DBD5D2D3681 /* BluetoothTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */; };
 		B1CD487B42DBC2A80B24DAEC /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E7E1EBB19CAD90394EE3A69 /* DashboardView.swift */; };
 		BDA9790D16F044E74CD03A26 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9EE38F9C4815EE8B81A82971 /* Assets.xcassets */; };
+		CA5B7AD7136417581071B3F6 /* BluetoothSetupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B7D743D63D8E3038F96161 /* BluetoothSetupCoordinator.swift */; };
 		CB37F0565CDD0759B962195C /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 499D47C314B26D19A55DBE5B /* HistoryView.swift */; };
 		CFB066BEAEAC949806104B3C /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF609B8AA1F8E3DFDC9893A4 /* ConnectionView.swift */; };
+		D9F80ED152C3B8F6C5D9B656 /* BluetoothChannelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D190F2D1CFE1681D659D98 /* BluetoothChannelTests.swift */; };
 		DE5974B2422D93AFCF97C154 /* APIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2AFCEF5039DACCE31F0E5C3 /* APIError.swift */; };
 		DEA3FBA95CC9E3AE659549B0 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D0313FF291E89F24013700 /* SettingsView.swift */; };
 		E2419ACE2BDCF78FE510845A /* Bento.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB7F251A4078603A5EA5E0F2 /* Bento.swift */; };
+		E883895084BA3ED85261A5FD /* FrameIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 705B77096599A912B708C7FF /* FrameIdentityTests.swift */; };
+		F36892B63C1B13F1A00D3BD7 /* FrameTrustTestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABDD49EB7DC85A967681D04E /* FrameTrustTestFixtures.swift */; };
+		F42B2C151B9E2437D32F442D /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EA7C41FE711F5C10D48C074 /* QRScannerView.swift */; };
 		F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */; };
 		F5694A3C7477B58FC87E90EF /* BiometricVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FF7DADE10BCADD5C93B141 /* BiometricVault.swift */; };
 /* End PBXBuildFile section */
@@ -52,36 +69,64 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0C1AD736F7DF35F699D1E2AF /* FrameIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameIdentity.swift; sourceTree = "<group>"; };
 		0E7E1EBB19CAD90394EE3A69 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		1AB92DA5929F75D3CA8F8C3A /* CropGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CropGeometry.swift; sourceTree = "<group>"; };
+		1CB6FE548F76B8089B50EA4F /* OwnershipVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OwnershipVault.swift; sourceTree = "<group>"; };
+		1EA7C41FE711F5C10D48C074 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
+		2A2F4D0111059422485B70B8 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
 		2F9B8BA3B9133B1D6B08D881 /* PasswordChangeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordChangeView.swift; sourceTree = "<group>"; };
 		317510685DBCBA4B459AD2F4 /* PhotoPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPipeline.swift; sourceTree = "<group>"; };
 		349A1501C7C3147D64A647BE /* InkyStudioUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InkyStudioUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		36D190F2D1CFE1681D659D98 /* BluetoothChannelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothChannelTests.swift; sourceTree = "<group>"; };
 		38533D2848E2229ACC99D7D2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		3A80B1FAF2DB2CA2E44D4488 /* AppStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreTests.swift; sourceTree = "<group>"; };
+		4270798D8720AD8EA20CEDFB /* BluetoothChannelInteropTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothChannelInteropTests.swift; sourceTree = "<group>"; };
 		499D47C314B26D19A55DBE5B /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		49B1DDA6CD675954525687AE /* BluetoothSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothSetupView.swift; sourceTree = "<group>"; };
 		4D591853F3004F95469F34EA /* InkyAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkyAPI.swift; sourceTree = "<group>"; };
+		50B7D743D63D8E3038F96161 /* BluetoothSetupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothSetupCoordinator.swift; sourceTree = "<group>"; };
 		521ACA1E2D923359CD42DBDD /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		6F0845EFD539104F9AFDB591 /* APITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APITests.swift; sourceTree = "<group>"; };
+		705B77096599A912B708C7FF /* FrameIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameIdentityTests.swift; sourceTree = "<group>"; };
 		715F2C31B5B7575A987628A5 /* InkyStudioUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkyStudioUITests.swift; sourceTree = "<group>"; };
+		7CFBE17AACB997A4E14D675B /* BluetoothSetupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothSetupUITests.swift; sourceTree = "<group>"; };
 		803409E6940A2CDA8D8B108A /* PhotoPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPipelineTests.swift; sourceTree = "<group>"; };
 		81D0313FF291E89F24013700 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		82E93EF9A28792AD9A812ED7 /* QueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueView.swift; sourceTree = "<group>"; };
+		836D4C9F8E331DEF2E50DBA6 /* InkyTLS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = InkyTLS; path = Packages/InkyTLS; sourceTree = SOURCE_ROOT; };
 		8DCEA26471F9019C266D0935 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		8DD2E779AB549D13992CC463 /* InkyStudio.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = InkyStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		908ED9879C756D9FD754E54A /* InkyStudioApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkyStudioApp.swift; sourceTree = "<group>"; };
 		98FF7DADE10BCADD5C93B141 /* BiometricVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricVault.swift; sourceTree = "<group>"; };
 		9EE38F9C4815EE8B81A82971 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AB7F251A4078603A5EA5E0F2 /* Bento.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bento.swift; sourceTree = "<group>"; };
+		ABDD49EB7DC85A967681D04E /* FrameTrustTestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameTrustTestFixtures.swift; sourceTree = "<group>"; };
 		AC1402A8E3BA91BF9537C24A /* CameraCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCaptureView.swift; sourceTree = "<group>"; };
 		AD13D09A34D1301851C4A1C2 /* FrameAddress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameAddress.swift; sourceTree = "<group>"; };
+		AD1DDCCB56C35BA702C6413F /* PinnedFrameTrust.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedFrameTrust.swift; sourceTree = "<group>"; };
 		B279A23E97D7C75C41E4069F /* PhotoImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoImportView.swift; sourceTree = "<group>"; };
 		B2AFCEF5039DACCE31F0E5C3 /* APIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIError.swift; sourceTree = "<group>"; };
+		BF3D11F5A6E0F44A610709CC /* SecureBluetoothChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureBluetoothChannel.swift; sourceTree = "<group>"; };
 		C94A820224492220A3DA35B5 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
 		CEBAE54AB02AF5191ABFCB85 /* InkyStudioTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InkyStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CF609B8AA1F8E3DFDC9893A4 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
+		D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothTransport.swift; sourceTree = "<group>"; };
+		E5ADFD190C12461AC95A6AB3 /* BluetoothSetupCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothSetupCoordinatorTests.swift; sourceTree = "<group>"; };
+		E6000FA45E4E44E5673B2505 /* PinnedFrameTrustTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedFrameTrustTests.swift; sourceTree = "<group>"; };
 		EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCaptureTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AC9360392DA9EC70EA259F63 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7195E1B6323DD7180FDDFC37 /* InkyTLS in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		0DA3FD3B0D0B227EDC6A92CC /* Auth */ = {
@@ -109,6 +154,7 @@
 				516A9F0AB4FF329A9708A4A6 /* InkyStudio */,
 				5C0109F5C6F43B84414CE7F3 /* InkyStudioTests */,
 				F34C578588F9FA8DE635B0BE /* InkyStudioUITests */,
+				6AA26A0722603D7986930976 /* Packages */,
 				E9C2FBC6D85BA13B13FBEAE3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -129,6 +175,7 @@
 				0DA3FD3B0D0B227EDC6A92CC /* Auth */,
 				10504FB4353C8B344A08C918 /* Core */,
 				977B928B194A6A57F9CC8500 /* Photos */,
+				FA2290AB216827D5F4BB8309 /* Provisioning */,
 				EC8E2792E911F0E64A20553C /* Resources */,
 				7670A8866E3118F693B74C1F /* UI */,
 			);
@@ -140,10 +187,24 @@
 			children = (
 				6F0845EFD539104F9AFDB591 /* APITests.swift */,
 				3A80B1FAF2DB2CA2E44D4488 /* AppStoreTests.swift */,
+				4270798D8720AD8EA20CEDFB /* BluetoothChannelInteropTests.swift */,
+				36D190F2D1CFE1681D659D98 /* BluetoothChannelTests.swift */,
+				E5ADFD190C12461AC95A6AB3 /* BluetoothSetupCoordinatorTests.swift */,
 				EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */,
+				705B77096599A912B708C7FF /* FrameIdentityTests.swift */,
+				ABDD49EB7DC85A967681D04E /* FrameTrustTestFixtures.swift */,
 				803409E6940A2CDA8D8B108A /* PhotoPipelineTests.swift */,
+				E6000FA45E4E44E5673B2505 /* PinnedFrameTrustTests.swift */,
 			);
 			path = InkyStudioTests;
+			sourceTree = "<group>";
+		};
+		6AA26A0722603D7986930976 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				836D4C9F8E331DEF2E50DBA6 /* InkyTLS */,
+			);
+			path = Packages;
 			sourceTree = "<group>";
 		};
 		7670A8866E3118F693B74C1F /* UI */ = {
@@ -187,6 +248,7 @@
 				9EE38F9C4815EE8B81A82971 /* Assets.xcassets */,
 				8DCEA26471F9019C266D0935 /* Info.plist */,
 				38533D2848E2229ACC99D7D2 /* PrivacyInfo.xcprivacy */,
+				2A2F4D0111059422485B70B8 /* ThirdPartyNotices.txt */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -194,9 +256,25 @@
 		F34C578588F9FA8DE635B0BE /* InkyStudioUITests */ = {
 			isa = PBXGroup;
 			children = (
+				7CFBE17AACB997A4E14D675B /* BluetoothSetupUITests.swift */,
 				715F2C31B5B7575A987628A5 /* InkyStudioUITests.swift */,
 			);
 			path = InkyStudioUITests;
+			sourceTree = "<group>";
+		};
+		FA2290AB216827D5F4BB8309 /* Provisioning */ = {
+			isa = PBXGroup;
+			children = (
+				50B7D743D63D8E3038F96161 /* BluetoothSetupCoordinator.swift */,
+				49B1DDA6CD675954525687AE /* BluetoothSetupView.swift */,
+				D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */,
+				0C1AD736F7DF35F699D1E2AF /* FrameIdentity.swift */,
+				1CB6FE548F76B8089B50EA4F /* OwnershipVault.swift */,
+				AD1DDCCB56C35BA702C6413F /* PinnedFrameTrust.swift */,
+				1EA7C41FE711F5C10D48C074 /* QRScannerView.swift */,
+				BF3D11F5A6E0F44A610709CC /* SecureBluetoothChannel.swift */,
+			);
+			path = Provisioning;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -244,6 +322,7 @@
 			buildPhases = (
 				7B4E857A78FEFD67425A941E /* Sources */,
 				D65C4262B2A27B2EF1CDA5CE /* Resources */,
+				AC9360392DA9EC70EA259F63 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -251,6 +330,7 @@
 			);
 			name = InkyStudio;
 			packageProductDependencies = (
+				6AB361F21F483CAD11FC312F /* InkyTLS */,
 			);
 			productName = InkyStudio;
 			productReference = 8DD2E779AB549D13992CC463 /* InkyStudio.app */;
@@ -286,6 +366,9 @@
 			);
 			mainGroup = 25F1B53B567B11547A2C3211;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				93D7C0146C40A8941F162496 /* XCLocalSwiftPackageReference "Packages/InkyTLS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E9C2FBC6D85BA13B13FBEAE3 /* Products */;
 			projectDirPath = "";
@@ -305,6 +388,7 @@
 			files = (
 				BDA9790D16F044E74CD03A26 /* Assets.xcassets in Resources */,
 				6315C6AAC9CCE221CDBB7C3E /* PrivacyInfo.xcprivacy in Resources */,
+				25B80AA3199AE33F4DC01392 /* ThirdPartyNotices.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -315,6 +399,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5FAB3E4A3344A8589C1056F6 /* BluetoothSetupUITests.swift in Sources */,
 				17CD43BAAB9443573CCC5A30 /* InkyStudioUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -325,8 +410,14 @@
 			files = (
 				0989724E668DF98501F3C34A /* APITests.swift in Sources */,
 				87F09C526C4734656AAFBC69 /* AppStoreTests.swift in Sources */,
+				88DF6751DB3134A77E600EC7 /* BluetoothChannelInteropTests.swift in Sources */,
+				D9F80ED152C3B8F6C5D9B656 /* BluetoothChannelTests.swift in Sources */,
+				830D01584B435478285A585A /* BluetoothSetupCoordinatorTests.swift in Sources */,
 				F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */,
+				E883895084BA3ED85261A5FD /* FrameIdentityTests.swift in Sources */,
+				F36892B63C1B13F1A00D3BD7 /* FrameTrustTestFixtures.swift in Sources */,
 				959307E4C6B9A8E0D8EC3439 /* PhotoPipelineTests.swift in Sources */,
+				79FEA0CF36DD2B420BA306F4 /* PinnedFrameTrustTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -338,19 +429,27 @@
 				5E0735A767035D2E7F09E1B6 /* AppStore.swift in Sources */,
 				E2419ACE2BDCF78FE510845A /* Bento.swift in Sources */,
 				F5694A3C7477B58FC87E90EF /* BiometricVault.swift in Sources */,
+				CA5B7AD7136417581071B3F6 /* BluetoothSetupCoordinator.swift in Sources */,
+				186FAAADBE0460E7C2BE3C37 /* BluetoothSetupView.swift in Sources */,
+				AB182E3BD1569DBD5D2D3681 /* BluetoothTransport.swift in Sources */,
 				21841F1B618C6413AFEC2FD0 /* CameraCaptureView.swift in Sources */,
 				CFB066BEAEAC949806104B3C /* ConnectionView.swift in Sources */,
 				9CC39CDC8AAA4024792222BF /* CropGeometry.swift in Sources */,
 				B1CD487B42DBC2A80B24DAEC /* DashboardView.swift in Sources */,
 				8A4E908BD023391144DC44FD /* FrameAddress.swift in Sources */,
+				9493AB0361A4E54558813731 /* FrameIdentity.swift in Sources */,
 				CB37F0565CDD0759B962195C /* HistoryView.swift in Sources */,
 				2F7AC99D1BA003EFA4DB94FC /* InkyAPI.swift in Sources */,
 				5DA5EACB32570669F29B66A8 /* InkyStudioApp.swift in Sources */,
 				A0044C08941B57E21663EC19 /* Models.swift in Sources */,
+				1006BC8D40E57ADA2432DC39 /* OwnershipVault.swift in Sources */,
 				046F2D2DC1D55EDCF47EF397 /* PasswordChangeView.swift in Sources */,
 				99B0D501918389EDD369038C /* PhotoImportView.swift in Sources */,
 				800831B4D34FD5DFF3206C01 /* PhotoPipeline.swift in Sources */,
+				673060D0141C55284669ABD2 /* PinnedFrameTrust.swift in Sources */,
+				F42B2C151B9E2437D32F442D /* QRScannerView.swift in Sources */,
 				15FB4F08AC6270798050824A /* QueueView.swift in Sources */,
+				20F6786F93563A852473726C /* SecureBluetoothChannel.swift in Sources */,
 				DEA3FBA95CC9E3AE659549B0 /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -648,6 +747,20 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		93D7C0146C40A8941F162496 /* XCLocalSwiftPackageReference "Packages/InkyTLS" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/InkyTLS;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		6AB361F21F483CAD11FC312F /* InkyTLS */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = InkyTLS;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A98D079006A1C7686A815077 /* Project object */;
 }

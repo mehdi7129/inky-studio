@@ -5,6 +5,7 @@ struct ConnectionView: View {
     @State private var password = ""
     @State private var showPassword = false
     @State private var remember = false
+    @State private var bluetoothSetup = false
     @FocusState private var passwordFocused: Bool
     private var biometric: Bool { store.hasSavedFrame && store.biometricEnabled && !showPassword }
     var body: some View {
@@ -76,6 +77,10 @@ struct ConnectionView: View {
                 }
                 Text("Votre iPhone et le cadre doivent être sur le même réseau Wi-Fi.")
                     .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
+                Button { bluetoothSetup = true } label: {
+                    Label("Configurer le Wi-Fi du cadre", systemImage: "wifi")
+                }.buttonStyle(OutlineButtonStyle()).disabled(store.connecting)
+                    .accessibilityIdentifier("connection.bluetooth")
                 if store.hasSavedFrame {
                     Button("Changer de cadre") { Task { await store.logout(forget: true); showPassword = false; password = ""; remember = false } }
                         .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 8).disabled(store.connecting)
@@ -85,6 +90,11 @@ struct ConnectionView: View {
         }.background(Bento.background).scrollDismissesKeyboard(.interactively)
             .onAppear { remember = store.biometricEnabled }
             .onChange(of: store.biometricEnabled) { _, enabled in remember = enabled }
+            .sheet(isPresented: $bluetoothSetup) {
+                BluetoothSetupView { endpoint, owner in
+                    await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
+                }
+            }
     }
     private func connect() { passwordFocused = false; Task { await store.login(password: password, rememberBiometric: remember) } }
 }

@@ -5,6 +5,7 @@ import Foundation
 @MainActor
 final class InkyAPI {
     let baseURL: URL
+    private let owner: OwnershipRecord?
     private let configuration: URLSessionConfiguration
     private let redirectDelegate: OriginRedirectDelegate
     private var session: URLSession
@@ -17,8 +18,9 @@ final class InkyAPI {
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
-    init(baseURL: URL, configuration: URLSessionConfiguration = .ephemeral) {
+    init(baseURL: URL, configuration: URLSessionConfiguration = .ephemeral, owner: OwnershipRecord? = nil) {
         self.baseURL = baseURL
+        self.owner = owner
         let isolated = configuration.copy() as! URLSessionConfiguration
         isolated.httpShouldSetCookies = false
         isolated.httpCookieStorage = nil
@@ -31,7 +33,7 @@ final class InkyAPI {
         isolated.timeoutIntervalForRequest = 30
         isolated.timeoutIntervalForResource = 120
         self.configuration = isolated
-        let delegate = OriginRedirectDelegate(origin: baseURL)
+        let delegate = OriginRedirectDelegate(origin: baseURL, trust: owner.map { FrameTrustPolicy(identity: $0.identity) })
         redirectDelegate = delegate
         session = URLSession(configuration: isolated, delegate: delegate, delegateQueue: nil)
         decoder = JSONDecoder()
@@ -47,6 +49,37 @@ final class InkyAPI {
     func state() async throws -> DisplayState { try await get("/api/state") }
     func queue() async throws -> [QueueEntry] { try await get("/api/queue") }
     func settings() async throws -> FrameSettings { try await get("/api/settings") }
+
+    func beginBluetoothAdoption() async throws -> UUID {
+        struct Capabilities: Decodable { let bluetooth: Bool }
+        let capabilities: Capabilities = try await get("/api/provisioning/capabilities")
+        guard capabilities.bluetooth else { throw ProvisioningAPIError.unavailable }
+        struct Window: Decodable { let frameId: UUID }
+        let data = try await perform(request("POST", path: "/api/provisioning/adoption/window", timeout: 90))
+        let window: Window = try decodeResponse(data)
+        return window.frameId
+    }
+
+    func bluetoothSupported() async -> Bool {
+        struct Capabilities: Decodable { let bluetooth: Bool; let `protocol`: Int }
+        guard let result: Capabilities = try? await get("/api/provisioning/capabilities", timeout: 5) else { return false }
+        return result.bluetooth && result.protocol == 1
+    }
+
+    static func confirmProvisionedWiFi(endpoint: URL, owner: OwnershipRecord, transactionID: UUID) async throws -> String {
+        try FrameTrustPolicy(identity: owner.identity).validateHTTPS(endpoint)
+        let client = InkyAPI(baseURL: endpoint, owner: owner)
+        defer { client.clearSession() }
+        struct Confirmation: Encodable { let transactionId: String }
+        struct Result: Decodable { let state: String }
+        struct Reply: Decodable { let ok: Bool; let result: Result }
+        let reply: Reply = try await client.send("POST", path: "/api/provisioning/wifi/confirm",
+            body: Confirmation(transactionId: transactionID.uuidString.lowercased()), timeout: 8)
+        guard reply.ok, ["connecting", "awaiting_confirmation", "committed", "rolled_back", "failed"].contains(reply.result.state) else {
+            throw APIError.invalidData
+        }
+        return reply.result.state
+    }
 
     func login(password: String) async throws -> AuthStatus {
         struct Login: Encodable { var password: String }
@@ -270,6 +303,7 @@ final class InkyAPI {
     private func request(
         _ method: String, path: String, query: [URLQueryItem] = [], timeout: TimeInterval = 30
     ) throws -> URLRequest {
+        if let owner { try FrameTrustPolicy(identity: owner.identity).validateHTTPS(baseURL) }
         guard var parts = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
               ["http", "https"].contains(parts.scheme?.lowercased() ?? ""),
               parts.user == nil, parts.password == nil else { throw APIError.invalidResponse }
@@ -281,6 +315,10 @@ final class InkyAPI {
         request.httpMethod = method
         request.httpShouldHandleCookies = false
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let owner {
+            request.setValue(owner.ownerID.uuidString.lowercased(), forHTTPHeaderField: "X-Inky-Owner-ID")
+            request.setValue(owner.ownerTokenHex, forHTTPHeaderField: "X-Inky-Owner-Token")
+        }
         let matching = cookies.filter { matches($0, url: url) }
         for (key, value) in HTTPCookie.requestHeaderFields(with: matching) {
             request.setValue(value, forHTTPHeaderField: key)
@@ -351,8 +389,35 @@ enum HTTPDeadline {
 /// session header. Never bypass certificate validation or HTTP auth challenges.
 final class OriginRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let origin: URL
+    private let trust: FrameTrustPolicy?
 
-    init(origin: URL) { self.origin = origin }
+    init(origin: URL, trust: FrameTrustPolicy? = nil) { self.origin = origin; self.trust = trust }
+
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        handle(challenge, completionHandler)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard let url = task.currentRequest?.url, Self.sameOrigin(url, origin) else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        handle(challenge, completionHandler)
+    }
+
+    private func handle(_ challenge: URLAuthenticationChallenge,
+                        _ completion: @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard let trust else { completion(.performDefaultHandling, nil); return }
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              challenge.protectionSpace.host.lowercased() == origin.host?.lowercased(),
+              let credential = trust.credential(for: challenge) else {
+            completion(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        completion(.useCredential, credential)
+    }
 
     static func sameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
         func scheme(_ url: URL) -> String {
@@ -378,4 +443,9 @@ final class OriginRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked
         }
         completionHandler(request)
     }
+}
+
+enum ProvisioningAPIError: LocalizedError {
+    case unavailable
+    var errorDescription: String? { "Le Bluetooth n’est pas encore activé sur ce cadre. Mets son logiciel à jour avant de continuer." }
 }

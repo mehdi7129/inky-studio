@@ -12,6 +12,7 @@ final class AppStore: ObservableObject {
     @Published var displayBusy = false
     @Published var biometricEnabled = false
     @Published var passwordChangeSupported = false
+    @Published var bluetoothSupported = false
     @Published var errorMessage: String?
     @Published var notice: String?
     @Published var state: DisplayState?
@@ -40,6 +41,8 @@ final class AppStore: ObservableObject {
     private var requestedRefresh = false
     private var connectionError = false
     private var passwordRotating = false
+    private let ownershipVault = OwnershipVault()
+    private var requestedAdoptionFrameID: UUID?
 
     init(defaults: UserDefaults = .standard,
          makeAPI: @escaping @MainActor (URL) -> InkyAPI = { InkyAPI(baseURL: $0) },
@@ -51,6 +54,7 @@ final class AppStore: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--uitesting") {
             defaults.removeObject(forKey: "frameAddress")
             defaults.removeObject(forKey: "biometricEnabled")
+            defaults.removeObject(forKey: "frameOwnerID")
         }
         #endif
         address = defaults.string(forKey: "frameAddress") ?? ""
@@ -67,6 +71,60 @@ final class AppStore: ObservableObject {
     var panelWidth: Int { state?.display.width ?? 800 }
     var panelHeight: Int { state?.display.height ?? 480 }
     var canMutate: Bool { authenticated && connected && !busy && !updating }
+
+    private var credentialAccount: String {
+        if let id = defaults.string(forKey: "frameOwnerID") { return "inky-frame:" + id }
+        return address
+    }
+
+    private func connectionClient(_ url: URL) throws -> InkyAPI {
+        guard let selected = defaults.string(forKey: "frameOwnerID") else { return makeAPI(url) }
+        guard let id = UUID(uuidString: selected), let owner = try ownershipVault.load(id: id), owner.state == .claimed else {
+            throw OwnershipVaultError.missing
+        }
+        // An adopted frame never falls back to a password sent over HTTP, even
+        // when the user manually edits its locator or the LAN changes.
+        try FrameTrustPolicy(identity: owner.identity).validateHTTPS(url)
+        return InkyAPI(baseURL: url, owner: owner)
+    }
+
+    func beginBluetoothAdoption() async throws {
+        guard canMutate, let api else { throw APIError.unauthorized }
+        let epoch = generation
+        let id = try await api.beginBluetoothAdoption()
+        guard epoch == generation else { throw CancellationError() }
+        requestedAdoptionFrameID = id
+    }
+
+    func finishBluetoothSetup(endpoint: URL, owner: OwnershipRecord) async {
+        do {
+            try FrameTrustPolicy(identity: owner.identity).validateHTTPS(endpoint)
+            let epoch = generation
+            let oldAccount = credentialAccount
+            let sameAdoptedFrame = defaults.string(forKey: "frameOwnerID").flatMap(UUID.init(uuidString:)) == owner.id
+            let upgradingCurrentFrame = authenticated && requestedAdoptionFrameID == owner.id
+            let remembered = biometricEnabled && (sameAdoptedFrame || upgradingCurrentFrame)
+            // Face ID explicitly unlocks the existing password before moving it
+            // to the stable identity. No secret is recovered from the Pi.
+            let password = remembered ? try? await vault.load(address: oldAccount) : nil
+            guard epoch == generation, !Task.isCancelled else { return }
+            _ = try ownershipVault.markClaimed(id: owner.id, endpoint: endpoint)
+            resetSession()
+            defaults.set(owner.id.uuidString.lowercased(), forKey: "frameOwnerID")
+            address = endpoint.absoluteString
+            defaults.set(address, forKey: "frameAddress")
+            biometricEnabled = false
+            defaults.set(false, forKey: "biometricEnabled")
+            if let password {
+                await login(password: password, rememberBiometric: true)
+                if authenticated && biometricEnabled && oldAccount != credentialAccount {
+                    try? vault.remove(address: oldAccount)
+                }
+            } else {
+                notice = "Le cadre est connecté. Utilise son mot de passe habituel pour ouvrir tes photos."
+            }
+        } catch { handle(error) }
+    }
 
     func cancelLogin() {
         guard connecting else { return }
@@ -89,7 +147,7 @@ final class AppStore: ObservableObject {
             let url = try FrameAddress.parse(address)
             let normalized = url.absoluteString
             let previousAddress = defaults.string(forKey: "frameAddress")
-            let client = makeAPI(url)
+            let client = try connectionClient(url)
             pendingClient = client
             let status = try await client.authStatus()
             guard epoch == generation, !Task.isCancelled else { return }
@@ -98,14 +156,14 @@ final class AppStore: ObservableObject {
                 guard epoch == generation, !Task.isCancelled else { return }
                 guard response.authenticated else { throw APIError.unauthorized }
             }
-            if previousAddress != normalized {
+            if previousAddress != normalized && defaults.string(forKey: "frameOwnerID") == nil {
                 if let previousAddress { try? vault.remove(address: previousAddress) }
                 biometricEnabled = false
                 defaults.set(false, forKey: "biometricEnabled")
             }
             if rememberBiometric == true && status.authRequired && !password.isEmpty {
                 do {
-                    try vault.save(password: password, address: normalized)
+                    try vault.save(password: password, address: defaults.string(forKey: "frameOwnerID").map { "inky-frame:" + $0 } ?? normalized)
                     biometricEnabled = true
                 } catch {
                     biometricEnabled = false
@@ -115,7 +173,7 @@ final class AppStore: ObservableObject {
             } else if rememberBiometric == false && biometricEnabled {
                 // An explicit unchecked switch disables the previously opted-in credential.
                 // Biometric login passes nil and preserves the existing Keychain item.
-                try vault.remove(address: normalized)
+                try vault.remove(address: credentialAccount)
                 biometricEnabled = false
                 defaults.set(false, forKey: "biometricEnabled")
             }
@@ -130,6 +188,8 @@ final class AppStore: ObservableObject {
             connected = false
             imageCache.removeAllObjects()
             await refresh()
+            let supportsBluetooth = await client.bluetoothSupported()
+            if epoch == generation { bluetoothSupported = supportsBluetooth }
             if epoch == generation { startMonitoring() }
         } catch {
             if epoch == generation { handle(error) }
@@ -145,7 +205,7 @@ final class AppStore: ObservableObject {
         do {
             let normalized = try FrameAddress.parse(address).absoluteString
             guard normalized == defaults.string(forKey: "frameAddress"), biometricEnabled else { throw VaultError.missing }
-            let password = try await vault.load(address: normalized)
+            let password = try await vault.load(address: credentialAccount)
             guard epoch == generation, !Task.isCancelled,
                   normalized == (try? FrameAddress.parse(address).absoluteString) else { return }
             connecting = false
@@ -164,7 +224,7 @@ final class AppStore: ObservableObject {
     func enableBiometrics(password: String) async {
         guard let api, !busy else { return }
         let epoch = generation
-        let credentialAddress = address
+        let credentialAddress = credentialAccount
         busy = true
         defer { if epoch == generation { busy = false } }
         do {
@@ -181,7 +241,7 @@ final class AppStore: ObservableObject {
 
     func disableBiometrics() {
         do {
-            try vault.remove(address: address)
+            try vault.remove(address: credentialAccount)
             biometricEnabled = false
             defaults.set(false, forKey: "biometricEnabled")
         } catch { handle(error) }
@@ -205,7 +265,7 @@ final class AppStore: ObservableObject {
         loadingHistory = false
         busy = true
         errorMessage = nil
-        let credentialAddress = address
+        let credentialAddress = credentialAccount
         let remember = biometricEnabled
         defer {
             if epoch == generation {
@@ -254,17 +314,25 @@ final class AppStore: ObservableObject {
 
     func logout(forget: Bool = false) async {
         let client = api
-        let credentialAddress = address
+        let credentialAddress = credentialAccount
         // Complete every local change before suspension. The old client is isolated;
         // its eventual logout response must never mutate a newly connected frame.
         resetSession(clearClient: false)
         if forget {
-            do { try vault.remove(address: credentialAddress) }
-            catch { errorMessage = error.localizedDescription }
-            defaults.removeObject(forKey: "frameAddress")
-            defaults.removeObject(forKey: "biometricEnabled")
-            address = ""
-            biometricEnabled = false
+            do {
+                try vault.remove(address: credentialAddress)
+                biometricEnabled = false
+                defaults.set(false, forKey: "biometricEnabled")
+                if let selected = defaults.string(forKey: "frameOwnerID"), let id = UUID(uuidString: selected) {
+                    try ownershipVault.remove(id: id)
+                }
+                defaults.removeObject(forKey: "frameAddress")
+                defaults.removeObject(forKey: "biometricEnabled")
+                defaults.removeObject(forKey: "frameOwnerID")
+                address = ""
+            } catch {
+                errorMessage = "Les identifiants de ce cadre n’ont pas tous pu être effacés. Déverrouillez l’iPhone puis réessayez Oublier ce cadre."
+            }
         }
         if let client { _ = try? await client.logout() }
     }
@@ -278,6 +346,8 @@ final class AppStore: ObservableObject {
         api = nil
         authenticated = false
         passwordChangeSupported = false
+        bluetoothSupported = false
+        requestedAdoptionFrameID = nil
         passwordRotating = false
         connected = false
         connecting = false

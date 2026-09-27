@@ -19,6 +19,8 @@ import logging
 import time
 from datetime import datetime, timedelta
 
+from fastapi import HTTPException
+
 from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
 from inky_web.models import ChangeMode
@@ -89,6 +91,8 @@ class Scheduler:
 
     def _advance(self, source: str) -> None:
         with self._display.operation():
+            if self._display.reserved:
+                return
             # A manual refresh can complete while this worker waits for the display.
             cfg = settings.get()
             current = history.current()
@@ -130,6 +134,7 @@ async def trigger_next(display: DisplayController, bus: EventBus) -> None:
 
 def _manual_next(display: DisplayController, bus: EventBus) -> None:
     with display.operation():
+        _require_available(display)
         _advance(display, bus, source="manual_next", recycle_source="manual_next")
 
 
@@ -164,12 +169,18 @@ async def trigger_previous(display: DisplayController, bus: EventBus) -> None:
 
 def _manual_previous(display: DisplayController, bus: EventBus) -> None:
     with display.operation():
+        _require_available(display)
         prev = history.previous()
         if prev is not None:
             _show(
                 display, bus, prev.photo.id,
                 source="manual_previous", navigation_history_id=prev.id,
             )
+
+
+def _require_available(display: DisplayController) -> None:
+    if display.reserved:
+        raise HTTPException(status_code=409, detail="Termine la connexion Bluetooth avant de changer de photo")
 
 
 def _show(

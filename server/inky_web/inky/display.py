@@ -55,12 +55,29 @@ class DisplayController:
         self._is_mock: bool = True
         self._spec: DisplaySpec = MOCK_SPEC
         self._lock = threading.RLock()
+        self._reservation: str | None = None
 
     @contextmanager
     def operation(self) -> Iterator[None]:
         """Serialize selection, hardware refresh, and its persisted result."""
         with self._lock:
             yield
+
+    @property
+    def reserved(self) -> bool:
+        with self._lock:
+            return self._reservation is not None
+
+    def reserve(self, owner: str) -> None:
+        with self._lock:
+            if self._reservation not in (None, owner):
+                raise RuntimeError("Écran occupé")
+            self._reservation = owner
+
+    def release(self, owner: str) -> None:
+        with self._lock:
+            if self._reservation == owner:
+                self._reservation = None
 
     def initialize(self) -> None:
         if platform.system() != "Linux":
