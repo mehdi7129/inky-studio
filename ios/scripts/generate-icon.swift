@@ -1,9 +1,15 @@
 import AppKit
 // Repository-native vector artwork. No external asset or generated photo required.
 let size = 1024
-let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8, samplesPerPixel: 3, hasAlpha: false, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+// AppKit cannot draw into a packed 24-bit RGB bitmap: its graphics context is nil.
+// Use supported 32-bit RGB storage with a skipped byte, keeping the image opaque.
+guard let context = CGContext(
+    data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: size * 4,
+    space: CGColorSpace(name: CGColorSpace.sRGB)!,
+    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+) else { fatalError("Could not create the icon drawing context") }
 NSGraphicsContext.saveGraphicsState()
-NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
 NSColor(calibratedWhite: 0.96, alpha: 1).setFill()
 NSBezierPath(rect: NSRect(x: 0, y: 0, width: size, height: size)).fill()
 func tile(_ rect: NSRect, _ color: NSColor) {
@@ -22,5 +28,8 @@ mountain.move(to: NSPoint(x: 277, y: 452)); mountain.line(to: NSPoint(x: 448, y:
 mountain.lineJoinStyle = .round; mountain.lineWidth = 20; mountain.stroke()
 NSColor.white.setFill(); NSBezierPath(ovalIn: NSRect(x: 635, y: 657, width: 50, height: 50)).fill()
 NSGraphicsContext.restoreGraphicsState()
+guard let image = context.makeImage() else { fatalError("Could not render the icon") }
+let bitmap = NSBitmapImageRep(cgImage: image)
+precondition(!bitmap.hasAlpha, "The App Store icon must be opaque")
 let output = URL(fileURLWithPath: CommandLine.arguments[1])
 try bitmap.representation(using: .png, properties: [:])!.write(to: output)
