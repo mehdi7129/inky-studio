@@ -3,6 +3,8 @@ import Combine
 
 @MainActor
 final class AppStore: ObservableObject {
+    @Published private(set) var isDemo = false
+    @Published private(set) var sessionIdentity = UUID()
     @Published var address = ""
     @Published var authenticated = false
     @Published var connecting = false
@@ -26,6 +28,12 @@ final class AppStore: ObservableObject {
     @Published var hasMoreHistory = false
     @Published var loadingHistory = false
     private(set) var api: InkyAPI?
+    private var demoClient: DemoFrameClient?
+    private var photoClient: (any FramePhotoClient)? {
+        if let demoClient { return demoClient }
+        return api
+    }
+    var demoSampleData: Data? { demoClient?.sampleData }
     let vault: BiometricVault
     private let defaults: UserDefaults
     private let makeAPI: @MainActor (URL) -> InkyAPI
@@ -72,6 +80,37 @@ final class AppStore: ObservableObject {
     var panelHeight: Int { state?.display.height ?? 480 }
     var canMutate: Bool { authenticated && connected && !busy && !updating }
 
+    /// The demo never changes the real address, preferences or credentials.
+    /// Enter only from the signed-out screen, with no login in flight.
+    func enterDemo() async {
+        guard !authenticated, !connecting, !busy, !isDemo else { return }
+        prepareDemo()
+        await refresh()
+    }
+
+    private func prepareDemo() {
+        resetSession()
+        demoClient = DemoFrameClient()
+        isDemo = true
+        sessionIdentity = UUID()
+        authenticated = true
+    }
+
+    func exitDemo() {
+        guard isDemo else { return }
+        resetSession()
+        sessionIdentity = UUID()
+    }
+
+    func resetDemo() async {
+        guard isDemo, !busy, !displayBusy else { return }
+        prepareDemo()
+        let identity = sessionIdentity
+        await refresh()
+        guard isDemo, sessionIdentity == identity else { return }
+        notice = "La démo a été réinitialisée."
+    }
+
     private var credentialAccount: String {
         if let id = defaults.string(forKey: "frameOwnerID") { return "inky-frame:" + id }
         return address
@@ -89,7 +128,7 @@ final class AppStore: ObservableObject {
     }
 
     func beginBluetoothAdoption() async throws {
-        guard canMutate, let api else { throw APIError.unauthorized }
+        guard !isDemo, canMutate, let api else { throw APIError.unauthorized }
         let epoch = generation
         let id = try await api.beginBluetoothAdoption()
         guard epoch == generation else { throw CancellationError() }
@@ -97,6 +136,7 @@ final class AppStore: ObservableObject {
     }
 
     func finishBluetoothSetup(endpoint: URL, owner: OwnershipRecord) async {
+        guard !isDemo else { return }
         do {
             try FrameTrustPolicy(identity: owner.identity).validateHTTPS(endpoint)
             let epoch = generation
@@ -132,7 +172,7 @@ final class AppStore: ObservableObject {
     }
 
     func login(password: String, rememberBiometric: Bool? = nil) async {
-        guard !connecting else { return }
+        guard !isDemo, !connecting else { return }
         resetSession()
         let epoch = generation
         connecting = true
@@ -197,7 +237,7 @@ final class AppStore: ObservableObject {
     }
 
     func loginWithBiometrics() async {
-        guard !connecting else { return }
+        guard !isDemo, !connecting else { return }
         errorMessage = nil
         connecting = true
         let epoch = generation
@@ -222,7 +262,7 @@ final class AppStore: ObservableObject {
     }
 
     func enableBiometrics(password: String) async {
-        guard let api, !busy else { return }
+        guard !isDemo, let api, !busy else { return }
         let epoch = generation
         let credentialAddress = credentialAccount
         busy = true
@@ -240,6 +280,7 @@ final class AppStore: ObservableObject {
     }
 
     func disableBiometrics() {
+        guard !isDemo else { return }
         do {
             try vault.remove(address: credentialAccount)
             biometricEnabled = false
@@ -250,7 +291,7 @@ final class AppStore: ObservableObject {
     /// Rotate exactly once. A lost response must not replay this mutation or
     /// silently restore an old Keychain password after the frame has changed it.
     func changePassword(current: String, new: String) async -> PasswordChangeResult {
-        guard canMutate, !displayBusy, passwordChangeSupported, let api else {
+        guard !isDemo, canMutate, !displayBusy, passwordChangeSupported, let api else {
             return .failure("Reconnectez-vous au cadre avant de modifier son mot de passe.")
         }
         stopMonitoring()
@@ -313,6 +354,7 @@ final class AppStore: ObservableObject {
     }
 
     func logout(forget: Bool = false) async {
+        if isDemo { exitDemo(); return }
         let client = api
         let credentialAddress = credentialAccount
         // Complete every local change before suspension. The old client is isolated;
@@ -340,6 +382,9 @@ final class AppStore: ObservableObject {
     private func resetSession(clearClient: Bool = true) {
         stopMonitoring()
         generation = UUID()
+        demoClient?.clear()
+        demoClient = nil
+        isDemo = false
         if clearClient { api?.clearSession() }
         pendingClient?.clearSession()
         pendingClient = nil
@@ -374,7 +419,7 @@ final class AppStore: ObservableObject {
     }
 
     func refresh() async {
-        guard authenticated, !passwordRotating, let api else { return }
+        guard authenticated, !passwordRotating, let api = photoClient else { return }
         guard !refreshing else { requestedRefresh = true; return }
         refreshing = true
         let epoch = generation
@@ -398,6 +443,7 @@ final class AppStore: ObservableObject {
                 async let v = api.health()
                 let result = try await (s, q, h, f, v)
                 guard epoch == generation else { return }
+                if isDemo { imageCache.removeAllObjects() }
                 state = result.0
                 queue = result.1
                 history = result.2.entries
@@ -420,7 +466,7 @@ final class AppStore: ObservableObject {
         } while requestedRefresh && authenticated && epoch == generation
     }
 
-    private func historySnapshot(api: InkyAPI, count: Int) async throws -> (entries: [HistoryEntry], hasMore: Bool) {
+    private func historySnapshot(api: any FramePhotoClient, count: Int) async throws -> (entries: [HistoryEntry], hasMore: Bool) {
         var entries: [HistoryEntry] = []
         // One look-ahead row makes the final page exact even when the existing
         // history length is a multiple of the page size.
@@ -435,7 +481,7 @@ final class AppStore: ObservableObject {
     }
 
     func loadMoreHistory() async {
-        guard authenticated, !passwordRotating, let api, !loadingHistory, !refreshing, hasMoreHistory else { return }
+        guard authenticated, !passwordRotating, let api = photoClient, !loadingHistory, !refreshing, hasMoreHistory else { return }
         let epoch = generation
         let revision = historyRevision
         loadingHistory = true
@@ -458,7 +504,7 @@ final class AppStore: ObservableObject {
     }
 
     private func startMonitoring() {
-        guard active, authenticated, !passwordRotating, let api, monitoringID == nil else { return }
+        guard !isDemo, active, authenticated, !passwordRotating, let api, monitoringID == nil else { return }
         let epoch = generation
         let identifier = UUID()
         monitoringID = identifier
@@ -506,7 +552,7 @@ final class AppStore: ObservableObject {
 
     func image(for photo: Photo) async -> UIImage? {
         if let image = imageCache.object(forKey: photo.id as NSString) { return image }
-        guard !passwordRotating, let api else { return nil }
+        guard !passwordRotating, let api = photoClient else { return nil }
         let epoch = generation
         do {
             let data = try await api.photoData(id: photo.id)
@@ -520,14 +566,14 @@ final class AppStore: ObservableObject {
     }
 
     func display(previous: Bool) async {
-        guard canMutate, !displayBusy, let api else { return }
+        guard canMutate, !displayBusy, let api = photoClient else { return }
         let epoch = generation
         displayBusy = true
         defer { if epoch == generation { displayBusy = false } }
         do {
             if previous { try await api.previous() } else { try await api.next() }
             guard epoch == generation else { return }
-            notice = "Le cadre est à jour."
+            notice = isDemo ? "Affichage simulé sur le cadre de démonstration." : "Le cadre est à jour."
         } catch {
             guard epoch == generation else { return }
             handle(error)
@@ -539,7 +585,7 @@ final class AppStore: ObservableObject {
     }
 
     func upload(_ data: Data, filename: String) async throws {
-        guard canMutate, let api else { throw APIError.invalidResponse }
+        guard canMutate, let api = photoClient else { throw APIError.invalidResponse }
         let epoch = generation
         busy = true
         defer { if epoch == generation { busy = false } }
@@ -555,7 +601,7 @@ final class AppStore: ObservableObject {
     }
 
     func requeue(_ entry: HistoryEntry) async {
-        guard canMutate, let api else { return }
+        guard canMutate, let api = photoClient else { return }
         let epoch = generation
         await perform {
             let data = try await api.photoData(id: entry.photo.id)
@@ -564,25 +610,25 @@ final class AppStore: ObservableObject {
         }
     }
     func remove(_ entry: QueueEntry) async {
-        guard let api else { return }
+        guard let api = photoClient else { return }
         await perform { try await api.removeFromQueue(photoID: entry.photo.id) }
     }
     func reorder(_ ids: [String]) async {
-        guard !ids.isEmpty, let api else { return }
+        guard !ids.isEmpty, let api = photoClient else { return }
         await perform { _ = try await api.reorderQueue(photoIDs: ids) }
     }
     func deleteHistory(_ entry: HistoryEntry) async {
-        guard let api else { return }
+        guard let api = photoClient else { return }
         await perform { try await api.deleteHistoryEntry(id: entry.id) }
     }
     func clearHistory() async {
-        guard let api else { return }
+        guard let api = photoClient else { return }
         await perform { try await api.clearHistory() }
     }
     func saveSettings(_ value: FrameSettings) async {
-        guard let api else { return }
+        guard let api = photoClient else { return }
         if await perform({ _ = try await api.updateSettings(value) }) {
-            notice = "Réglages enregistrés."
+            notice = isDemo ? "Réglages enregistrés pour cette démo uniquement." : "Réglages enregistrés."
         }
     }
     @discardableResult
@@ -606,6 +652,7 @@ final class AppStore: ObservableObject {
         }
     }
     func checkUpdate() async {
+        if isDemo { updateMessage = "Démonstration : aucune mise à jour ni connexion au Raspberry."; return }
         guard let api, !busy else { return }
         let epoch = generation
         busy = true
@@ -616,6 +663,7 @@ final class AppStore: ObservableObject {
         } catch { if epoch == generation { handle(error) } }
     }
     func startUpdate() async {
+        guard !isDemo else { return }
         guard canMutate, let api else { return }
         let epoch = generation
         updating = true

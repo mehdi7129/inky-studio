@@ -6,6 +6,7 @@ struct ConnectionView: View {
     @State private var showPassword = false
     @State private var remember = false
     @State private var bluetoothSetup = false
+    @State private var gettingStarted = false
     @FocusState private var passwordFocused: Bool
     private var biometric: Bool { store.hasSavedFrame && store.biometricEnabled && !showPassword }
     var body: some View {
@@ -16,6 +17,7 @@ struct ConnectionView: View {
                     Text(store.hasSavedFrame ? "Retrouver mon cadre" : "Bonjour, Inky.").font(.largeTitle.weight(.bold)).tracking(-1)
                     Text(store.hasSavedFrame ? "Votre cadre vous attend." : "Vos photos, sur votre cadre.").font(.title3).foregroundStyle(.secondary)
                 }
+                if !store.hasSavedFrame { discoveryActions }
                 if store.hasSavedFrame {
                     HStack(spacing: 16) {
                         Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary)
@@ -81,22 +83,42 @@ struct ConnectionView: View {
                     Label("Configurer le Wi-Fi du cadre", systemImage: "wifi")
                 }.buttonStyle(OutlineButtonStyle()).disabled(store.connecting)
                     .accessibilityIdentifier("connection.bluetooth")
+                Text("Pour un iPhone déjà associé au cadre. La première association se prépare après la connexion, dans Réglages.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if store.hasSavedFrame {
                     Button("Changer de cadre") { Task { await store.logout(forget: true); showPassword = false; password = ""; remember = false } }
                         .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 8).disabled(store.connecting)
                 }
+                if store.hasSavedFrame { discoveryActions }
                 SupportPrivacyLinks(identifierPrefix: "connection")
             }.padding(20).frame(maxWidth: 540)
                 .frame(maxWidth: .infinity)
         }.background(Bento.background).scrollDismissesKeyboard(.interactively)
             .onAppear { remember = store.biometricEnabled }
             .onChange(of: store.biometricEnabled) { _, enabled in remember = enabled }
+            .sheet(isPresented: $gettingStarted) { GettingStartedView() }
             .sheet(isPresented: $bluetoothSetup) {
                 BluetoothSetupView { endpoint, owner in
                     await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
                 }
             }
     }
+    private var discoveryActions: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button { Task { password = ""; await store.enterDemo() } } label: {
+                Label("Explorer la démo", systemImage: "play.circle")
+            }.buttonStyle(OutlineButtonStyle()).disabled(store.connecting)
+                .accessibilityIdentifier("connection.demo")
+            Text("Découvrez l’app sans cadre. Les essais restent temporaires sur cet iPhone.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button { gettingStarted = true } label: {
+                Label("Préparer mon cadre", systemImage: "questionmark.circle")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }.font(.subheadline.weight(.medium)).foregroundStyle(Bento.blue)
+                .accessibilityIdentifier("connection.guide")
+        }
+    }
+
     private func connect() { passwordFocused = false; Task { await store.login(password: password, rememberBiometric: remember) } }
 }
 

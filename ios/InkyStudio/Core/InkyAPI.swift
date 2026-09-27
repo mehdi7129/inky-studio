@@ -3,7 +3,7 @@ import Foundation
 /// Foundation's default cookie store does not isolate ports. Keep an in-memory
 /// jar per frame connection instead, shared by this client's HTTP and WS calls.
 @MainActor
-final class InkyAPI {
+final class InkyAPI: FramePhotoClient {
     let baseURL: URL
     private let owner: OwnershipRecord?
     private let configuration: URLSessionConfiguration

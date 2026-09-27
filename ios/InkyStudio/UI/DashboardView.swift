@@ -8,7 +8,7 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Label(store.connected ? "Raspberry connecté" : "Connexion interrompue", systemImage: "circle.fill")
+                    Label(store.isDemo ? "Cadre simulé · aucune connexion" : store.connected ? "Raspberry connecté" : "Connexion interrompue", systemImage: store.isDemo ? "play.circle" : "circle.fill")
                         .font(.caption).foregroundStyle(store.connected ? Bento.success : Bento.secondaryInk)
                     if let current = store.state?.current {
                         VStack(alignment: .leading, spacing: 12) {
@@ -39,7 +39,10 @@ struct DashboardView: View {
                     }
                     Button { importing = true } label: { Label("Ajouter une photo", systemImage: "plus") }
                         .buttonStyle(PrimaryButtonStyle()).disabled(!store.canMutate || store.state == nil).accessibilityIdentifier("frame.add")
-                    if store.state?.display.isMock == true {
+                    if store.isDemo {
+                        Text("Essayez les commandes et ajoutez une image. L’affichage est simulé ; rien n’est envoyé à un Raspberry.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else if store.state?.display.isMock == true {
                         Label("Écran de démonstration", systemImage: "desktopcomputer").font(.caption).foregroundStyle(.secondary)
                     }
                 }.padding(16).frame(maxWidth: 680).frame(maxWidth: .infinity)
@@ -62,6 +65,7 @@ struct DashboardView: View {
         dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
     }
     private var nextChange: String {
+        if store.isDemo { return "À votre rythme" }
         guard let timestamp = store.state?.nextChangeAt else { return "Manuel" }
         return Date(timeIntervalSince1970: timestamp).formatted(.dateTime.day().month(.abbreviated).hour().minute())
     }
