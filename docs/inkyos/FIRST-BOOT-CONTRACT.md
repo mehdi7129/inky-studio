@@ -90,13 +90,15 @@ an explicitly unclaimed, authorized factory state may open a replacement window.
 Expiry and rate limits must use monotonic time and survive clock adjustments
 without extending an existing authorization window.
 
-## Clock bootstrap: decision still open
+## Clock bootstrap: design selected, implementation pending
 
 Adding a `time` command inside TLS v1 cannot solve initial certificate issuance
 or an expired certificate: the trusted connection is not yet available. The
-proposed design direction is an independently authenticated bootstrap exchange,
-followed by ordinary fully verified TLS. This is an application design proposal,
-not a reviewed cryptographic protocol.
+selected design direction is a separate TLS bootstrap profile with explicit
+pinned-key trust, followed by ordinary fully verified TLS. See the
+[bootstrap trust decision](BOOTSTRAP-TLS-DECISION.md), which explicitly revises
+the blanket date-check requirement below for that profile alone. No bootstrap
+wire protocol or runtime is implemented by that decision.
 
 The protocol review must settle all of the following before defining wire bytes:
 
@@ -114,11 +116,13 @@ The protocol review must settle all of the following before defining wire bytes:
 - Bootstrap permits only the narrowly reviewed prerequisites. It never transports
   Wi-Fi passwords, photo passwords or arbitrary commands before normal TLS.
 - Certificate issuance/renewal follows accepted time and retains the same key.
-  iOS verifies the resulting certificate normally, including dates, identity,
-  name and usage. No accept-all verifier or disabled date check.
+  iOS verifies the resulting normal certificate fully, including dates, identity,
+  name and usage. No accept-all verifier. The selected separate bootstrap profile
+  permits only the explicitly documented date exception; it cannot authorize
+  normal BLE, HTTPS or photo traffic.
 
-Possible primitives and their libraries require a separate security decision,
-cross-language test vectors and adversarial review. Do not extend QR v1 or its
+The selected existing TLS primitives still require cross-language test vectors
+and adversarial implementation review. Do not extend QR v1 or its
 GATT stream by silently accepting new fields. Unknown capability/version is an
 explicit unsupported result, with no downgrade fallback for a new-frame flow.
 

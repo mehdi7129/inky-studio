@@ -8,6 +8,7 @@ Le dossier local est `~/Desktop/inkyOS`.
 - [Dossier de transmission InkyOS](https://github.com/mehdi7129/inkyOS/blob/main/docs/HANDOFF.md).
 - [Contrat de premier démarrage — draft de coordination](FIRST-BOOT-CONTRACT.md).
 - [Socle d'état factory — API interne désactivée dans le runtime](FACTORY-STATE.md).
+- [Décision TLS de bootstrap — prototype à implémenter](BOOTSTRAP-TLS-DECISION.md).
 
 Deux parcours sont prévus : installation avancée d'Inky Studio sur Raspberry Pi OS,
 et image InkyOS préinstallée. Un prototype système et un payload applicatif
