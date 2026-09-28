@@ -149,6 +149,10 @@ class FirstBootCoordinator:
                     ".identity.lock", ".bootstrap-identity.lock", ".ownership.lock",
                     "ownership.sqlite3", PREPARED_IDENTITY_FILENAME,
                 ))
+                # Detect a missing/invalid local prerequisite before generating
+                # an identity or consuming one-use OS authority. Do not capture
+                # this epoch: credentials are read again after the begin call.
+                self._current_epoch()
                 prepared_path = directory / PREPARED_IDENTITY_FILENAME
                 if state == "consumed":
                     prepared = PreparedFactoryIdentity.reopen(directory, expected_intent=os_intent)

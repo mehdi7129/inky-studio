@@ -32,20 +32,27 @@ use a fake adapter, and therefore do not qualify this privilege boundary.
 Under a process-shared private workflow lock, the coordinator:
 
 1. Inspects OS authority and validates existing private file types/permissions.
-2. For authorized fresh state, prepares an exclusive identity or reopens the
+2. Verifies already-persisted credentials and their canonical current epoch.
+   A missing or invalid prerequisite fails before identity preparation or begin,
+   preserving unconsumed OS authority and any existing adopted state.
+3. For authorized fresh state, prepares an exclusive identity or reopens the
    existing prepared identity; for consumed state, strictly reopens the same
    OS-bound intent. It never regenerates a consumed frame's missing identity.
-3. Verifies any normal identity already published, then invokes begin using the
+4. Verifies any normal identity already published, then invokes begin using the
    durable intent. Unknown or mismatched results fail without retry or reset.
-4. Creates a pending factory ledger only for `newly_consumed`; otherwise reopens
+5. Creates a pending factory ledger only for `newly_consumed`; otherwise reopens
    an existing ledger with the same receipt and real UUID/key binding.
-5. Verifies existing credential material through the callback, rereads the
+6. Re-verifies existing credential material through the callback, rereads the
    identity and normal-publication state, then marks factory ready. Adoption is
    terminal and is preserved on all later calls.
 
 The callback must verify already persisted credentials and return their canonical
 current epoch each time. The ownership store retains it so password rotation is
-observed on later operations. A fake callback returning a hex string is only a
+observed on later operations. The preflight epoch is not cached or frozen: a
+valid epoch change during begin is accepted after the second verification.
+A failure after begin remains uncertain and may leave a resumable pending ledger;
+the preflight does not replace the post-begin checks.
+A fake callback returning a hex string is only a
 test assertion; it does not establish real password persistence. Actual initial
 credential creation and ordering still require startup integration.
 

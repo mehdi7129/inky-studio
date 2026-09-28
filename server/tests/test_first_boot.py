@@ -172,28 +172,82 @@ def test_database_commit_reply_loss_resumes_pending_without_new_grant(setup, mon
 
 
 @pytest.mark.parametrize("bad_epoch", [None, True, "", "A" * 64, "short"])
-def test_invalid_persisted_credentials_leave_pending_and_can_resume(setup, bad_epoch):
-    directory, _, epoch, coordinator = setup
+def test_invalid_initial_credentials_refuse_before_preparation_or_consumption(setup, bad_epoch):
+    directory, adapter, epoch, coordinator = setup
     epoch[0] = bad_epoch
-    with pytest.raises(FirstBootUncertain):
+    with pytest.raises(FirstBootRefused) as error:
         coordinator.initialize()
-    with sqlite3.connect(directory / "ownership.sqlite3") as connection:
-        assert connection.execute("SELECT state FROM factory_initialization").fetchone() == ("pending",)
+    assert not error.value.begin_attempted
+    assert adapter.state == {"status": "authorized"} and not adapter.begin_calls
+    assert not (directory / PREPARED_IDENTITY_FILENAME).exists()
+    assert not (directory / "ownership.sqlite3").exists()
     epoch[0] = EPOCH
     assert coordinator.initialize().status.state == FactoryState.FACTORY
 
 
-def test_credentials_exception_and_identity_change_before_ready_fail_closed(setup):
-    directory, _, _, coordinator = setup
+def test_initial_credentials_exception_refuses_without_consuming_authority(setup):
+    directory, adapter, _, coordinator = setup
 
     def fail():
+        raise OSError("synthetic persisted verifier unavailable")
+
+    coordinator.verify_credentials = fail
+    with pytest.raises(FirstBootRefused) as error:
+        coordinator.initialize()
+    assert not error.value.begin_attempted
+    assert adapter.state == {"status": "authorized"} and not adapter.begin_calls
+    assert not (directory / PREPARED_IDENTITY_FILENAME).exists()
+    assert not (directory / "ownership.sqlite3").exists()
+
+
+@pytest.mark.parametrize("bad_epoch", [None, True, "", "A" * 64, "short"])
+def test_credentials_invalidated_after_begin_leave_pending_and_resume_same_binding(setup, bad_epoch):
+    directory, adapter, _, coordinator = setup
+    checks = 0
+
+    def verify():
+        nonlocal checks
+        checks += 1
+        return EPOCH if checks == 1 else bad_epoch
+
+    coordinator.verify_credentials = verify
+    with pytest.raises(FirstBootUncertain) as error:
+        coordinator.initialize()
+    assert error.value.begin_attempted and checks == 2
+    prepared = PreparedFactoryIdentity.reopen(directory)
+    before = (directory / PREPARED_IDENTITY_FILENAME).read_bytes()
+    with sqlite3.connect(directory / "ownership.sqlite3") as connection:
+        assert connection.execute("SELECT state FROM factory_initialization").fetchone() == ("pending",)
+    coordinator.verify_credentials = lambda: EPOCH
+    resumed = coordinator.initialize()
+    assert resumed.status.state == FactoryState.FACTORY
+    assert resumed.prepared_identity.binding == prepared.binding
+    assert adapter.begin_calls == [prepared.initialization_intent] * 2
+    assert (directory / PREPARED_IDENTITY_FILENAME).read_bytes() == before
+
+
+def test_credentials_exception_and_identity_change_before_ready_fail_closed(setup):
+    directory, _, _, coordinator = setup
+    checks = 0
+
+    def fail():
+        nonlocal checks
+        checks += 1
+        if checks == 1:
+            return EPOCH
         raise OSError("verifier unavailable")
 
     coordinator.verify_credentials = fail
     with pytest.raises(FirstBootUncertain):
         coordinator.initialize()
 
+    checks = 0
+
     def delete_bundle():
+        nonlocal checks
+        checks += 1
+        if checks == 1:
+            return EPOCH
         (directory / PREPARED_IDENTITY_FILENAME).unlink()
         return EPOCH
 
@@ -524,8 +578,13 @@ def test_pending_initial_publication_can_reopen_adopted_bootstrap_without_normal
 
 def test_credentials_callback_cannot_substitute_another_valid_prepared_binding(setup, tmp_path):
     directory, adapter, _, coordinator = setup
+    checks = 0
 
     def replace_prepared():
+        nonlocal checks
+        checks += 1
+        if checks == 1:
+            return EPOCH
         prepared = PreparedFactoryIdentity.reopen(directory)
         other = tmp_path / "substituted-private"
         PreparedFactoryIdentity.create(other, initialization_intent=prepared.initialization_intent)
@@ -538,3 +597,41 @@ def test_credentials_callback_cannot_substitute_another_valid_prepared_binding(s
     assert len(adapter.begin_calls) == 1
     with sqlite3.connect(directory / "ownership.sqlite3") as connection:
         assert connection.execute("SELECT state FROM factory_initialization").fetchone() == ("pending",)
+
+
+def test_missing_credentials_after_adoption_preserve_authority_and_database(setup):
+    directory, adapter, _, coordinator = setup
+    first = coordinator.initialize()
+    owner, token, _ = adopt(first)
+    before = snapshot(directory)
+    os_before = copy.deepcopy(adapter.state)
+
+    def missing():
+        raise FileNotFoundError("persisted credentials missing")
+
+    coordinator.verify_credentials = missing
+    with pytest.raises(FirstBootRefused) as error:
+        coordinator.initialize()
+    assert not error.value.begin_attempted and len(adapter.begin_calls) == 1
+    assert snapshot(directory) == before and adapter.state == os_before
+    assert first.ownership.factory_status().state == FactoryState.ADOPTED
+    coordinator.verify_credentials = lambda: EPOCH
+    resumed = coordinator.initialize()
+    assert resumed.status.state == FactoryState.ADOPTED and resumed.status.first_owner_id == owner
+    assert resumed.ownership.authenticate(owner, token).epoch == EPOCH
+
+
+def test_valid_epoch_change_during_begin_is_rechecked_and_retained_as_live_callback(setup):
+    _, adapter, epoch, coordinator = setup
+
+    def rotate_before_store(reply):
+        epoch[0] = "f" * 64
+        return reply
+
+    adapter.on_begin = rotate_before_store
+    result = coordinator.initialize()
+    owner, token, _ = adopt(result, epoch="f" * 64)
+    assert result.ownership.authenticate(owner, token).epoch == "f" * 64
+    result.ownership.prepare_password_rotation("f" * 64, EPOCH, actor_owner_id=owner)
+    epoch[0] = EPOCH
+    assert result.ownership.authenticate(owner, token).epoch == EPOCH
