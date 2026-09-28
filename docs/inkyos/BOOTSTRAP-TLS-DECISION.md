@@ -171,5 +171,9 @@ and do not mutate real wall clocks in a shared VM during parser/model tests.
 Next implementation ownership: Inky Studio owns the typed bootstrap trust/channel,
 identity repair, authorization/coordinator and helper client policy. InkyOS owns
 the privileged operation prototype, initialization receipt and image/boot gates.
-The root-owned receipt adapter, identity lifecycle, wire schemas, time numeric
-policy and complete iOS flow are still open; this decision does not enable them.
+The [prepared identity component](BOOTSTRAP-IDENTITY.md) now supplies a durable
+key before valid RTC and journaled same-key normal certificate publication/repair.
+The [local coordinator](FIRST-BOOT-COORDINATOR.md) exercises initialization receipt
+sequencing through an injected adapter. Neither authenticates a real OS response
+or a remote owner. The root adapter, runtime lifecycle, wire schemas, operational
+time policy and complete iOS flow remain open; these prototypes do not enable them.

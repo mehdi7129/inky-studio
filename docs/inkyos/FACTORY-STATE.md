@@ -4,6 +4,9 @@ This implementation is the first application-side subset of
 [FIRST-BOOT-CONTRACT.md](FIRST-BOOT-CONTRACT.md). It is not an executable InkyOS
 first boot. No runtime, CLI, environment flag, HTTP route, BLE operation or iOS
 screen enables it yet. Existing installations continue to use the legacy store.
+The separate [prepared identity](BOOTSTRAP-IDENTITY.md) and
+[injected coordinator](FIRST-BOOT-COORDINATOR.md) now test real key/binding and
+receipt sequencing locally; the OS adapter and runtime remain disabled.
 
 ## Internal API
 

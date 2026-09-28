@@ -75,11 +75,13 @@ dispatcher enforces the QR/owner/epoch authority, schemas and operation allowlis
 Raw TLS success alone never authorizes a clock or factory mutation.
 
 Still open: versioned GATT capability and command schemas, distinct app channel,
-Keychain pending-claim flow, durable identity initialization before valid wall
-time, root OS receipt adapter, serialized/fresh owner-authorized clock repair,
+Keychain pending-claim flow, runtime use of the [prepared identity and journaled
+repair](BOOTSTRAP-IDENTITY.md), root OS receipt adapter, serialized/fresh owner-authorized clock repair,
 certificate renewal and strict reconnect, country gate, scheduler reconciliation,
 and recovery after each persistence boundary. Factory orchestration must invoke
 the root adapter's `begin` operation rather than replay a consumed grant file.
+The [injected local coordinator](FIRST-BOOT-COORDINATOR.md) tests that sequencing;
+it is not the privileged adapter or the application startup path.
 
 Physical iPhone QR/BLE, Wi-Fi commit/rollback, e-ink refresh and power-loss tests
 remain required. This prototype closes none of the existing release candidate's

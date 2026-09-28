@@ -238,6 +238,9 @@ The next handoff is this requirements draft and the source hash, **not a claim
 that first boot is implemented**. InkyOS should review the initialization-receipt
 boundary and target clock/regulatory behavior before either side freezes an API.
 
-Application work now includes an [internal opt-in factory-state foundation](FACTORY-STATE.md).
-It implements only the ownership ledger and claim transition. It does not verify
-the real OS receipt or enable the runtime/bootstrap interfaces described above.
+Application work now includes the [opt-in factory ledger](FACTORY-STATE.md),
+[isolated TLS primitives](BOOTSTRAP-TLS-PROTOTYPE.md), [prepared identity and
+journaled same-key repair](BOOTSTRAP-IDENTITY.md), and an [injected local
+coordinator](FIRST-BOOT-COORDINATOR.md). These exercise files, identity and receipt
+sequencing without verifying a real OS response or enabling the runtime/bootstrap
+interfaces described above. Full first boot remains an integration task.
