@@ -6,14 +6,18 @@ Le dossier local est `~/Desktop/inkyOS`.
 
 - [Sources officielles du matériel et du système](HARDWARE-SOURCES.md).
 - [Dossier de transmission InkyOS](https://github.com/mehdi7129/inkyOS/blob/main/docs/HANDOFF.md).
+- [Contrat de premier démarrage — draft de coordination](FIRST-BOOT-CONTRACT.md).
 
 Deux parcours sont prévus : installation avancée d'Inky Studio sur Raspberry Pi OS,
-et image InkyOS préinstallée. Aucune image SD n'est encore construite ou publiée.
-La première adoption entièrement hors ligne, la gestion de l'heure sans réseau
-et la maintenance de l'OS restent à développer après la qualification Bluetooth.
+et image InkyOS préinstallée. Un prototype système et un payload applicatif
+hors ligne ont maintenant des preuves séparées dans le dépôt InkyOS ; cela ne
+constitue pas une image complète qualifiée pour installation sur le cadre.
+La première adoption sans LAN et la gestion de l'heure/pays font l'objet du
+contrat ci-dessus, distinct de la qualification Bluetooth du candidat actuel.
 
 Le dossier de transmission distingue le code déjà testé, les limites connues et
 les étapes futures. Il ne contient aucune coordonnée administrative, clé privée,
-photo personnelle ou mot de passe. La création du dossier ne constitue pas un
-message envoyé à l'autre conversation Cursor ; le relais sera confirmé une fois
-la session destinataire identifiée et la base applicative qualifiée.
+photo personnelle ou mot de passe. Le relais entre les sessions est actif :
+Inky Studio possède l'app, les protocoles et helpers ; InkyOS possède l'image,
+les prérequis système et les tests VM. Les résultats échangés doivent toujours
+préciser leur commit, leur périmètre et les validations encore ouvertes.
