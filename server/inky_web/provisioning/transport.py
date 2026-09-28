@@ -94,6 +94,7 @@ class TLSPeer:
                 if time.monotonic() - self.created > 45:
                     raise TransportError("Délai de connexion dépassé")
                 self.tls.do_handshake()
+                self._check_handshake()
                 self.authenticated = True
             if self.reply:
                 written = self.tls.write(self.reply)
@@ -138,6 +139,13 @@ class TLSPeer:
         if self.outgoing.pending > MAX_BUFFER:
             self.close()
             raise TransportError("Sortie saturée")
+
+    def _check_handshake(self) -> None:
+        """Profile-specific checks, before reading or dispatching any plaintext.
+
+        The existing v1 transport has no ALPN requirement. A distinct bootstrap
+        peer overrides this hook; normal clients never select it implicitly.
+        """
 
     async def _dispatch(self, message: dict) -> None:
         try:

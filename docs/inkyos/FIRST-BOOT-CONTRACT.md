@@ -85,20 +85,28 @@ response must be retryable by that same phone, without permitting another owner.
 Wi-Fi success, photo login, password rotation and the number of currently active
 owners do not control this terminal transition. In particular, revoking the last
 phone cannot turn an adopted frame back into a factory frame.
+The runtime must ask the privileged OS adapter to begin initialization and
+distinguish a newly consumed authority from an already consumed one. Replaying
+a readable receipt copied into `/run` is not sufficient authority to recreate a
+missing database. A crash between OS consumption and database creation enters
+explicit recovery. The planned internal adapter may expose initialization only
+to the fixed app UID and time/country only to the fixed helper UID; this is not
+an extension of the existing v1 network-helper protocol.
 Reboot invalidates the previous QR window and transient transport proofs. Only
 an explicitly unclaimed, authorized factory state may open a replacement window.
 Expiry and rate limits must use monotonic time and survive clock adjustments
 without extending an existing authorization window.
 
-## Clock bootstrap: design selected, implementation pending
+## Clock bootstrap: isolated TLS prototype, integration pending
 
 Adding a `time` command inside TLS v1 cannot solve initial certificate issuance
 or an expired certificate: the trusted connection is not yet available. The
 selected design direction is a separate TLS bootstrap profile with explicit
 pinned-key trust, followed by ordinary fully verified TLS. See the
 [bootstrap trust decision](BOOTSTRAP-TLS-DECISION.md), which explicitly revises
-the blanket date-check requirement below for that profile alone. No bootstrap
-wire protocol or runtime is implemented by that decision.
+the blanket date-check requirement below for that profile alone. The
+[isolated TLS prototype](BOOTSTRAP-TLS-PROTOTYPE.md) fixes only its ALPN and trust
+primitives; no integrated bootstrap wire protocol or runtime is enabled.
 
 The protocol review must settle all of the following before defining wire bytes:
 
@@ -157,8 +165,11 @@ On an unconfigured factory image, **InkyOS owns the boot-time Wi-Fi radio and
 NetworkManager scan/autoconnect gate**; checking only app/helper commands is not
 sufficient. The reviewed helper-to-OS acknowledgement will release that gate
 only after effective regulatory state is verified. The exact mechanism, persisted
-state and startup ordering remain to be tested on the target. Existing configured
-frames need a migration/reconciliation path preserving their valid configuration,
+state and startup ordering remain to be tested on the target.
+NetworkManager must be able to start with radio/scan/autoconnect held off; delaying
+the whole daemon until app initialization would cycle with the current helper's
+NetworkManager dependency. Only the radio gate is released after qualification.
+Existing configured frames need a migration/reconciliation path preserving their valid configuration,
 not an unconditional Wi-Fi disable introduced by an application update.
 No change may broaden the existing supported network types or silently reconnect
 another profile. Confirm first-network success through the adopted frame's pinned

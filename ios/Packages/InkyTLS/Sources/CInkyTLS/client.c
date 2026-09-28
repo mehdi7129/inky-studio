@@ -1,11 +1,18 @@
 #include "CInkyTLS.h"
 #include <MbedTLS.h>
+#include <mbedtls/asn1.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define MAX_PLAINTEXT 16384
 #define MAX_CERTIFICATE 65536
+#define BOOTSTRAP_ALPN "inky-bootstrap/1"
+static const char *bootstrap_protocols[] = { BOOTSTRAP_ALPN, NULL };
+/* DER OID contents: ecdsa-with-SHA256, commonName, id-kp-serverAuth. */
+static const char oid_ecdsa_sha256[] = "\x2a\x86\x48\xce\x3d\x04\x03\x02";
+static const char oid_common_name[] = "\x55\x04\x03";
+static const char oid_server_auth[] = "\x2b\x06\x01\x05\x05\x07\x03\x01";
 /* Also serializes process-global PSA state when distinct Swift actors run in parallel. */
 static pthread_mutex_t library_lock = PTHREAD_MUTEX_INITIALIZER;
 static int crypto_initialized = 0;
@@ -21,6 +28,8 @@ struct inky_tls_client {
     uint8_t pin[32], pending[MAX_PLAINTEXT];
     size_t pending_length, pending_offset;
     unsigned anchors;
+    int bootstrap;
+    char bootstrap_name[56]; /* frame- + canonical UUID + .inky.invalid + NUL */
     int state, started, pin_seen, pin_rejected, transport_ended, peer_closed, close_sent, error;
 };
 
@@ -51,18 +60,96 @@ static int receive_bytes(void *opaque, unsigned char *data, size_t count) {
     if (!c->input.count) return c->transport_ended ? 0 : MBEDTLS_ERR_SSL_WANT_READ;
     return (int)pop(&c->input, data, count);
 }
-static int verify_pin(void *opaque, mbedtls_x509_crt *certificate, int depth, uint32_t *flags) {
-    inky_tls_client *c = opaque;
-    if (depth != 0) return 0;
+static int pin_matches(inky_tls_client *c, mbedtls_x509_crt *certificate) {
     uint8_t der[2048], digest[32]; size_t written = 0;
     int length = mbedtls_pk_write_pubkey_der(&certificate->pk, der, sizeof(der));
     int matches = length > 0 && psa_hash_compute(PSA_ALG_SHA_256,
         der + sizeof(der) - length, (size_t)length, digest, sizeof(digest), &written) == PSA_SUCCESS;
-    if (!matches || written != 32 || memcmp(digest, c->pin, 32)) {
+    return matches && written == 32 && !memcmp(digest, c->pin, 32);
+}
+static int canonical_frame_name(const char *name) {
+    if (!name || strlen(name) != 55 || memcmp(name, "frame-", 6) ||
+        strcmp(name + 42, ".inky.invalid")) return 0;
+    for (size_t i = 0; i < 36; i++) {
+        char value = name[6 + i];
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            if (value != '-') return 0;
+        } else if (!((value >= '0' && value <= '9') || (value >= 'a' && value <= 'f'))) return 0;
+    }
+    return 1;
+}
+static int matches_bytes(const mbedtls_x509_buf *value, const char *bytes, size_t length) {
+    return value->len == length && !memcmp(value->p, bytes, length);
+}
+static int increasing_validity(const mbedtls_x509_time *start, const mbedtls_x509_time *end) {
+    const int earlier[] = { start->year, start->mon, start->day, start->hour, start->min, start->sec };
+    const int later[] = { end->year, end->mon, end->day, end->hour, end->min, end->sec };
+    for (size_t i = 0; i < sizeof(earlier) / sizeof(earlier[0]); i++) {
+        if (earlier[i] != later[i]) return earlier[i] < later[i];
+    }
+    return 0;
+}
+static int bootstrap_certificate(inky_tls_client *c, mbedtls_x509_crt *certificate) {
+    /* Direct trust anchors need an explicit self-signature check: PKIX anchor
+     * verification alone does not establish that their own signature is valid. */
+    if (certificate->version != 3 || certificate->next ||
+        !increasing_validity(&certificate->valid_from, &certificate->valid_to) ||
+        mbedtls_pk_get_key_type(&certificate->pk) != PSA_KEY_TYPE_ECC_PUBLIC_KEY(PSA_ECC_FAMILY_SECP_R1) ||
+        mbedtls_pk_get_bitlen(&certificate->pk) != 256 ||
+        !pin_matches(c, certificate) ||
+        !matches_bytes(&certificate->sig_oid, oid_ecdsa_sha256, sizeof(oid_ecdsa_sha256) - 1) ||
+        certificate->issuer_raw.len != certificate->subject_raw.len ||
+        memcmp(certificate->issuer_raw.p, certificate->subject_raw.p, certificate->subject_raw.len) ||
+        certificate->subject.next ||
+        !matches_bytes(&certificate->subject.oid, oid_common_name, sizeof(oid_common_name) - 1) ||
+        !matches_bytes(&certificate->subject.val, c->bootstrap_name, strlen(c->bootstrap_name)) ||
+        !mbedtls_x509_crt_has_ext_type(certificate, MBEDTLS_X509_EXT_BASIC_CONSTRAINTS) ||
+        mbedtls_x509_crt_get_ca_istrue(certificate) != 1 ||
+        !mbedtls_x509_crt_has_ext_type(certificate, MBEDTLS_X509_EXT_KEY_USAGE) ||
+        mbedtls_x509_crt_check_key_usage(certificate, MBEDTLS_X509_KU_DIGITAL_SIGNATURE | MBEDTLS_X509_KU_KEY_CERT_SIGN) ||
+        !mbedtls_x509_crt_has_ext_type(certificate, MBEDTLS_X509_EXT_EXTENDED_KEY_USAGE) ||
+        certificate->ext_key_usage.next ||
+        !matches_bytes(&certificate->ext_key_usage.buf, oid_server_auth, sizeof(oid_server_auth) - 1) ||
+        !mbedtls_x509_crt_has_ext_type(certificate, MBEDTLS_X509_EXT_SUBJECT_ALT_NAME) ||
+        certificate->subject_alt_names.next ||
+        certificate->subject_alt_names.buf.tag != (MBEDTLS_ASN1_CONTEXT_SPECIFIC | MBEDTLS_X509_SAN_DNS_NAME) ||
+        !matches_bytes(&certificate->subject_alt_names.buf, c->bootstrap_name, strlen(c->bootstrap_name))) return 0;
+    /* Read the signature BIT STRING using public DER/parser APIs, without
+     * reaching into Mbed TLS's private signature members. */
+    uint8_t *cursor = certificate->tbs.p + certificate->tbs.len;
+    const uint8_t *end = certificate->raw.p + certificate->raw.len;
+    size_t length = 0, written = 0;
+    uint8_t digest[32];
+    if (mbedtls_asn1_get_tag(&cursor, end, &length, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE)) return 0;
+    cursor += length;
+    if (mbedtls_asn1_get_bitstring_null(&cursor, end, &length) || cursor + length != end ||
+        psa_hash_compute(PSA_ALG_SHA_256, certificate->tbs.p, certificate->tbs.len,
+                         digest, sizeof(digest), &written) != PSA_SUCCESS || written != 32) return 0;
+    return mbedtls_pk_verify_ext(MBEDTLS_PK_SIGALG_ECDSA, &certificate->pk, MBEDTLS_MD_SHA256,
+                                  digest, sizeof(digest), cursor, length) == 0;
+}
+static int verify_pin(void *opaque, mbedtls_x509_crt *certificate, int depth, uint32_t *flags) {
+    inky_tls_client *c = opaque;
+    if (depth != 0) {
+        if (c->bootstrap) *flags |= MBEDTLS_X509_BADCERT_OTHER;
+        return 0;
+    }
+    if (!pin_matches(c, certificate)) {
         c->pin_rejected = 1;
         *flags |= MBEDTLS_X509_BADCERT_OTHER;
-    } else c->pin_seen = 1;
-    /* Never clear chain, hostname, expiry or any other X.509 verification error. */
+        return 0;
+    }
+    c->pin_seen = 1;
+    if (c->bootstrap) {
+        if (!bootstrap_certificate(c, certificate) || certificate->raw.len != c->trust.raw.len ||
+            memcmp(certificate->raw.p, c->trust.raw.p, certificate->raw.len)) {
+            *flags |= MBEDTLS_X509_BADCERT_OTHER;
+            return 0;
+        }
+        /* The sole exception, only at the exact pinned leaf. All other flags
+         * remain fatal under VERIFY_REQUIRED. Normal clients never enter here. */
+        *flags &= ~(MBEDTLS_X509_BADCERT_EXPIRED | MBEDTLS_X509_BADCERT_FUTURE);
+    }
     return 0;
 }
 static void destroy_unlocked(inky_tls_client *c) {
@@ -85,12 +172,12 @@ static int progress(inky_tls_client *c, int result) {
     return result < 0 ? fail(c, c->pin_rejected ? INKY_TLS_PIN_MISMATCH : result) : INKY_TLS_OK;
 }
 
-inky_tls_client *inky_tls_create(const char *name, const uint8_t *pin,
-                                 size_t pin_length, size_t capacity, int *error) {
+static inky_tls_client *create_client(const char *name, const uint8_t *pin,
+                                     size_t pin_length, size_t capacity, int bootstrap, int *error) {
     if (!error) return NULL;
     *error = INKY_TLS_INVALID_ARGUMENT;
     if (!name || !name[0] || strlen(name) > 253 || !pin || pin_length != 32 ||
-        capacity < 1024 || capacity > 262144) return NULL;
+        capacity < 1024 || capacity > 262144 || (bootstrap && !canonical_frame_name(name))) return NULL;
     LOCK();
     inky_tls_client *c = calloc(1, sizeof(*c));
     if (!c) { *error = INKY_TLS_ALLOCATION_FAILED; pthread_mutex_unlock(&library_lock); return NULL; }
@@ -105,6 +192,8 @@ inky_tls_client *inky_tls_create(const char *name, const uint8_t *pin,
         crypto_initialized = 1;
     }
     memcpy(c->pin, pin, 32);
+    c->bootstrap = bootstrap;
+    if (bootstrap) memcpy(c->bootstrap_name, name, sizeof(c->bootstrap_name));
     result = mbedtls_ssl_config_defaults(&c->config, MBEDTLS_SSL_IS_CLIENT,
         MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
     if (result) goto failed;
@@ -113,6 +202,10 @@ inky_tls_client *inky_tls_create(const char *name, const uint8_t *pin,
     mbedtls_ssl_conf_authmode(&c->config, MBEDTLS_SSL_VERIFY_REQUIRED);
     mbedtls_ssl_conf_ca_chain(&c->config, &c->trust, NULL);
     mbedtls_ssl_conf_verify(&c->config, verify_pin, c);
+    if (bootstrap) {
+        result = mbedtls_ssl_conf_alpn_protocols(&c->config, bootstrap_protocols);
+        if (result) goto failed;
+    }
 #if defined(MBEDTLS_SSL_SESSION_TICKETS)
     mbedtls_ssl_conf_session_tickets(&c->config, MBEDTLS_SSL_SESSION_TICKETS_DISABLED);
 #endif
@@ -128,11 +221,22 @@ inky_tls_client *inky_tls_create(const char *name, const uint8_t *pin,
 failed:
     *error = result; destroy_unlocked(c); pthread_mutex_unlock(&library_lock); return NULL;
 }
+inky_tls_client *inky_tls_create(const char *name, const uint8_t *pin,
+                                 size_t pin_length, size_t capacity, int *error) {
+    return create_client(name, pin, pin_length, capacity, 0, error);
+}
+inky_tls_client *inky_tls_create_bootstrap(const char *name, const uint8_t *pin,
+                                          size_t pin_length, size_t capacity, int *error) {
+    return create_client(name, pin, pin_length, capacity, 1, error);
+}
 int inky_tls_add_trust_der(inky_tls_client *c, const uint8_t *der, size_t length) {
     LOCK();
     if (!c || !der || !length || length > MAX_CERTIFICATE) RETURN(INKY_TLS_INVALID_ARGUMENT);
     if (c->started || c->state != INKY_TLS_HANDSHAKING || c->anchors >= 8) RETURN(INKY_TLS_INVALID_STATE);
+    if (c->bootstrap && c->anchors) RETURN(INKY_TLS_INVALID_STATE);
     int result = mbedtls_x509_crt_parse_der(&c->trust, der, length);
+    if (c->bootstrap && (result || c->trust.raw.len != length || !bootstrap_certificate(c, &c->trust)))
+        RETURN(fail(c, INKY_TLS_BOOTSTRAP_POLICY));
     if (!result) c->anchors++;
     RETURN(result);
 }
@@ -161,6 +265,12 @@ int inky_tls_handshake(inky_tls_client *c) {
     if (!result) {
         if (!c->pin_seen || c->pin_rejected || mbedtls_ssl_get_verify_result(&c->ssl))
             RETURN(fail(c, INKY_TLS_PIN_MISMATCH));
+        if (c->bootstrap) {
+            const char *protocol = mbedtls_ssl_get_alpn_protocol(&c->ssl);
+            const mbedtls_x509_crt *peer = mbedtls_ssl_get_peer_cert(&c->ssl);
+            if (!protocol || strcmp(protocol, BOOTSTRAP_ALPN) || !peer || peer->next)
+                RETURN(fail(c, INKY_TLS_BOOTSTRAP_POLICY));
+        }
         c->state = INKY_TLS_OPEN;
     }
     RETURN(progress(c, result));

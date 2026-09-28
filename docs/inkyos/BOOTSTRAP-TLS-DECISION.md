@@ -1,9 +1,13 @@
 # Bootstrap trust and clock repair — selected design direction
 
-Status, 2026-09-28: **design selected for an isolated prototype; not implemented,
-wire-compatible, or qualified for deployment**. This follows the first-boot
+Status, 2026-09-28: **isolated TLS primitives implemented; no integrated bootstrap
+flow, wire compatibility, or deployment qualification**. This follows the first-boot
 requirements and factory ledger at `2c03466464f1b45f4baf1763e0416da52a8bef24`.
-The normal BLE/HTTPS trust policies and deployed candidate remain unchanged.
+Normal BLE/HTTPS retain full date validation. Shared Swift trust now also checks
+the leaf's digital-signature KeyUsage explicitly, after a negative fixture exposed
+Security's permissive handling of a self-signed CA anchor. The deployed candidate
+remains unchanged.
+See [prototype scope and validation](BOOTSTRAP-TLS-PROTOTYPE.md).
 
 ## Decision and explicit change to the earlier requirement
 
@@ -43,8 +47,9 @@ parses X.509 DER; its RPK references do not supply a usable RPK API for this app
 The prototype must use distinct typed client construction, trust evidence,
 server TLS context, GATT entry and command dispatcher. Require a dedicated ALPN
 value authenticated by the handshake and reject absent/unexpected negotiation.
-The exact ALPN string and GATT UUIDs will be fixed in the versioned wire contract,
-not inferred from this design note. Existing v1 clients remain on their current
+The isolated prototype fixes ALPN to `inky-bootstrap/1`; this is not an advertised
+GATT capability or a complete versioned wire contract. GATT UUIDs remain open.
+Existing v1 clients remain on their current
 service; do not retrofit a mandatory new ALPN onto that legacy endpoint.
 
 For bootstrap only, after checking the exact expected P-256 SPKI pin:
@@ -60,6 +65,13 @@ For bootstrap only, after checking the exact expected P-256 SPKI pin:
   ALPN before exposing plaintext. Disable early data, resumption and shared tickets.
 - Preserve the explicit self-signature check currently performed by the Swift
   normal trust code. Simply skipping `PinnedFrameTrust` would lose more than dates.
+
+The iOS prototype's `BootstrapFrameTrust` is only certificate prevalidation.
+It reuses Security's complete SSL policy at a strictly interior certificate date;
+this is not an API that removes individual Security errors. The C TLS profile
+independently enforces its stricter certificate shape and preserves all Mbed
+verification flags except the two permitted leaf-date flags. Neither a constructed
+Swift trust value nor a parsed anchor proves a completed handshake or ownership.
 
 Mbed's [verification callback contract](https://github.com/Mbed-TLS/mbedtls/blob/mbedtls-4.1.1/include/mbedtls/x509_crt.h#L599),
 [error flags](https://github.com/Mbed-TLS/mbedtls/blob/mbedtls-4.1.1/include/mbedtls/x509.h#L87)
