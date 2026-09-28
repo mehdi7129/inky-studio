@@ -222,3 +222,7 @@ review and equivalence tests before they replace installer behavior.
 The next handoff is this requirements draft and the source hash, **not a claim
 that first boot is implemented**. InkyOS should review the initialization-receipt
 boundary and target clock/regulatory behavior before either side freezes an API.
+
+Application work now includes an [internal opt-in factory-state foundation](FACTORY-STATE.md).
+It implements only the ownership ledger and claim transition. It does not verify
+the real OS receipt or enable the runtime/bootstrap interfaces described above.

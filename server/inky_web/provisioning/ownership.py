@@ -26,6 +26,14 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from inky_web.provisioning.factory import (
+    FACTORY_SCHEMA,
+    FactoryIdentity,
+    FactoryRecoveryRequired,
+    FactoryState,
+    FactoryStatus,
+    InitializationReceipt,
+)
 from inky_web.provisioning.identity import (
     SecretToken,
     _sync_directory,
@@ -151,18 +159,77 @@ class OwnershipStore:
     def __init__(self, private_dir: Path, credential_epoch: Callable[[], str], *,
                  clock: Callable[[], float] = time.time,
                  monotonic: Callable[[], float] = time.monotonic) -> None:
+        """Unchanged legacy entry point; factory stores explicitly refuse it."""
+        self._initialize(private_dir, credential_epoch, clock=clock, monotonic=monotonic,
+                         receipt=None, expected_identity=None, create_factory=False)
+
+    @classmethod
+    def create_factory(cls, private_dir: Path, credential_epoch: Callable[[], str], *,
+                       receipt: InitializationReceipt, expected_identity: FactoryIdentity,
+                       clock: Callable[[], float] = time.time,
+                       monotonic: Callable[[], float] = time.monotonic) -> OwnershipStore:
+        """Journal one explicitly authorized initialization, only in an absent DB.
+
+        This does not validate/consume an actual root-owned receipt or create a
+        key, credential, QR, radio or runtime. The trusted caller supplies those
+        assertions, then confirms the same persisted identity with mark_factory_ready.
+        A partial/failed creation is preserved for reopen or explicit recovery.
+        An existing legacy store can never be promoted by this API.
+        """
+        return cls._factory_store(private_dir, credential_epoch, receipt=receipt,
+                                  expected_identity=expected_identity, clock=clock,
+                                  monotonic=monotonic, create=True)
+
+    @classmethod
+    def reopen_factory(cls, private_dir: Path, credential_epoch: Callable[[], str], *,
+                       receipt: InitializationReceipt, expected_identity: FactoryIdentity,
+                       clock: Callable[[], float] = time.time,
+                       monotonic: Callable[[], float] = time.monotonic) -> OwnershipStore:
+        """Reopen only an existing consistent journal with the original binding.
+
+        Missing or corrupt records require recovery; there is no regeneration or
+        factory inference from absent owners, Wi-Fi, photos or application files.
+        Every reopen invalidates any previous physical QR window.
+        """
+        return cls._factory_store(private_dir, credential_epoch, receipt=receipt,
+                                  expected_identity=expected_identity, clock=clock,
+                                  monotonic=monotonic, create=False)
+
+    @classmethod
+    def _factory_store(cls, private_dir: Path, credential_epoch: Callable[[], str], *,
+                       receipt: InitializationReceipt, expected_identity: FactoryIdentity,
+                       clock: Callable[[], float], monotonic: Callable[[], float],
+                       create: bool) -> OwnershipStore:
+        # No dictionary coercion: these are local typed assertions, not a parser.
+        if type(receipt) is not InitializationReceipt or type(expected_identity) is not FactoryIdentity:
+            raise ValueError("Explicit local factory assertions are required")
+        store = cls.__new__(cls)
+        store._initialize(private_dir, credential_epoch, clock=clock, monotonic=monotonic,
+                          receipt=receipt, expected_identity=expected_identity, create_factory=create)
+        return store
+
+    def _initialize(self, private_dir: Path, credential_epoch: Callable[[], str], *,
+                    clock: Callable[[], float], monotonic: Callable[[], float],
+                    receipt: InitializationReceipt | None,
+                    expected_identity: FactoryIdentity | None, create_factory: bool) -> None:
         self._credential_epoch = credential_epoch
         self._clock = clock
         self._monotonic = monotonic
+        self._factory_receipt = receipt
+        self._factory_identity = expected_identity
         self._lock = threading.RLock()
         self._window_deadline: float | None = None
         self._window_wall_highwater: float | None = None
         self._closed = False
         try:
+            if receipt is not None and not create_factory and not Path(private_dir).is_dir():
+                raise FactoryRecoveryRequired()
             self.directory = private_directory(private_dir)
             self.path = self.directory / "ownership.sqlite3"
             with private_lock(self.directory / ".ownership.lock"):
                 existed = self.path.exists() or self.path.is_symlink()
+                if receipt is not None and existed == create_factory:
+                    raise FactoryRecoveryRequired()
                 descriptor = os.open(self.path, os.O_RDWR | os.O_NOFOLLOW |
                                      (0 if existed else os.O_CREAT | os.O_EXCL), 0o600)
                 try:
@@ -173,9 +240,16 @@ class OwnershipStore:
                     os.close(descriptor)
                 with self._connection() as connection:
                     if not existed:
-                        connection.executescript("BEGIN IMMEDIATE;" + SCHEMA + "COMMIT;")
-                    elif connection.execute("PRAGMA user_version").fetchone()[0] != 1:
-                        raise OwnershipStorageError()
+                        connection.executescript("BEGIN IMMEDIATE;" + SCHEMA +
+                                                 (FACTORY_SCHEMA if receipt is not None else ""))
+                        if receipt is not None:
+                            connection.execute(
+                                "INSERT INTO factory_initialization VALUES (1, ?, ?, ?, ?, 'pending', NULL)",
+                                (receipt.receipt_id, receipt.digest, expected_identity.frame_id,
+                                 expected_identity.spki_sha256),
+                            )
+                        connection.commit()
+                    self._validate_store_mode(connection)
                     if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                         raise OwnershipStorageError()
                     # Never resume an adoption window across authority restarts.
@@ -184,11 +258,24 @@ class OwnershipStore:
                     connection.commit()
                 _sync_directory(self.directory)
         except (OSError, sqlite3.Error):
+            if receipt is not None:
+                raise FactoryRecoveryRequired() from None
             raise OwnershipStorageError() from None
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.path, isolation_level=None, timeout=5)
+        # mode=rw prevents a deleted store being recreated by an already-open
+        # authority. Creation is confined to the explicit constructor path above.
+        if self._factory_receipt is not None:
+            # A substituted FIFO must reach fstat without waiting for a writer.
+            descriptor = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                    raise FactoryRecoveryRequired()
+            finally:
+                os.close(descriptor)
+        connection = sqlite3.connect(self.path.absolute().as_uri() + "?mode=rw", uri=True,
+                                     isolation_level=None, timeout=5)
         try:
             connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA foreign_keys = ON")
@@ -208,13 +295,89 @@ class OwnershipStore:
                 with self._connection() as connection:
                     connection.execute("BEGIN IMMEDIATE")
                     try:
+                        self._validate_store_mode(connection)
                         yield connection
+                        self._validate_store_mode(connection)
                         connection.commit()
                     except BaseException:
                         connection.rollback()
                         raise
             except (sqlite3.Error, OSError):
+                if self._factory_receipt is not None:
+                    raise FactoryRecoveryRequired() from None
                 raise OwnershipStorageError() from None
+
+    def _validate_store_mode(self, connection: sqlite3.Connection) -> None:
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        journal_exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name = 'factory_initialization'",
+        ).fetchone() is not None
+        if self._factory_receipt is None:
+            if version != 1 or journal_exists:
+                raise OwnershipStorageError()
+        elif version != 2 or not journal_exists:
+            raise FactoryRecoveryRequired()
+        else:
+            self._factory_status(connection)
+
+    def _factory_status(self, connection: sqlite3.Connection) -> FactoryStatus:
+        if self._factory_receipt is None:
+            raise OwnershipError("factory_not_enabled")
+        rows = connection.execute(
+            "SELECT id, receipt_id, receipt_digest, frame_id, spki_sha256, state, first_owner_id "
+            "FROM factory_initialization",
+        ).fetchall()
+        if len(rows) != 1 or rows[0]["id"] != 1:
+            raise FactoryRecoveryRequired()
+        row = rows[0]
+        try:
+            receipt = InitializationReceipt(row["receipt_id"], row["receipt_digest"])
+            identity = FactoryIdentity(row["frame_id"], row["spki_sha256"])
+            state = FactoryState(row["state"])
+            first_owner = row["first_owner_id"]
+            if first_owner is not None:
+                canonical_uuid(first_owner)
+        except (ValueError, TypeError):
+            raise FactoryRecoveryRequired() from None
+        if (receipt.receipt_id != self._factory_receipt.receipt_id
+                or not secrets.compare_digest(receipt.digest, self._factory_receipt.digest)
+                or identity != self._factory_identity or state == FactoryState.RECOVERY):
+            raise FactoryRecoveryRequired()
+        if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            raise FactoryRecoveryRequired()
+        if state == FactoryState.ADOPTED:
+            if first_owner is None or connection.execute(
+                "SELECT 1 FROM owners WHERE owner_id = ?", (first_owner,),
+            ).fetchone() is None:
+                raise FactoryRecoveryRequired()
+        else:
+            if first_owner is not None or connection.execute("SELECT 1 FROM owners LIMIT 1").fetchone():
+                raise FactoryRecoveryRequired()
+            if state == FactoryState.PENDING and connection.execute("SELECT 1 FROM window LIMIT 1").fetchone():
+                raise FactoryRecoveryRequired()
+        return FactoryStatus(state, identity, first_owner)
+
+    def factory_status(self) -> FactoryStatus:
+        """Local durable state, validated afresh; never inferred from connectivity."""
+        with self._transaction() as connection:
+            return self._factory_status(connection)
+
+    def mark_factory_ready(self, identity: FactoryIdentity) -> FactoryStatus:
+        """Confirm the expected persisted identity; pending -> factory is one-way.
+
+        The caller must verify the real key/identity store before this assertion.
+        Repeated confirmation is harmless, including after adoption; it cannot
+        replace identity or reopen adoption. No identity file is read or written.
+        """
+        if type(identity) is not FactoryIdentity:
+            raise ValueError("An explicit local identity assertion is required")
+        with self._transaction() as connection:
+            status = self._factory_status(connection)
+            if identity != status.identity:
+                raise FactoryRecoveryRequired()
+            if status.state == FactoryState.PENDING:
+                connection.execute("UPDATE factory_initialization SET state = 'factory' WHERE id = 1")
+            return self._factory_status(connection)
 
     def _current_epoch(self, expected: str | None = None) -> str:
         current = _epoch(self._credential_epoch())
@@ -243,10 +406,35 @@ class OwnershipStore:
         This is not an unauthenticated remotely callable method. The application
         must authorize the physical/setup action and display the resulting QR.
         Epoch mismatch and live-window conflict do not disclose the existing QR.
+        On an opted-in factory store, this administrative entry point is only
+        available after adoption. Initial adoption uses open_factory_window.
         """
+        return self._open_window(ttl_seconds, expected_epoch=expected_epoch, factory=False)
+
+    def open_factory_window(self, ttl_seconds: float = MAX_WINDOW_SECONDS, *,
+                            expected_epoch: str | None = None) -> SecretToken:
+        """Local initial-adoption action, only for the explicitly ready factory.
+
+        No runtime calls this method yet. A future orchestrator must reserve the
+        physical display and verify identity/credential storage before invoking it.
+        Losing Wi-Fi, owners or password authorization never makes it available
+        after the first successful claim.
+        """
+        return self._open_window(ttl_seconds, expected_epoch=expected_epoch, factory=True)
+
+    def _open_window(self, ttl_seconds: float, *, expected_epoch: str | None,
+                     factory: bool) -> SecretToken:
         if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, (float, int)) or not 0 < ttl_seconds <= MAX_WINDOW_SECONDS:
             raise OwnershipError("invalid_ttl")
         with self._transaction() as connection:
+            if factory or self._factory_receipt is not None:
+                state = self._factory_status(connection).state
+                if state == FactoryState.PENDING:
+                    raise OwnershipError("factory_not_ready")
+                if factory and state != FactoryState.FACTORY:
+                    raise OwnershipError("factory_unavailable")
+                if not factory and state != FactoryState.ADOPTED:
+                    raise OwnershipError("factory_window_required")
             epoch = self._current_epoch(expected_epoch)
             row = connection.execute("SELECT * FROM window WHERE id = 1").fetchone()
             if self._window_valid(row, epoch):
@@ -304,6 +492,11 @@ class OwnershipStore:
             [owner_id, owner_hash, qr_hash, expected_epoch], separators=(",", ":"),
         ).encode("ascii")).hexdigest()
         with self._transaction() as connection:
+            factory_state = None
+            if self._factory_receipt is not None:
+                factory_state = self._factory_status(connection).state
+                if factory_state == FactoryState.PENDING:
+                    raise OwnershipError("factory_not_ready")
             epoch = self._current_epoch(expected_epoch)
             existing = connection.execute("SELECT * FROM owners WHERE owner_id = ?", (owner_id,)).fetchone()
             if existing is not None:
@@ -333,6 +526,11 @@ class OwnershipStore:
                                (request_id, owner_id, intent))
             connection.execute("DELETE FROM requests WHERE sequence NOT IN "
                                "(SELECT sequence FROM requests ORDER BY sequence DESC LIMIT ?)", (MAX_HISTORY,))
+            if factory_state == FactoryState.FACTORY:
+                connection.execute(
+                    "UPDATE factory_initialization SET state = 'adopted', first_owner_id = ? WHERE id = 1",
+                    (owner_id,),
+                )
             connection.execute("DELETE FROM window")
             self._window_deadline = self._window_wall_highwater = None
             return ClaimResult(owner_id, request_id)
