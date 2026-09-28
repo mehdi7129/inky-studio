@@ -25,6 +25,33 @@ public struct TLSConfiguration: Sendable {
     }
 }
 
+/// Explicit pinned-key bootstrap policy, separate from normal date-valid TLS.
+/// The pin must originate in a physical QR or an already trusted ownership record.
+/// This type does not authenticate the phone or authorize any frame mutation.
+public struct BootstrapTLSConfiguration: Sendable {
+    public let serverName: String
+    public let trustedCertificateDER: Data
+    public let pinnedSPKISHA256: Data
+    public let bufferCapacity: Int
+
+    public init(serverName: String, trustedCertificateDER: Data,
+                pinnedSPKISHA256: Data, bufferCapacity: Int = 65_536) throws {
+        let prefix = "frame-", suffix = ".inky.invalid"
+        guard serverName.hasPrefix(prefix), serverName.hasSuffix(suffix),
+              serverName.utf8.count == 55 else { throw TLSError.invalidConfiguration }
+        let identifier = String(serverName.dropFirst(prefix.count).dropLast(suffix.count))
+        guard let frameID = UUID(uuidString: identifier), frameID.uuidString.lowercased() == identifier,
+              !trustedCertificateDER.isEmpty, trustedCertificateDER.count <= 65_536,
+              pinnedSPKISHA256.count == 32, (1_024...262_144).contains(bufferCapacity) else {
+            throw TLSError.invalidConfiguration
+        }
+        self.serverName = serverName
+        self.trustedCertificateDER = trustedCertificateDER
+        self.pinnedSPKISHA256 = pinnedSPKISHA256
+        self.bufferCapacity = bufferCapacity
+    }
+}
+
 public enum TLSState: Sendable, Equatable { case handshaking, open, closing, closed, failed }
 public enum TLSProgress: Sendable, Equatable { case complete, needsRead, needsWrite }
 public enum TLSReadResult: Sendable, Equatable { case bytes(Data), needsRead, needsWrite, closed }
@@ -35,6 +62,7 @@ public enum TLSError: Error, Sendable, Equatable {
     /// No bytes were consumed: retain the input and retry after making room.
     case backpressure
     case pinMismatch
+    case bootstrapPolicyRejected
     case allocationFailed
     case truncatedTransport
     case failure(code: Int32, description: String)
@@ -70,6 +98,26 @@ public actor TLSClient {
             }
             guard result == 0 else { throw Self.error(result) }
         }
+        self.handle = handle
+    }
+
+    /// The C bridge rechecks exact anchor/pin, P-256, self-signature, usages and
+    /// canonical identity. Only date errors are relaxed, and only in this profile.
+    /// No plaintext is available until TLS 1.3 and inky-bootstrap/1 ALPN succeed.
+    public init(bootstrapConfiguration configuration: BootstrapTLSConfiguration) throws {
+        var code: Int32 = 0
+        let context = configuration.pinnedSPKISHA256.withUnsafeBytes { pin in
+            configuration.serverName.withCString { name in
+                inky_tls_create_bootstrap(name, pin.bindMemory(to: UInt8.self).baseAddress,
+                                          pin.count, configuration.bufferCapacity, &code)
+            }
+        }
+        guard let context else { throw Self.error(code) }
+        let handle = TLSHandle(context)
+        let result = configuration.trustedCertificateDER.withUnsafeBytes { bytes in
+            inky_tls_add_trust_der(context, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
+        }
+        guard result == 0 else { throw Self.error(result) }
         self.handle = handle
     }
 
@@ -162,6 +210,7 @@ public actor TLSClient {
         case INKY_TLS_INVALID_STATE: return .invalidState
         case INKY_TLS_BACKPRESSURE: return .backpressure
         case INKY_TLS_PIN_MISMATCH: return .pinMismatch
+        case INKY_TLS_BOOTSTRAP_POLICY: return .bootstrapPolicyRejected
         case INKY_TLS_ALLOCATION_FAILED: return .allocationFailed
         case INKY_TLS_TRUNCATED: return .truncatedTransport
         default:

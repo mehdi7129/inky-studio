@@ -214,7 +214,7 @@ def display_password(data_dir: Path) -> str | None:
 
 
 class SessionStore:
-    """Process-local sessions with immediate notification of revocation to WebSockets."""
+    """Process-local sessions with monotonic TTL and immediate WebSocket revocation."""
 
     def __init__(self) -> None:
         self._sessions: dict[str, float] = {}
@@ -223,7 +223,7 @@ class SessionStore:
 
     def create(self) -> str:
         with self._lock:
-            now = time.time()
+            now = time.monotonic()
             self._sessions = {token: expiry for token, expiry in self._sessions.items() if expiry > now}
             token = secrets.token_urlsafe(32)
             self._sessions[token] = now + SESSION_TTL_SECONDS
@@ -236,7 +236,7 @@ class SessionStore:
             expires = self._sessions.get(token)
             if expires is None:
                 return False
-            if time.time() >= expires:
+            if time.monotonic() >= expires:
                 self._sessions.pop(token, None)
                 return False
             return True

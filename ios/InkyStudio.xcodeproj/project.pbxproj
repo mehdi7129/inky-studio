@@ -20,6 +20,7 @@
 		25B80AA3199AE33F4DC01392 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 2A2F4D0111059422485B70B8 /* ThirdPartyNotices.txt */; };
 		2F7AC99D1BA003EFA4DB94FC /* InkyAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D591853F3004F95469F34EA /* InkyAPI.swift */; };
 		303C97AA771D6E8566655491 /* FramePhotoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA86EF4F893A75D7FFB8E8EA /* FramePhotoClient.swift */; };
+		39374A0640F3E0777B82E833 /* BootstrapFrameTrustTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */; };
 		5DA5EACB32570669F29B66A8 /* InkyStudioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908ED9879C756D9FD754E54A /* InkyStudioApp.swift */; };
 		5E0735A767035D2E7F09E1B6 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94A820224492220A3DA35B5 /* AppStore.swift */; };
 		5FAB3E4A3344A8589C1056F6 /* BluetoothSetupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CFBE17AACB997A4E14D675B /* BluetoothSetupUITests.swift */; };
@@ -41,6 +42,7 @@
 		AB182E3BD1569DBD5D2D3681 /* BluetoothTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */; };
 		B1CD487B42DBC2A80B24DAEC /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E7E1EBB19CAD90394EE3A69 /* DashboardView.swift */; };
 		BDA9790D16F044E74CD03A26 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9EE38F9C4815EE8B81A82971 /* Assets.xcassets */; };
+		C1EE5D5C061584154CB99A54 /* BootstrapFrameTrust.swift in Sources */ = {isa = PBXBuildFile; fileRef = 068B726917984500D0CF71DC /* BootstrapFrameTrust.swift */; };
 		CA5B7AD7136417581071B3F6 /* BluetoothSetupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B7D743D63D8E3038F96161 /* BluetoothSetupCoordinator.swift */; };
 		CB37F0565CDD0759B962195C /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 499D47C314B26D19A55DBE5B /* HistoryView.swift */; };
 		CFB066BEAEAC949806104B3C /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF609B8AA1F8E3DFDC9893A4 /* ConnectionView.swift */; };
@@ -74,6 +76,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		068B726917984500D0CF71DC /* BootstrapFrameTrust.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapFrameTrust.swift; sourceTree = "<group>"; };
 		0C1AD736F7DF35F699D1E2AF /* FrameIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameIdentity.swift; sourceTree = "<group>"; };
 		0E7E1EBB19CAD90394EE3A69 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		1AB92DA5929F75D3CA8F8C3A /* CropGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CropGeometry.swift; sourceTree = "<group>"; };
@@ -125,6 +128,7 @@
 		E6000FA45E4E44E5673B2505 /* PinnedFrameTrustTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedFrameTrustTests.swift; sourceTree = "<group>"; };
 		EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCaptureTests.swift; sourceTree = "<group>"; };
 		F25D621270EA7DC64346B744 /* DemoModeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoModeUITests.swift; sourceTree = "<group>"; };
+		F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapFrameTrustTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -202,6 +206,7 @@
 				4270798D8720AD8EA20CEDFB /* BluetoothChannelInteropTests.swift */,
 				36D190F2D1CFE1681D659D98 /* BluetoothChannelTests.swift */,
 				E5ADFD190C12461AC95A6AB3 /* BluetoothSetupCoordinatorTests.swift */,
+				F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */,
 				EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */,
 				552034F90D6327744B4F46D4 /* DemoModeTests.swift */,
 				705B77096599A912B708C7FF /* FrameIdentityTests.swift */,
@@ -283,6 +288,7 @@
 				50B7D743D63D8E3038F96161 /* BluetoothSetupCoordinator.swift */,
 				49B1DDA6CD675954525687AE /* BluetoothSetupView.swift */,
 				D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */,
+				068B726917984500D0CF71DC /* BootstrapFrameTrust.swift */,
 				0C1AD736F7DF35F699D1E2AF /* FrameIdentity.swift */,
 				1CB6FE548F76B8089B50EA4F /* OwnershipVault.swift */,
 				AD1DDCCB56C35BA702C6413F /* PinnedFrameTrust.swift */,
@@ -429,6 +435,7 @@
 				88DF6751DB3134A77E600EC7 /* BluetoothChannelInteropTests.swift in Sources */,
 				D9F80ED152C3B8F6C5D9B656 /* BluetoothChannelTests.swift in Sources */,
 				830D01584B435478285A585A /* BluetoothSetupCoordinatorTests.swift in Sources */,
+				39374A0640F3E0777B82E833 /* BootstrapFrameTrustTests.swift in Sources */,
 				F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */,
 				F3E9195ACE29CCCB03DD8CBE /* DemoModeTests.swift in Sources */,
 				E883895084BA3ED85261A5FD /* FrameIdentityTests.swift in Sources */,
@@ -449,6 +456,7 @@
 				CA5B7AD7136417581071B3F6 /* BluetoothSetupCoordinator.swift in Sources */,
 				186FAAADBE0460E7C2BE3C37 /* BluetoothSetupView.swift in Sources */,
 				AB182E3BD1569DBD5D2D3681 /* BluetoothTransport.swift in Sources */,
+				C1EE5D5C061584154CB99A54 /* BootstrapFrameTrust.swift in Sources */,
 				21841F1B618C6413AFEC2FD0 /* CameraCaptureView.swift in Sources */,
 				CFB066BEAEAC949806104B3C /* ConnectionView.swift in Sources */,
 				9CC39CDC8AAA4024792222BF /* CropGeometry.swift in Sources */,
