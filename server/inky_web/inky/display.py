@@ -177,12 +177,16 @@ def _detect_model_name(impl: Any) -> str:
     cls = type(impl).__name__
     module = type(impl).__module__.lower()
     if "ac073tc1a" in module:
-        # Pimoroni's 6-color Spectra chip — used by both 7.3" 2025 and 13.3" 2025
-        if impl.width == 1600:
-            return 'Inky Impression 13.3" (Spectra 6)'
-        return 'Inky Impression 7.3" (Spectra 6)'
-    if "uc8159" in module:
         return 'Inky Impression 7.3" (7-color)'
+    if "e673" in module:
+        return 'Inky Impression 7.3" (Spectra 6)'
+    if "el133uf1" in module:
+        return 'Inky Impression 13.3" (Spectra 6)'
+    if "uc8159" in module:
+        if (impl.width, impl.height) == (600, 448):
+            return 'Inky Impression 5.7" (7-color)'
+        if (impl.width, impl.height) == (640, 400):
+            return 'Inky Impression 4" (7-color)'
     return f"Inky Impression ({cls})"
 
 
@@ -192,8 +196,8 @@ def _detect_color_count(impl: Any) -> int:
     if isinstance(explicit, int) and explicit > 0:
         return explicit
     module = type(impl).__module__.lower()
-    if "ac073tc1a" in module:
+    if "e673" in module or "el133uf1" in module:
         return 6  # Spectra 6
-    if "uc8159" in module:
+    if "ac073tc1a" in module or "uc8159" in module:
         return 7  # Classic 7-color Inky Impression
     return 7
