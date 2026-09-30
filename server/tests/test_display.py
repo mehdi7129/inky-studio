@@ -11,17 +11,32 @@ from inky_web.services import photos
 
 
 @pytest.mark.parametrize(
-    ("module", "width", "height", "model", "colors"),
+    ("module", "width", "height", "model", "colors", "colour"),
     [
-        ("inky.inky_ac073tc1a", 800, 480, 'Inky Impression 7.3" (7-color)', 7),
-        ("inky.inky_e673", 800, 480, 'Inky Impression 7.3" (Spectra 6)', 6),
-        ("inky.inky_el133uf1", 1600, 1200, 'Inky Impression 13.3" (Spectra 6)', 6),
-        ("inky.inky_uc8159", 600, 448, 'Inky Impression 5.7" (7-color)', 7),
-        ("inky.inky_uc8159", 640, 400, 'Inky Impression 4" (7-color)', 7),
+        ("inky.inky_ac073tc1a", 800, 480, 'Inky Impression 7.3" (7-color)', 7, None),
+        ("inky.inky_e673", 800, 480, 'Inky Impression 7.3" (Spectra 6)', 6, None),
+        ("inky.inky_e640", 600, 400, 'Inky Impression 4" (Spectra 6)', 6, None),
+        ("inky.inky_el133uf1", 1600, 1200, 'Inky Impression 13.3" (Spectra 6)', 6, None),
+        ("inky.inky_uc8159", 600, 448, 'Inky Impression 5.7" (7-color)', 7, None),
+        ("inky.inky_uc8159", 640, 400, 'Inky Impression 4" (7-color)', 7, None),
+        ("inky.phat", 212, 104, 'Inky pHAT 2.13" (2-color)', 2, "black"),
+        ("inky.phat", 212, 104, 'Inky pHAT 2.13" (3-color)', 3, "red"),
+        ("inky.phat", 212, 104, 'Inky pHAT 2.13" (3-color)', 3, "yellow"),
+        ("inky.phat", 250, 122, 'Inky pHAT 2.13" (2-color)', 2, "black"),
+        ("inky.phat", 250, 122, 'Inky pHAT 2.13" (3-color)', 3, "red"),
+        ("inky.phat", 250, 122, 'Inky pHAT 2.13" (3-color)', 3, "yellow"),
+        ("inky.what", 400, 300, 'Inky wHAT 4.2" (2-color)', 2, "black"),
+        ("inky.what", 400, 300, 'Inky wHAT 4.2" (3-color)', 3, "red"),
+        ("inky.what", 400, 300, 'Inky wHAT 4.2" (3-color)', 3, "yellow"),
+        ("inky.inky_ssd1683", 400, 300, 'Inky wHAT 4.2" (2-color)', 2, "black"),
+        ("inky.inky_ssd1683", 400, 300, 'Inky wHAT 4.2" (3-color)', 3, "red"),
+        ("inky.inky_ssd1683", 400, 300, 'Inky wHAT 4.2" (3-color)', 3, "yellow"),
+        ("inky.inky_jd79661", 250, 122, 'Inky pHAT 2.13" (4-color)', 4, None),
+        ("inky.inky_jd79668", 400, 300, 'Inky wHAT 4.2" (4-color)', 4, None),
     ],
 )
 def test_detected_driver_metadata_matches_pimoroni_230(
-    monkeypatch, module, width, height, model, colors,
+    monkeypatch, module, width, height, model, colors, colour,
 ):
     """Drivers in the pinned wheel expose dimensions, but no name/colour_count.
 
@@ -30,6 +45,8 @@ def test_detected_driver_metadata_matches_pimoroni_230(
     from inky 2.3.0's EEPROM auto mapping and driver palettes.
     """
     driver = type("Inky", (), {"__module__": module, "width": width, "height": height})()
+    if colour is not None:
+        driver.colour = colour
     package = ModuleType("inky")
     package.__path__ = []
     auto_module = ModuleType("inky.auto")

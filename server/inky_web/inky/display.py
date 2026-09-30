@@ -180,6 +180,8 @@ def _detect_model_name(impl: Any) -> str:
         return 'Inky Impression 7.3" (7-color)'
     if "e673" in module:
         return 'Inky Impression 7.3" (Spectra 6)'
+    if "e640" in module:
+        return 'Inky Impression 4" (Spectra 6)'
     if "el133uf1" in module:
         return 'Inky Impression 13.3" (Spectra 6)'
     if "uc8159" in module:
@@ -187,6 +189,14 @@ def _detect_model_name(impl: Any) -> str:
             return 'Inky Impression 5.7" (7-color)'
         if (impl.width, impl.height) == (640, 400):
             return 'Inky Impression 4" (7-color)'
+    if "jd79661" in module:
+        return 'Inky pHAT 2.13" (4-color)'
+    if "jd79668" in module:
+        return 'Inky wHAT 4.2" (4-color)'
+    if module == "inky.phat":
+        return f'Inky pHAT 2.13" ({_detect_color_count(impl)}-color)'
+    if module in {"inky.what", "inky.inky_ssd1683"}:
+        return f'Inky wHAT 4.2" ({_detect_color_count(impl)}-color)'
     return f"Inky Impression ({cls})"
 
 
@@ -196,8 +206,17 @@ def _detect_color_count(impl: Any) -> int:
     if isinstance(explicit, int) and explicit > 0:
         return explicit
     module = type(impl).__module__.lower()
-    if "e673" in module or "el133uf1" in module:
+    if "e673" in module or "e640" in module or "el133uf1" in module:
         return 6  # Spectra 6
     if "ac073tc1a" in module or "uc8159" in module:
         return 7  # Classic 7-color Inky Impression
+    if "jd79661" in module or "jd79668" in module:
+        return 4  # Black, white, red and yellow
+    if module in {"inky.phat", "inky.what", "inky.inky_ssd1683"}:
+        # EEPROM colour is independent of the nominal display variant.
+        colour = getattr(impl, "colour", None)
+        if colour == "black":
+            return 2
+        if colour in {"red", "yellow"}:
+            return 3
     return 7
