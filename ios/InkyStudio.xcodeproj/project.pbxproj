@@ -21,6 +21,7 @@
 		2F7AC99D1BA003EFA4DB94FC /* InkyAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D591853F3004F95469F34EA /* InkyAPI.swift */; };
 		303C97AA771D6E8566655491 /* FramePhotoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA86EF4F893A75D7FFB8E8EA /* FramePhotoClient.swift */; };
 		39374A0640F3E0777B82E833 /* BootstrapFrameTrustTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */; };
+		4964887E4D9053F0AAADA934 /* OwnershipVaultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4BC623B018F1BD03AECD32 /* OwnershipVaultTests.swift */; };
 		5DA5EACB32570669F29B66A8 /* InkyStudioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908ED9879C756D9FD754E54A /* InkyStudioApp.swift */; };
 		5E0735A767035D2E7F09E1B6 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94A820224492220A3DA35B5 /* AppStore.swift */; };
 		5FAB3E4A3344A8589C1056F6 /* BluetoothSetupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CFBE17AACB997A4E14D675B /* BluetoothSetupUITests.swift */; };
@@ -121,6 +122,7 @@
 		B2AFCEF5039DACCE31F0E5C3 /* APIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIError.swift; sourceTree = "<group>"; };
 		BF3D11F5A6E0F44A610709CC /* SecureBluetoothChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureBluetoothChannel.swift; sourceTree = "<group>"; };
 		C94A820224492220A3DA35B5 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
+		CA4BC623B018F1BD03AECD32 /* OwnershipVaultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OwnershipVaultTests.swift; sourceTree = "<group>"; };
 		CEBAE54AB02AF5191ABFCB85 /* InkyStudioTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InkyStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CF609B8AA1F8E3DFDC9893A4 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
 		D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothTransport.swift; sourceTree = "<group>"; };
@@ -211,6 +213,7 @@
 				552034F90D6327744B4F46D4 /* DemoModeTests.swift */,
 				705B77096599A912B708C7FF /* FrameIdentityTests.swift */,
 				ABDD49EB7DC85A967681D04E /* FrameTrustTestFixtures.swift */,
+				CA4BC623B018F1BD03AECD32 /* OwnershipVaultTests.swift */,
 				803409E6940A2CDA8D8B108A /* PhotoPipelineTests.swift */,
 				E6000FA45E4E44E5673B2505 /* PinnedFrameTrustTests.swift */,
 			);
@@ -440,6 +443,7 @@
 				F3E9195ACE29CCCB03DD8CBE /* DemoModeTests.swift in Sources */,
 				E883895084BA3ED85261A5FD /* FrameIdentityTests.swift in Sources */,
 				F36892B63C1B13F1A00D3BD7 /* FrameTrustTestFixtures.swift in Sources */,
+				4964887E4D9053F0AAADA934 /* OwnershipVaultTests.swift in Sources */,
 				959307E4C6B9A8E0D8EC3439 /* PhotoPipelineTests.swift in Sources */,
 				79FEA0CF36DD2B420BA306F4 /* PinnedFrameTrustTests.swift in Sources */,
 			);
@@ -602,7 +606,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = X524H8XA4L;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -690,7 +694,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = X524H8XA4L;
 				ENABLE_NS_ASSERTIONS = NO;
