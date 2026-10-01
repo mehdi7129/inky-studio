@@ -7,12 +7,18 @@ typedef struct inky_tls_client inky_tls_client;
 enum { INKY_TLS_OK = 0, INKY_TLS_WANT_READ = 1, INKY_TLS_WANT_WRITE = 2, INKY_TLS_CLOSED = 3 };
 enum { INKY_TLS_INVALID_ARGUMENT = -100001, INKY_TLS_INVALID_STATE = -100002,
        INKY_TLS_BACKPRESSURE = -100003, INKY_TLS_PIN_MISMATCH = -100004,
-       INKY_TLS_ALLOCATION_FAILED = -100005, INKY_TLS_TRUNCATED = -100006 };
+       INKY_TLS_ALLOCATION_FAILED = -100005, INKY_TLS_TRUNCATED = -100006,
+       INKY_TLS_BOOTSTRAP_POLICY = -100007 };
 enum { INKY_TLS_HANDSHAKING = 0, INKY_TLS_OPEN = 1, INKY_TLS_CLOSING = 2,
        INKY_TLS_CLOSED_STATE = 3, INKY_TLS_FAILED = 4 };
 
 inky_tls_client *inky_tls_create(const char *server_name, const uint8_t *pin,
                                  size_t pin_length, size_t capacity, int *error);
+/* Separate pinned-key bootstrap profile. One exact self-signed P-256 anchor,
+ * canonical frame name and authenticated ALPN inky-bootstrap/1 are mandatory.
+ * Only the pinned leaf's EXPIRED/FUTURE flags may be suppressed. */
+inky_tls_client *inky_tls_create_bootstrap(const char *server_name, const uint8_t *pin,
+                                          size_t pin_length, size_t capacity, int *error);
 int inky_tls_add_trust_der(inky_tls_client *, const uint8_t *, size_t);
 void inky_tls_destroy(inky_tls_client *);
 int inky_tls_feed(inky_tls_client *, const uint8_t *, size_t);

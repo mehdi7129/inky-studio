@@ -40,6 +40,7 @@ SWIFT_SOURCES = [
     "ios/InkyStudio/Provisioning/OwnershipVault.swift",
     "ios/InkyStudio/Core/Models.swift",
     "ios/InkyStudio/Core/APIError.swift",
+    "ios/InkyStudio/Core/FramePhotoClient.swift",
     "ios/InkyStudio/Core/InkyAPI.swift",
     "scripts/https-wire-bench/InkyHTTPSWire.swift",
 ]

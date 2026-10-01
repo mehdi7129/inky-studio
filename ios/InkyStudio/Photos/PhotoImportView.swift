@@ -76,7 +76,14 @@ private final class PhotoImportModel: ObservableObject {
         }
     }
 
-    func upload(crop: CGRect, width: Int, height: Int,
+    func useExample(_ data: Data) {
+        guard !isLoading, !isUploading, let image = UIImage(data: data)?.cgImage else { return }
+        loadID = UUID()
+        errorMessage = nil
+        photo = PreparedPhoto(image: image)
+    }
+
+    func upload(crop: CGRect, width: Int, height: Int, isDemo: Bool,
                 onUpload: @escaping (Data, String) async throws -> Void) async -> Bool {
         guard let photo, !isUploading else { return false }
         isUploading = true
@@ -95,7 +102,7 @@ private final class PhotoImportModel: ObservableObject {
                 worker.cancel()
             }
             try Task.checkCancellation()
-            progressText = "Envoi vers le cadre…"
+            progressText = isDemo ? "Ajout à la démo…" : "Envoi vers le cadre…"
             try await onUpload(png, "photo-\(UUID().uuidString.prefix(8).lowercased()).png")
             try Task.checkCancellation()
             return true
@@ -125,6 +132,7 @@ struct PhotoImportView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @EnvironmentObject private var store: AppStore
     @StateObject private var model = PhotoImportModel()
     @State private var selection: PhotosPickerItem?
     @State private var showPicker = false
@@ -197,6 +205,7 @@ struct PhotoImportView: View {
                 if model.photo != nil {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
+                            if store.isDemo { Button("Utiliser l’image d’exemple", action: useExample) }
                             Button(action: takePhoto) {
                                 Label("Prendre une photo", systemImage: "camera")
                             }
@@ -280,8 +289,13 @@ struct PhotoImportView: View {
                     .foregroundStyle(secondary)
                 Text("Un nouveau souvenir sur le cadre")
                     .font(.title2.weight(.semibold))
-                Text("Prenez une photo ou choisissez-en une dans Photos, puis ajustez son cadrage.")
+                Text(store.isDemo ? "Essayez une image d’exemple ou choisissez une photo. Elle restera dans la démo sur cet iPhone jusqu’à sa fermeture." : "Prenez une photo ou choisissez-en une dans Photos, puis ajustez son cadrage.")
                     .font(.body).foregroundStyle(secondary)
+                if store.isDemo {
+                    Button(action: useExample) { Label("Utiliser une image d’exemple", systemImage: "sparkles") }
+                        .buttonStyle(PrimaryButtonStyle()).disabled(!validPanel || model.isLoading)
+                        .accessibilityIdentifier("photo.demoSample")
+                }
                 Button(action: takePhoto) {
                     Label("Prendre une photo", systemImage: "camera")
                         .font(.body.weight(.semibold))
@@ -397,7 +411,7 @@ struct PhotoImportView: View {
             .font(.callout)
             .foregroundStyle(secondary)
             .frame(minHeight: 44)
-            Text("Les couleurs seront adaptées à l’écran.")
+            Text(store.isDemo ? "Sur un vrai cadre, les couleurs seront adaptées à l’écran." : "Les couleurs seront adaptées à l’écran.")
                 .font(.footnote).foregroundStyle(secondary)
         }
         .multilineTextAlignment(.center)
@@ -422,9 +436,13 @@ struct PhotoImportView: View {
             Button {
                 guard let photo = model.photo, viewportSize.width > 0 else { return }
                 let crop = cropGeometry(photo: photo, viewport: viewportSize).sourceRect
+                let sessionIdentity = store.sessionIdentity
                 uploadTask = Task {
                     let succeeded = await model.upload(crop: crop, width: panelWidth, height: panelHeight,
-                                                       onUpload: onUpload)
+                                                       isDemo: store.isDemo) { data, filename in
+                        guard store.sessionIdentity == sessionIdentity else { throw CancellationError() }
+                        try await onUpload(data, filename)
+                    }
                     if succeeded { dismiss() }
                 }
             } label: {
@@ -434,7 +452,7 @@ struct PhotoImportView: View {
                         Text(model.progressText)
                     } else {
                         Image(systemName: "plus")
-                        Text("Ajouter à la file")
+                        Text(store.isDemo ? "Ajouter à la démo" : "Ajouter à la file")
                     }
                 }
                 .font(.body.weight(.semibold))
@@ -444,7 +462,7 @@ struct PhotoImportView: View {
             }
             .disabled(model.isUploading || !validPanel || viewportSize.width <= 0)
             .accessibilityIdentifier("upload-photo")
-            Text("Elle sera affichée à son tour.")
+            Text(store.isDemo ? "Uniquement sur cet iPhone · aucun envoi au cadre." : "Elle sera affichée à son tour.")
                 .font(.footnote).foregroundStyle(secondary)
         }
         .padding(.horizontal, 16)
@@ -478,6 +496,14 @@ struct PhotoImportView: View {
         // Clearing the selection allows retrying the same iCloud item after a failure.
         selection = nil
         showPicker = true
+    }
+
+    private func useExample() {
+        guard let data = store.demoSampleData else { return }
+        selection = nil
+        zoom = 1
+        normalizedOffset = .zero
+        model.useExample(data)
     }
 
     private func takePhoto() {

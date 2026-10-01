@@ -23,6 +23,21 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertThrowsError(try TLSClient(configuration: configuration))
     }
 
+    func testBootstrapConfigurationIsDistinctAndRequiresCanonicalIdentity() throws {
+        let valid = "frame-00000000-0000-4000-8000-00000000000a.inky.invalid"
+        for name in ["wrong.inky.invalid", valid.uppercased(), valid + ".", valid + "\0", "frame-.inky.invalid"] {
+            XCTAssertThrowsError(try BootstrapTLSConfiguration(serverName: name,
+                trustedCertificateDER: Data([1]), pinnedSPKISHA256: Data(count: 32)))
+        }
+        XCTAssertThrowsError(try BootstrapTLSConfiguration(serverName: valid,
+            trustedCertificateDER: Data(), pinnedSPKISHA256: Data(count: 32)))
+        XCTAssertThrowsError(try BootstrapTLSConfiguration(serverName: valid,
+            trustedCertificateDER: Data([1]), pinnedSPKISHA256: Data(count: 31)))
+        let malformed = try BootstrapTLSConfiguration(serverName: valid,
+            trustedCertificateDER: Data([1]), pinnedSPKISHA256: Data(count: 32))
+        XCTAssertThrowsError(try TLSClient(bootstrapConfiguration: malformed))
+    }
+
     func testGeneratesClientHelloOnCurrentAppleRuntime() async throws {
         let certificate = try XCTUnwrap(Bundle.module.url(forResource: "valid", withExtension: "der", subdirectory: "Support/Generated"))
         let pin = try XCTUnwrap(Bundle.module.url(forResource: "pin", withExtension: "bin", subdirectory: "Support/Generated"))

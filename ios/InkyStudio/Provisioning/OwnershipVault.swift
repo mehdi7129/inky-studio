@@ -72,12 +72,15 @@ struct OwnershipVault: Sendable {
     func markClaimed(id: UUID, endpoint: URL? = nil) throws -> OwnershipRecord {
         guard let old = try load(id: id) else { throw OwnershipVaultError.missing }
         let trust = old.trustPolicy
-        var endpoints = old.endpoints
-        if let endpoint {
-            try trust.validateHTTPS(endpoint)
-            if !endpoints.contains(endpoint) { endpoints.append(endpoint) }
+        if let endpoint { try trust.validateHTTPS(endpoint) }
+        // Keep the most recent occurrence of each endpoint, oldest first. A
+        // new network must not block finishing an authenticated Wi-Fi transaction.
+        var endpoints: [URL] = []
+        for knownEndpoint in old.endpoints + (endpoint.map { [$0] } ?? []) {
+            endpoints.removeAll { $0 == knownEndpoint }
+            endpoints.append(knownEndpoint)
         }
-        guard endpoints.count <= 16 else { throw OwnershipVaultError.invalidRecord }
+        endpoints = Array(endpoints.suffix(16))
         let record = OwnershipRecord(identity: old.identity, certificateDER: old.certificateDER,
                                      ownerID: old.ownerID, claimRequestID: old.claimRequestID,
                                      ownerToken: old.ownerToken, endpoints: endpoints, state: .claimed,

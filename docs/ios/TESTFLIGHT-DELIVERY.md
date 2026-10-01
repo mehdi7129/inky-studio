@@ -6,6 +6,11 @@ test before preparing a public App Store release.
 ## Current delivery status
 
 - Available internal beta: **1.0.0 (3)**, without Bluetooth.
+- Source candidate **1.0.0 (5)** adds the offline demo, first-connection guide
+  and native support/privacy links to the Bluetooth candidate. Archive/upload
+  checkpoints and the latest processing status are tracked in
+  [PR #12](https://github.com/mehdi7129/inky-studio/pull/12). The source version
+  does not imply a new update is available to testers.
 - Bluetooth build **1.0.0 (4)**: uploaded and processed, **Missing Compliance**,
   **zero assigned groups**. No new TestFlight update is available yet.
 - Raspberry: candidate **0.5.0-rc.2**, source `ae61df1`, now deployed and checked.

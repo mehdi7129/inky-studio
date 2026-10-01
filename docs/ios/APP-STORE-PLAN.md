@@ -107,15 +107,18 @@ and physical regression. Mehdi then decides to proceed with public readiness.
 
 ### Reviewer access
 
-The current Release app needs a private LAN frame. The Python loopback fixture and
-Debug launch arguments do not provide App Review access.
+The uploaded build 4 needs a private LAN frame. The Python loopback fixture and
+Debug launch arguments do not provide App Review access. A later source addition
+implements a visible offline demo and first-connection guide; see
+[behavior, isolation and walkthrough](DEMO-AND-ONBOARDING.md). It needs a new
+validated binary before it can be used by reviewers or TestFlight users.
 
-**Recommended product work:** a visible **Explore demo** entry point using local,
-licensed/generated sample content and the real native screens. Exercise crop,
-queue/history and settings; label simulated refresh/update behavior. Keep demo
-state separate, support reset/exit, retain normal real-frame authentication, and
-keep any personal demo imports local/removable. Ship no real credentials or
-household photos and do not expose the user's Pi to the internet.
+**Implemented in source:** a visible **Explorer la démo** entry point using
+original locally drawn examples and the real native screens. Crop, queue/history
+and settings are interactive; physical refresh, scheduling and update limits are
+explicit. Demo state is temporary and separate, with reset/exit and no real-frame
+authentication or commands. No real credentials or household photos are shipped,
+and the user's Pi remains private. A later validated binary must deliver it.
 
 A built-in demo is a recommendation, not a blanket Apple requirement. For hardware
 environments that are difficult to reproduce, Apple describes preparing a demo

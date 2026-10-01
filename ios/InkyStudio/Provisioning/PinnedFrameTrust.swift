@@ -82,6 +82,45 @@ struct PinnedFrameTrust: Equatable, Sendable {
                                     Data(signature.dropFirst()) as CFData, nil) else {
             throw FrameIdentityError.certificateRejected
         }
+        // Security may treat a self-signed CA's keyCertSign as sufficient when
+        // it is the explicit anchor. Our frame leaf must also authorize TLS
+        // signatures; the generated v1 certificate always carries this usage.
+        try requireDigitalSignatureUsage(in: &body)
+    }
+
+    private static func requireDigitalSignatureUsage(in body: inout CertificateDERReader) throws {
+        _ = try body.read(tag: 0x30) // SubjectPublicKeyInfo
+        if body.nextTag == 0x81 { _ = try body.read(tag: 0x81) } // issuerUniqueID
+        if body.nextTag == 0x82 { _ = try body.read(tag: 0x82) } // subjectUniqueID
+        var wrapper = CertificateDERReader(try body.read(tag: 0xa3).content)
+        var extensions = CertificateDERReader(try wrapper.read(tag: 0x30).content)
+        guard body.isAtEnd, wrapper.isAtEnd else { throw FrameIdentityError.invalidCertificate }
+        var foundUsage = false
+        while !extensions.isAtEnd {
+            var item = CertificateDERReader(try extensions.read(tag: 0x30).content)
+            let oid = try item.read(tag: 0x06).content
+            if item.nextTag == 0x01 {
+                let critical = try item.read(tag: 0x01).content
+                guard critical.count == 1, critical.first == 0 || critical.first == 0xff else {
+                    throw FrameIdentityError.invalidCertificate
+                }
+            }
+            let value = try item.read(tag: 0x04).content
+            guard item.isAtEnd else { throw FrameIdentityError.invalidCertificate }
+            guard oid == Data([0x55, 0x1d, 0x0f]) else { continue }
+            guard !foundUsage else { throw FrameIdentityError.invalidCertificate }
+            foundUsage = true
+            var encodedUsage = CertificateDERReader(value)
+            let bits = try encodedUsage.read(tag: 0x03).content
+            guard encodedUsage.isAtEnd, (2...3).contains(bits.count),
+                  let unused = bits.first, unused < 8,
+                  (bits.count - 1) * 8 - Int(unused) <= 9,
+                  bits[bits.index(after: bits.startIndex)] & 0x80 != 0,
+                  let last = bits.last, last & UInt8((1 << Int(unused)) - 1) == 0 else {
+                throw FrameIdentityError.certificateRejected
+            }
+        }
+        guard foundUsage else { throw FrameIdentityError.certificateRejected }
     }
 
     private static func certificate(_ der: Data) throws -> SecCertificate {
