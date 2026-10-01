@@ -91,7 +91,7 @@ final class DemoModeUITests: XCTestCase {
         app.buttons["connection.guide"].tap()
         XCTAssertTrue(app.buttons["guide.close"].waitForExistence(timeout: 5))
         capture("07 Premiers pas grand texte")
-        scrollTo(app.buttons["guide.connect"], maxGestures: 60)
+        scrollTo(app.buttons["guide.connect"], maxGestures: 60, horizontalOffset: 0.5)
         capture("08 Guide et aide grand texte")
         app.buttons["guide.connect"].tap()
         scrollTo(app.buttons["connection.demo"], up: true)
@@ -114,7 +114,8 @@ final class DemoModeUITests: XCTestCase {
         XCTAssertTrue(tab.waitForExistence(timeout: 5))
         tab.tap()
     }
-    private func scrollTo(_ element: XCUIElement, up: Bool = false, maxGestures: Int = 20) {
+    private func scrollTo(_ element: XCUIElement, up: Bool = false, maxGestures: Int = 20,
+                          horizontalOffset: CGFloat = 0.95) {
         let identifier = element.identifier.isEmpty ? element.label : element.identifier
         let scrollView = app.scrollViews.containing(element.elementType, identifier: identifier).firstMatch
         XCTAssertTrue(scrollView.waitForExistence(timeout: 5))
@@ -126,8 +127,8 @@ final class DemoModeUITests: XCTestCase {
                 else if element.frame.midY > scrollView.frame.maxY { towardsTop = false }
             }
             // Short, slow drags settle before the next query and avoid skipping the target.
-            let start = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: towardsTop ? 0.45 : 0.70))
-            let end = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: towardsTop ? 0.70 : 0.45))
+            let start = scrollView.coordinate(withNormalizedOffset: CGVector(dx: horizontalOffset, dy: towardsTop ? 0.45 : 0.70))
+            let end = scrollView.coordinate(withNormalizedOffset: CGVector(dx: horizontalOffset, dy: towardsTop ? 0.70 : 0.45))
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
         }
         XCTAssertTrue(element.exists, "Element absent: \(element)")
