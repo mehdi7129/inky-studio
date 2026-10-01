@@ -3,13 +3,25 @@
 ## Préparation de 1.0.0 (6) — 1 octobre 2026
 
 Le candidat source 6 conserve Mbed TLS 4.1.1, TF-PSA-Crypto 1.1.1 et la
-configuration upstream du build script. Il déclare explicitement
-`ITSAppUsesNonExemptEncryption=true`. Son export App Store est normal
+configuration upstream du build script. Il utilise le questionnaire manuel
+d'App Store Connect : `ITSAppUsesNonExemptEncryption` et
+`ITSEncryptionExportComplianceCode` restent absents jusqu'à l'approbation des
+documents. L'absence de ces clés ne déclare aucune exemption. Son export App Store est normal
 (`testFlightInternalTestingOnly=false`), pour permettre une future réutilisation
 publique ; cette option ne résout pas la conformité et ne distribue pas le build.
 Les builds 4 et 5 restent internal-only, en informations manquantes dans le
 constat App Store Connect du 1 octobre. Aucun document signé ni code
 d'approbation n'est ajouté par cette préparation.
+
+Une première tentative d'upload du build 6 avec
+`ITSAppUsesNonExemptEncryption=true`, sans code approuvé, a été refusée le
+1 octobre : **Invalid Export Compliance Code**, valeur `[]`. Apple documente
+explicitement le questionnaire manuel en l'absence de la première clé et
+demande son code approuvé avec la déclaration automatique. Le candidat est
+reconstruit pour ce parcours manuel, avec les mêmes réponses techniques et
+le même blocage documentaire avant distribution.
+[Clé et questionnaire Apple](https://developer.apple.com/documentation/bundleresources/information-property-list/itsappusesnonexemptencryption),
+[code d'approbation Apple](https://developer.apple.com/documentation/bundleresources/information-property-list/itsencryptionexportcompliancecode).
 
 Depuis le build 5 (`80dfc37`), la validation de confiance et les wrappers TLS ont
 changé. Un prototype de confiance au premier démarrage utilise un ALPN distinct
