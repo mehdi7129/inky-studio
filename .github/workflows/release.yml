@@ -61,7 +61,7 @@ jobs:
           python ../scripts/qualify-password-upgrade.py
 
       - name: Validate installer and CLI
-        run: shellcheck install.sh scripts/inky-studio-cli scripts/inky-studio-launcher scripts/uninstall.sh
+        run: shellcheck install.sh scripts/inky-studio-cli scripts/inky-studio-launcher scripts/uninstall.sh scripts/package-release.sh
 
       - name: Build frontend
         run: |
@@ -71,27 +71,8 @@ jobs:
           npm test
           npm run build
 
-      - name: Stage release payload
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          STAGE="staging"
-          mkdir -p "$STAGE/client"
-          # Server source, minus the venv / caches / tests.
-          rsync -a \
-            --exclude '.venv' \
-            --exclude '__pycache__' \
-            --exclude '*.egg-info' \
-            --exclude 'tests' \
-            server "$STAGE/"
-          cp -a client/dist "$STAGE/client/dist"
-          cp -a shared "$STAGE/shared"
-          cp -a scripts "$STAGE/scripts"
-          cp install.sh "$STAGE/install.sh"
-          cp README.md LICENSE CHANGELOG.md "$STAGE/" 2>/dev/null || true
-          echo "$TAG" > "$STAGE/VERSION"
-          # Flat tarball: server/, client/dist/, shared/, scripts/, install.sh, …
-          tar -czf "inky-studio-${TAG}.tar.gz" -C "$STAGE" .
-          ls -la inky-studio-*.tar.gz
+      - name: Stage and qualify release payload
+        run: bash scripts/package-release.sh "$GITHUB_REF_NAME" "inky-studio-${GITHUB_REF_NAME}.tar.gz"
 
       - name: Publish release
         uses: softprops/action-gh-release@v2

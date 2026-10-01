@@ -28,7 +28,7 @@ import tarfile
 import tempfile
 import time
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -45,6 +45,10 @@ _API_LATEST = f"https://api.github.com/repos/{REPO_SLUG}/releases/latest"
 _USER_AGENT = "inky-studio-updater"
 _CACHE_TTL = 600.0  # seconds — don't hammer the GitHub API
 _NEVER_OVERWRITE = {".venv", "node_modules", "data", ".git", ".env", ".env.local"}
+_MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
+_MAX_JSON_BYTES = 1024 * 1024
+_HTTP_CHUNK_BYTES = 64 * 1024
+_MAX_ARCHIVE_MEMBERS = 10000
 _MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 
 EmitFn = Callable[..., None]
@@ -53,13 +57,38 @@ _status_cache: dict[str, Any] = {"at": 0.0, "value": None}
 
 
 # ── version + release metadata ───────────────────────────────────────────────
+def _check_response_length(resp: Any, limit: int) -> None:
+    length = resp.headers.get("Content-Length")
+    if length is not None:
+        try:
+            size = int(length)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Invalid release response Content-Length") from exc
+        if size < 0:
+            raise RuntimeError("Invalid release response Content-Length")
+        if size > limit:
+            raise RuntimeError("Release response is too large")
+
+
+def _response_chunks(resp: Any, limit: int) -> Iterator[bytes]:
+    # Count actual bytes even when Content-Length is absent or understated.
+    # Only read one byte past the remaining budget, and never yield that chunk.
+    remaining = limit
+    while chunk := resp.read(min(_HTTP_CHUNK_BYTES, remaining + 1)):
+        if len(chunk) > remaining:
+            raise RuntimeError("Release response is too large")
+        remaining -= len(chunk)
+        yield chunk
+
+
 def _http_json(url: str, timeout: float = 10.0) -> Any:
     req = urllib.request.Request(
         url,
         headers={"User-Agent": _USER_AGENT, "Accept": "application/vnd.github+json"},
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — fixed https URL
-        return json.loads(resp.read().decode("utf-8"))
+        _check_response_length(resp, _MAX_JSON_BYTES)
+        return json.loads(b"".join(_response_chunks(resp, _MAX_JSON_BYTES)).decode("utf-8"))
 
 
 def _parse_version(v: str | None) -> tuple[int, ...]:
@@ -134,17 +163,47 @@ def _download(url: str, dest: Path) -> None:
         url,
         headers={"User-Agent": _USER_AGENT, "Accept": "application/octet-stream"},
     )
-    with urllib.request.urlopen(req, timeout=120) as resp, dest.open("wb") as fh:  # noqa: S310
-        shutil.copyfileobj(resp, fh)
+    with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310
+        _check_response_length(resp, _MAX_DOWNLOAD_BYTES)
+        fh = dest.open("wb")
+        try:
+            with fh:
+                for chunk in _response_chunks(resp, _MAX_DOWNLOAD_BYTES):
+                    fh.write(chunk)
+        except BaseException:
+            # A failed/oversized download must never leave a partial asset.
+            dest.unlink(missing_ok=True)
+            raise
 
 
 def _safe_extract(tarball: Path, dest: Path) -> None:
+    # The release producer uses ustar: regular files/directories only, with no
+    # PAX, GNU long-name or sparse extensions. Ordinary GNU headers also work.
+    # Keep the budget per archive (including the first header parsed by open).
+    member_count = 0
+    total_size = 0
+
+    class ReleaseTarInfo(tarfile.TarInfo):
+        @classmethod
+        def frombuf(cls, buf: bytes, encoding: str, errors: str) -> tarfile.TarInfo:
+            nonlocal member_count, total_size
+            member = super().frombuf(buf, encoding, errors)
+            # frombuf only parses one fixed 512-byte header. Reject extension
+            # types before _proc_member can allocate/read their metadata body.
+            if member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE):
+                raise RuntimeError(f"Unsupported archive entry: {member.name}")
+            if member.size < 0 or (member.isdir() and member.size != 0):
+                raise RuntimeError(f"Invalid archive entry size: {member.name}")
+            member_count += 1
+            total_size += member.size
+            if member_count > _MAX_ARCHIVE_MEMBERS or total_size > _MAX_ARCHIVE_BYTES:
+                raise RuntimeError("Release archive is too large")
+            return member
+
     dest.mkdir(parents=True, exist_ok=True)
     dest_resolved = dest.resolve()
-    with tarfile.open(tarball, "r:gz") as tf:
+    with tarfile.open(tarball, "r:gz", tarinfo=ReleaseTarInfo) as tf:
         members = tf.getmembers()
-        if len(members) > 10000 or sum(m.size for m in members) > _MAX_ARCHIVE_BYTES:
-            raise RuntimeError("Release archive is too large")
         for member in members:
             path = PurePosixPath(member.name)
             target = (dest / member.name).resolve()

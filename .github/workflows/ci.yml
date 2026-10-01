@@ -29,12 +29,28 @@ jobs:
       - name: Qualify password migration over HTTP and WebSocket
         run: python ../scripts/qualify-password-upgrade.py
 
+  backend-minimum-http:
+    name: Backend (minimum HTTP stack)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install minimum supported HTTP stack
+        run: pip install -e ".[dev]" "fastapi==0.115.0" "starlette==0.37.2" "python-multipart==0.0.12"
+      - name: Test request limits, auth and real HTTP/HTTPS listeners
+        run: pytest -q tests/test_body_limit.py tests/test_api_queue.py tests/test_auth.py tests/test_websocket.py tests/test_provisioning_listeners.py
+
   shell:
     name: Installer and CLI (shellcheck)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: shellcheck install.sh scripts/inky-studio-cli scripts/inky-studio-launcher scripts/uninstall.sh scripts/bt-tls-bench/build.sh scripts/build-mbedtls-apple.sh scripts/install-bluetooth.sh scripts/test-bluetooth-channel.sh scripts/test-https-wire.sh scripts/bt-tls-bench/build-mac-secure.sh
+      - run: shellcheck install.sh scripts/inky-studio-cli scripts/inky-studio-launcher scripts/uninstall.sh scripts/bt-tls-bench/build.sh scripts/build-mbedtls-apple.sh scripts/install-bluetooth.sh scripts/test-bluetooth-channel.sh scripts/test-https-wire.sh scripts/bt-tls-bench/build-mac-secure.sh scripts/package-release.sh
 
   frontend:
     name: Frontend (lint + typecheck + test + build)
@@ -44,6 +60,9 @@ jobs:
         working-directory: client
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -59,3 +78,6 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Qualify the prebuilt release payload
+        working-directory: .
+        run: bash scripts/package-release.sh "ci-${GITHUB_SHA}" build/inky-studio-ci.tar.gz

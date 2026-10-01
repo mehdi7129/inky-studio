@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import fcntl
+import gzip
 import io
 import tarfile
 from unittest.mock import AsyncMock, Mock
@@ -85,10 +86,125 @@ def test_pick_tarball_asset():
     assert updater._pick_tarball_asset({"assets": []}) is None
 
 
+class _Response:
+    def __init__(self, body, length=None, fail_after=None):
+        self.body = io.BytesIO(body)
+        self.headers = {} if length is None else {"Content-Length": length}
+        self.read_sizes = []
+        self.fail_after = fail_after
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.closed = True
+
+    def read(self, size):
+        self.read_sizes.append(size)
+        assert 0 < size <= updater._HTTP_CHUNK_BYTES
+        if self.fail_after is not None and self.body.tell() >= self.fail_after:
+            raise OSError("interrupted response")
+        return self.body.read(size)
+
+
+@pytest.mark.parametrize("length", [None, "1", "8"])
+@pytest.mark.parametrize("size", [8, 9])
+def test_download_enforces_actual_byte_budget(tmp_path, monkeypatch, length, size):
+    monkeypatch.setattr(updater, "_MAX_DOWNLOAD_BYTES", 8)
+    monkeypatch.setattr(updater, "_HTTP_CHUNK_BYTES", 4)
+    response = _Response(b"x" * size, length)
+    monkeypatch.setattr(updater.urllib.request, "urlopen", Mock(return_value=response))
+    target = tmp_path / "release.tar.gz"
+    if size == 8:
+        updater._download("https://fixture.invalid/release", target)
+        assert target.read_bytes() == b"x" * size
+    else:
+        with pytest.raises(RuntimeError, match="too large"):
+            updater._download("https://fixture.invalid/release", target)
+        assert not target.exists()
+    assert response.read_sizes == [4, 4, 1]
+    assert response.closed
+
+
+def test_download_never_writes_the_chunk_exceeding_remaining_budget(monkeypatch):
+    monkeypatch.setattr(updater, "_MAX_DOWNLOAD_BYTES", 6)
+    monkeypatch.setattr(updater, "_HTTP_CHUNK_BYTES", 4)
+    response = _Response(b"1234567")
+    monkeypatch.setattr(updater.urllib.request, "urlopen", Mock(return_value=response))
+    target = Mock()
+    output = io.BytesIO()
+    writes = []
+
+    class Output:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def write(self, chunk):
+            writes.append(chunk)
+            return output.write(chunk)
+
+    target.open.return_value = Output()
+    with pytest.raises(RuntimeError, match="too large"):
+        updater._download("https://fixture.invalid/release", target)
+    assert response.read_sizes == [4, 3]
+    assert writes == [b"1234"]
+    target.unlink.assert_called_once_with(missing_ok=True)
+
+
+def test_download_removes_partial_file_on_read_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(updater, "_HTTP_CHUNK_BYTES", 4)
+    response = _Response(b"12345678", fail_after=4)
+    monkeypatch.setattr(updater.urllib.request, "urlopen", Mock(return_value=response))
+    target = tmp_path / "release.tar.gz"
+    with pytest.raises(OSError, match="interrupted"):
+        updater._download("https://fixture.invalid/release", target)
+    assert response.body.tell() == 4
+    assert response.closed
+    assert not target.exists()
+
+
+@pytest.mark.parametrize("operation", ["download", "json"])
+@pytest.mark.parametrize("length", ["9", "-1", "invalid"])
+def test_http_rejects_bad_or_oversized_length_before_reading(tmp_path, monkeypatch, operation, length):
+    monkeypatch.setattr(updater, "_MAX_DOWNLOAD_BYTES", 8)
+    monkeypatch.setattr(updater, "_MAX_JSON_BYTES", 8)
+    response = _Response(b"{}", length)
+    monkeypatch.setattr(updater.urllib.request, "urlopen", Mock(return_value=response))
+    target = tmp_path / "release.tar.gz"
+    with pytest.raises(RuntimeError):
+        if operation == "download":
+            updater._download("https://fixture.invalid/release", target)
+        else:
+            updater._http_json("https://fixture.invalid/release")
+    assert response.read_sizes == []
+    assert not target.exists()
+    assert response.closed
+
+
+@pytest.mark.parametrize("length", [None, "1", str(1024 * 1024)])
+@pytest.mark.parametrize("extra", [0, 1])
+def test_json_response_limit_is_one_mib(monkeypatch, length, extra):
+    body = b"{}" + b" " * (1024 * 1024 - 2 + extra)
+    response = _Response(body, length)
+    monkeypatch.setattr(updater.urllib.request, "urlopen", Mock(return_value=response))
+    if extra:
+        with pytest.raises(RuntimeError, match="too large"):
+            updater._http_json("https://fixture.invalid/release")
+    else:
+        assert updater._http_json("https://fixture.invalid/release") == {}
+    assert response.body.tell() == len(body)
+    assert response.read_sizes[-1] == 1
+    assert response.closed
+
+
 @pytest.mark.parametrize("name", ["../extracted-sibling/proof", "/tmp/proof", "server/../../proof"])
 def test_extract_rejects_escaping_paths(tmp_path, name):
     archive = tmp_path / "release.tar.gz"
-    with tarfile.open(archive, "w:gz") as tf:
+    with tarfile.open(archive, "w:gz", format=tarfile.USTAR_FORMAT) as tf:
         info = tarfile.TarInfo(name)
         info.size = 5
         tf.addfile(info, io.BytesIO(b"proof"))
@@ -100,7 +216,7 @@ def test_extract_rejects_escaping_paths(tmp_path, name):
 @pytest.mark.parametrize("kind", [tarfile.SYMTYPE, tarfile.LNKTYPE, tarfile.FIFOTYPE])
 def test_extract_rejects_links_and_special_files(tmp_path, kind):
     archive = tmp_path / "release.tar.gz"
-    with tarfile.open(archive, "w:gz") as tf:
+    with tarfile.open(archive, "w:gz", format=tarfile.USTAR_FORMAT) as tf:
         info = tarfile.TarInfo("server/link")
         info.type = kind
         info.linkname = "../../outside"
@@ -111,7 +227,7 @@ def test_extract_rejects_links_and_special_files(tmp_path, kind):
 
 def test_extract_accepts_release_layout_and_preserves_executable(tmp_path):
     archive = tmp_path / "release.tar.gz"
-    with tarfile.open(archive, "w:gz") as tf:
+    with tarfile.open(archive, "w:gz", format=tarfile.USTAR_FORMAT) as tf:
         info = tarfile.TarInfo("./scripts/inky-studio-cli")
         info.size, info.mode = 4, 0o4755
         tf.addfile(info, io.BytesIO(b"test"))
@@ -119,6 +235,134 @@ def test_extract_accepts_release_layout_and_preserves_executable(tmp_path):
     target = tmp_path / "extracted/scripts/inky-studio-cli"
     assert target.read_bytes() == b"test"
     assert target.stat().st_mode & 0o7777 == 0o755
+
+
+@pytest.mark.parametrize("archive_format", [tarfile.USTAR_FORMAT, tarfile.GNU_FORMAT])
+def test_extract_accepts_ordinary_ustar_and_gnu_archives(tmp_path, archive_format):
+    archive = tmp_path / "release.tar.gz"
+    with tarfile.open(archive, "w:gz", format=archive_format) as tf:
+        directory = tarfile.TarInfo("server")
+        directory.type = tarfile.DIRTYPE
+        tf.addfile(directory)
+        info = tarfile.TarInfo("server/main.py")
+        info.size = 4
+        tf.addfile(info, io.BytesIO(b"code"))
+    updater._safe_extract(archive, tmp_path / "extracted")
+    assert (tmp_path / "extracted/server/main.py").read_bytes() == b"code"
+
+
+@pytest.mark.parametrize(("count", "size", "accepted"), [(2, 4, True), (3, 0, False), (2, 5, False)])
+def test_extract_checks_member_and_total_size_budgets_before_extracting(
+    tmp_path, monkeypatch, count, size, accepted,
+):
+    monkeypatch.setattr(updater, "_MAX_ARCHIVE_MEMBERS", 2)
+    monkeypatch.setattr(updater, "_MAX_ARCHIVE_BYTES", 8)
+    archive = tmp_path / "release.tar.gz"
+    with tarfile.open(archive, "w:gz", format=tarfile.USTAR_FORMAT) as tf:
+        for index in range(count):
+            info = tarfile.TarInfo(f"file{index}")
+            info.size = size
+            tf.addfile(info, io.BytesIO(b"x" * size))
+    dest = tmp_path / "extracted"
+    if accepted:
+        updater._safe_extract(archive, dest)
+        assert [p.read_bytes() for p in sorted(dest.iterdir())] == [b"xxxx", b"xxxx"]
+    else:
+        with pytest.raises(RuntimeError, match="too large"):
+            updater._safe_extract(archive, dest)
+        assert not list(dest.iterdir())
+
+
+@pytest.mark.parametrize("kind", [
+    tarfile.XHDTYPE, tarfile.XGLTYPE, tarfile.SOLARIS_XHDTYPE,
+    tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK, tarfile.GNUTYPE_SPARSE,
+    tarfile.REGTYPE,
+])
+def test_extract_rejects_oversized_header_before_reading_its_body(tmp_path, monkeypatch, kind):
+    # Give tarfile only the raw header: the stream spy fails if parsing attempts
+    # to allocate/read an extension body or skip a too-large regular file.
+    info = tarfile.TarInfo("huge-metadata")
+    info.type = kind
+    info.size = updater._MAX_ARCHIVE_BYTES + 1
+    header = info.tobuf(format=tarfile.GNU_FORMAT)
+    read_sizes = []
+
+    class HeaderStream(io.BytesIO):
+        def read(self, size=-1):
+            read_sizes.append(size)
+            assert self.tell() == 0 and size == 512, "read beyond rejected header"
+            return super().read(size)
+
+    stream = HeaderStream(header)
+    real_open = tarfile.open
+    monkeypatch.setattr(updater.tarfile, "open", lambda *args, **kwargs: real_open(
+        fileobj=stream, mode="r:", tarinfo=kwargs["tarinfo"],
+    ))
+    reason = "too large" if kind == tarfile.REGTYPE else "Unsupported archive entry"
+    with pytest.raises(RuntimeError, match=reason):
+        updater._safe_extract(tmp_path / "unused.tar.gz", tmp_path / "extracted")
+    assert read_sizes == [512]
+    assert stream.tell() == 512
+    assert not list((tmp_path / "extracted").iterdir())
+
+
+@pytest.mark.parametrize("budget", ["members", "total_size"])
+def test_extract_checks_accumulated_budget_at_header_before_skipping_body(tmp_path, monkeypatch, budget):
+    first = tarfile.TarInfo("first")
+    first.size = 4
+    last = tarfile.TarInfo("last")
+    last.size = 5
+    raw = first.tobuf() + b"data" + b"\0" * 508 + last.tobuf()
+    monkeypatch.setattr(updater, "_MAX_ARCHIVE_MEMBERS", 1 if budget == "members" else 2)
+    monkeypatch.setattr(updater, "_MAX_ARCHIVE_BYTES", 8)
+    read_positions = []
+
+    class BudgetStream(io.BytesIO):
+        def read(self, size=-1):
+            read_positions.append(self.tell())
+            assert 0 < size <= 512 and self.tell() < len(raw), "read past over-budget header"
+            return super().read(size)
+
+        def seek(self, offset, whence=0):
+            assert whence == 0 and offset < len(raw), "skipped body of over-budget member"
+            return super().seek(offset, whence)
+
+    stream = BudgetStream(raw)
+    real_open = tarfile.open
+    monkeypatch.setattr(updater.tarfile, "open", lambda *args, **kwargs: real_open(
+        fileobj=stream, mode="r:", tarinfo=kwargs["tarinfo"],
+    ))
+    with pytest.raises(RuntimeError, match="too large"):
+        updater._safe_extract(tmp_path / "unused.tar.gz", tmp_path / "extracted")
+    assert read_positions == [0, 1023, 1024]
+    assert not list((tmp_path / "extracted").iterdir())
+
+
+@pytest.mark.parametrize(("kind", "size"), [(tarfile.REGTYPE, -1), (tarfile.DIRTYPE, 1)])
+def test_extract_rejects_invalid_sizes_from_header(tmp_path, kind, size):
+    info = tarfile.TarInfo("invalid")
+    info.type, info.size = kind, size
+    archive = tmp_path / "release.tar.gz"
+    archive.write_bytes(gzip.compress(info.tobuf(format=tarfile.GNU_FORMAT)))
+    with pytest.raises(RuntimeError, match="Invalid archive entry size"):
+        updater._safe_extract(archive, tmp_path / "extracted")
+    assert not list((tmp_path / "extracted").iterdir())
+
+
+@pytest.mark.parametrize("invalid", ["path", "link"])
+def test_extract_validates_whole_archive_before_writing_any_file(tmp_path, invalid):
+    archive = tmp_path / "release.tar.gz"
+    with tarfile.open(archive, "w:gz", format=tarfile.USTAR_FORMAT) as tf:
+        first = tarfile.TarInfo("valid-file")
+        first.size = 4
+        tf.addfile(first, io.BytesIO(b"code"))
+        last = tarfile.TarInfo("../invalid" if invalid == "path" else "invalid-link")
+        if invalid == "link":
+            last.type, last.linkname = tarfile.SYMTYPE, "valid-file"
+        tf.addfile(last)
+    with pytest.raises(RuntimeError):
+        updater._safe_extract(archive, tmp_path / "extracted")
+    assert not list((tmp_path / "extracted").iterdir())
 
 
 def test_restore_removes_added_files_but_preserves_runtime(tmp_path):
@@ -175,7 +419,7 @@ async def test_failed_pip_restores_code_and_reports_dependency_limit(tmp_path, m
         target.write_text("new")
     (payload / "client/dist/assets").mkdir()
     archive = tmp_path / "release.tar.gz"
-    with tarfile.open(archive, "w:gz") as tf:
+    with tarfile.open(archive, "w:gz", format=tarfile.USTAR_FORMAT) as tf:
         for child in payload.iterdir():
             tf.add(child, arcname=child.name)
     monkeypatch.setattr(updater, "_fetch_latest_release", lambda: {
@@ -256,7 +500,7 @@ async def test_direct_update_installs_matching_final_or_replaces_unversioned_dev
         target.write_text("final release fixture")
     (payload / "client/dist/assets").mkdir()
     archive = tmp_path / "release.tar.gz"
-    with tarfile.open(archive, "w:gz") as tf:
+    with tarfile.open(archive, "w:gz", format=tarfile.USTAR_FORMAT) as tf:
         for child in payload.iterdir():
             tf.add(child, arcname=child.name)
     monkeypatch.setattr(updater, "__version__", current)
@@ -301,3 +545,95 @@ async def test_missing_frontend_assets_is_rejected_before_backup_or_apply(tmp_pa
     backup.assert_not_called()
     apply.assert_not_called()
     assert "Incomplete release payload" in events[-1][1]
+
+
+@pytest.mark.parametrize("failure", ["json", "download", "archive_bytes", "archive_members", "extension"])
+async def test_resource_limit_failure_stops_update_before_mutations_and_cleans_up(
+    tmp_path, monkeypatch, failure,
+):
+    install = tmp_path / "install"
+    install.mkdir()
+    current = install / "VERSION"
+    current.write_text("existing version")
+    temporary = tmp_path / "update-temp"
+    temporary.mkdir()
+    monkeypatch.setattr(updater.tempfile, "mkdtemp", lambda **kwargs: str(temporary))
+    monkeypatch.setattr(updater, "__version__", "0.5.0")
+    if failure == "json":
+        monkeypatch.setattr(updater, "_MAX_JSON_BYTES", 8)
+        response = _Response(b" " * 9)
+    else:
+        monkeypatch.setattr(updater, "_fetch_latest_release", lambda: {
+            "tag_name": "v9", "assets": [{
+                "name": "release.tar.gz", "browser_download_url": "https://fixture.invalid/release",
+            }],
+        })
+        if failure == "download":
+            monkeypatch.setattr(updater, "_MAX_DOWNLOAD_BYTES", 8)
+            response = _Response(b"x" * 9)
+        else:
+            info = tarfile.TarInfo("entry")
+            if failure == "archive_bytes":
+                info.size = updater._MAX_ARCHIVE_BYTES + 1
+            elif failure == "extension":
+                info.type = tarfile.XHDTYPE
+                info.size = updater._MAX_ARCHIVE_BYTES + 1
+            raw = info.tobuf(format=tarfile.GNU_FORMAT)
+            if failure == "archive_members":
+                monkeypatch.setattr(updater, "_MAX_ARCHIVE_MEMBERS", 1)
+                raw += tarfile.TarInfo("second").tobuf()
+            response = _Response(gzip.compress(raw))
+    monkeypatch.setattr(updater.urllib.request, "urlopen", Mock(return_value=response))
+    backup, apply, restore = Mock(), Mock(), Mock()
+    pip, restart = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(updater, "_backup_current", backup)
+    monkeypatch.setattr(updater, "_apply", apply)
+    monkeypatch.setattr(updater, "_restore", restore)
+    monkeypatch.setattr(updater, "_run_streaming", pip)
+    monkeypatch.setattr(updater.asyncio, "create_subprocess_exec", restart)
+    events = []
+    assert not await updater.perform_update(lambda *args, **kwargs: events.append(args), install_dir=install)
+    for operation in (backup, apply, restore, pip, restart):
+        operation.assert_not_called()
+    assert current.read_text() == "existing version"
+    assert not temporary.exists()
+    assert events[-1][0] == "error"
+    assert response.closed
+
+
+async def test_valid_release_at_exact_resource_limits_is_installed(tmp_path, monkeypatch):
+    install = tmp_path / "install"
+    install.mkdir()
+    archive = io.BytesIO()
+    names = ("server/pyproject.toml", "server/inky_web/main.py", "client/dist/index.html")
+    with tarfile.open(fileobj=archive, mode="w:gz", format=tarfile.USTAR_FORMAT) as tf:
+        for name in names:
+            info = tarfile.TarInfo(name)
+            info.size = 4
+            tf.addfile(info, io.BytesIO(b"code"))
+        directory = tarfile.TarInfo("client/dist/assets")
+        directory.type = tarfile.DIRTYPE
+        tf.addfile(directory)
+    packed = archive.getvalue()
+    monkeypatch.setattr(updater, "_MAX_DOWNLOAD_BYTES", len(packed))
+    monkeypatch.setattr(updater, "_MAX_ARCHIVE_BYTES", 12)
+    monkeypatch.setattr(updater, "_MAX_ARCHIVE_MEMBERS", 4)
+    monkeypatch.setattr(updater, "_fetch_latest_release", lambda: {
+        "tag_name": "v9", "assets": [{
+            "name": "release.tar.gz", "browser_download_url": "https://fixture.invalid/release",
+        }],
+    })
+    response = _Response(packed, str(len(packed)))
+    monkeypatch.setattr(updater.urllib.request, "urlopen", Mock(return_value=response))
+    pip = AsyncMock(return_value=0)
+    monkeypatch.setattr(updater, "_run_streaming", pip)
+    process = Mock(returncode=0, communicate=AsyncMock(return_value=(b"", b"")))
+    restart = AsyncMock(return_value=process)
+    monkeypatch.setattr(updater.asyncio, "create_subprocess_exec", restart)
+    events = []
+    assert await updater.perform_update(lambda *args, **kwargs: events.append(args), install_dir=install)
+    assert all((install / name).read_bytes() == b"code" for name in names)
+    assert (install / "client/dist/assets").is_dir()
+    pip.assert_awaited_once()
+    restart.assert_awaited_once()
+    assert events[-1][0] == "restarting"
