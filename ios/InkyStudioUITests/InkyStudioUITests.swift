@@ -96,7 +96,25 @@ final class InkyStudioUITests: XCTestCase {
         // Seed the simulator with scripts/seed-simulator-photo.py before this suite.
         let selectedPhoto = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
         XCTAssertTrue(selectedPhoto.waitForExistence(timeout: 15), "PhotosPicker needs a seeded simulator photo.\n\(app.debugDescription)")
-        selectedPhoto.tap()
+        // PhotosPicker's AX tap may attempt scrolling and report {-1,-1} for a
+        // visibly present thumbnail. Use its observed frame, as for native tabs.
+        let window = app.windows.firstMatch
+        let viewport = window.frame
+        let photoFrame = selectedPhoto.frame
+        let photoCenter = CGPoint(x: photoFrame.midX, y: photoFrame.midY)
+        // AX may round an edge a few millionths of a point outside the window.
+        // Bound that noise to 0.001 pt; the actual tap must remain strictly inside.
+        guard photoFrame.width > 0, photoFrame.height > 0,
+              viewport.insetBy(dx: -0.001, dy: -0.001).contains(photoFrame),
+              viewport.contains(photoCenter) else {
+            let windowFrames = app.windows.allElementsBoundByIndex.prefix(6).map { $0.frame }
+            let photoFrames = app.images.matching(identifier: "PXGGridLayout-Info")
+                .allElementsBoundByIndex.prefix(8).map { $0.frame }
+            XCTFail("The seeded PhotosPicker thumbnail must have a valid frame fully within the viewport. photo=\(photoFrame), viewport=\(viewport), windows=\(windowFrames), thumbnails=\(photoFrames)")
+            return
+        }
+        window.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: photoCenter.x - viewport.minX, dy: photoCenter.y - viewport.minY)).tap()
         let upload = app.buttons["upload-photo"]
         XCTAssertTrue(upload.waitForExistence(timeout: 15), "Selecting a native Photos item must open the crop view.")
         let zoom = app.sliders["Zoom de la photo"]
