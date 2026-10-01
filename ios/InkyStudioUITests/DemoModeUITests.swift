@@ -8,7 +8,8 @@ final class DemoModeUITests: XCTestCase {
     private func launch(largeText: Bool = false) {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR"]
+        // Clear the frame left by other UI tests; enter the demo through its public button.
+        app.launchArguments = ["--uitesting", "-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR"]
         if largeText {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
