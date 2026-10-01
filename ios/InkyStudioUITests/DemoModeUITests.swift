@@ -61,8 +61,15 @@ final class DemoModeUITests: XCTestCase {
         XCTAssertFalse(app.buttons["settings.password"].exists)
         capture("06 Réglages démo")
         app.buttons["Quotidien"].tap()
-        scrollTo(app.buttons["settings.save"])
-        app.buttons["settings.save"].tap()
+        let saveSettings = app.buttons["settings.save"]
+        scrollTo(saveSettings)
+        XCTAssertTrue(saveSettings.isEnabled)
+        saveSettings.tap()
+        XCTAssertTrue(app.staticTexts["Réglages enregistrés pour cette démo uniquement."].waitForExistence(timeout: 5))
+        selectTab("Cadre")
+        selectTab("Réglages")
+        scrollTo(app.buttons["Quotidien"], up: true)
+        XCTAssertTrue(app.buttons["Quotidien"].isSelected)
         scrollTo(app.buttons["demo.reset"], up: true)
         app.buttons["demo.reset"].tap()
         app.buttons["Effacer les essais"].tap()
@@ -84,7 +91,7 @@ final class DemoModeUITests: XCTestCase {
         app.buttons["connection.guide"].tap()
         XCTAssertTrue(app.buttons["guide.close"].waitForExistence(timeout: 5))
         capture("07 Premiers pas grand texte")
-        scrollTo(app.buttons["guide.connect"])
+        scrollTo(app.buttons["guide.connect"], maxGestures: 60)
         capture("08 Guide et aide grand texte")
         app.buttons["guide.connect"].tap()
         scrollTo(app.buttons["connection.demo"], up: true)
@@ -107,12 +114,24 @@ final class DemoModeUITests: XCTestCase {
         XCTAssertTrue(tab.waitForExistence(timeout: 5))
         tab.tap()
     }
-    private func scrollTo(_ element: XCUIElement, up: Bool = false) {
-        for _ in 0..<12 {
+    private func scrollTo(_ element: XCUIElement, up: Bool = false, maxGestures: Int = 20) {
+        let identifier = element.identifier.isEmpty ? element.label : element.identifier
+        let scrollView = app.scrollViews.containing(element.elementType, identifier: identifier).firstMatch
+        XCTAssertTrue(scrollView.waitForExistence(timeout: 5))
+        for _ in 0..<maxGestures {
             if element.exists && element.isHittable { return }
-            if up { app.swipeDown() } else { app.swipeUp() }
+            var towardsTop = up
+            if element.exists && !element.frame.isEmpty {
+                if element.frame.midY < scrollView.frame.minY { towardsTop = true }
+                else if element.frame.midY > scrollView.frame.maxY { towardsTop = false }
+            }
+            // Short, slow drags settle before the next query and avoid skipping the target.
+            let start = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: towardsTop ? 0.45 : 0.70))
+            let end = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: towardsTop ? 0.70 : 0.45))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
         }
-        XCTAssertTrue(element.exists && element.isHittable, "Element inaccessible: \(element)")
+        XCTAssertTrue(element.exists, "Element absent: \(element)")
+        XCTAssertTrue(element.isHittable, "Element inaccessible: \(element)")
     }
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())

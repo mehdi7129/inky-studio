@@ -18,4 +18,5 @@
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 <!-- Mbed TLS adds bundled encryption. Answer the App Store Connect export
      questionnaire for this build; do not reuse the former OS-only declaration. -->
+<key>ITSAppUsesNonExemptEncryption</key><true/>
 </dict></plist>
