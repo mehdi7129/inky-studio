@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile
 
 from inky_web.models import QueueEntry, ReorderRequest, UploadResponse
 from inky_web.services import photos, queue
@@ -55,11 +55,12 @@ async def add_to_queue(
 
 
 @router.delete("/{photo_id}", status_code=204)
-async def remove_from_queue(request: Request, photo_id: str) -> None:
+async def remove_from_queue(request: Request, photo_id: str) -> Response:
     removed = queue.remove(photo_id)
     if not removed:
         raise HTTPException(status_code=404, detail="Not in queue")
     request.app.state.bus.broadcast("queue_updated", {"action": "removed", "photo_id": photo_id})
+    return Response(status_code=204)
 
 
 @router.post("/reorder", response_model=list[QueueEntry])

@@ -226,6 +226,50 @@ def test_dual_listeners_tls13_share_session_and_exit_on_sigterm(tmp_path):
 
 
 @pytest.mark.parametrize("protocol", ["http", "https"])
+@pytest.mark.parametrize("framing", ["declared", "chunked"])
+def test_listeners_reject_oversized_body_without_waiting_for_remainder(tmp_path, protocol, framing):
+    from inky_web.body_limit import MAX_REQUEST_BODY_BYTES
+
+    directory = tmp_path / "frame"
+    with _frame(directory) as process:
+        ports = _listeners(process, directory)
+        connection = http.client.HTTPConnection("127.0.0.1", ports[protocol], timeout=5)
+        if protocol == "https":
+            identity = load_or_create_identity(directory / "provisioning")
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            context.load_verify_locations(cadata=identity.cert_pem.decode())
+            connection.sock = context.wrap_socket(
+                socket.create_connection(("127.0.0.1", ports[protocol]), timeout=5),
+                server_hostname=identity.server_name,
+            )
+        try:
+            # Login is public, but its JSON parser is protected by the same cap.
+            connection.putrequest("POST", "/api/auth/login")
+            connection.putheader("Content-Type", "application/json")
+            connection.putheader("Origin", "http://localhost:5273")
+            if framing == "declared":
+                connection.putheader("Content-Length", str(MAX_REQUEST_BODY_BYTES + 1))
+                connection.endheaders()
+                # Do not send any body: the response must arrive from headers alone.
+            else:
+                connection.putheader("Transfer-Encoding", "chunked")
+                connection.endheaders()
+                chunk = b" " * (1024 * 1024)
+                for _ in range(MAX_REQUEST_BODY_BYTES // len(chunk)):
+                    connection.send(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
+                connection.send(b"1\r\nx\r\n")
+                # Deliberately omit the final zero chunk: the app must not drain.
+            response = connection.getresponse()
+            assert response.status == 413
+            assert response.getheader("Connection").lower() == "close"
+            assert response.getheader("Access-Control-Allow-Origin") == "http://localhost:5273"
+            assert json.loads(response.read()) == {"detail": "Requête trop volumineuse (limite : 11 Mio)"}
+        finally:
+            connection.close()
+        assert _request(ports["http"], "/api/auth/status")[0] == 200
+
+
+@pytest.mark.parametrize("protocol", ["http", "https"])
 def test_listener_bind_failure_is_nonzero_and_closes_lifespan(tmp_path, protocol):
     directory = tmp_path / "frame"
     with socket.socket() as occupied:

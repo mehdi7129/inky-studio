@@ -15,10 +15,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from inky_web import __version__, auth
 from inky_web.api import router as api_router
+from inky_web.body_limit import BodyLimitMiddleware, body_limit_http_exception_handler
 from inky_web.db import data_dir, init_db
 from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
@@ -31,34 +33,37 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 CLIENT_DIST = Path(__file__).resolve().parents[2] / "client" / "dist"
 
 
-class AuthMiddleware(BaseHTTPMiddleware):
+class AuthMiddleware:
     """Block unauthenticated requests to /api/* (with a few public exceptions)."""
 
-    async def dispatch(self, request: Request, call_next):
-        if auth.auth_disabled():
-            return await call_next(request)
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
 
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or auth.auth_disabled():
+            await self.app(scope, receive, send)
+            return
+
+        # Pure ASGI avoids BaseHTTPMiddleware's response-time body reads in
+        # older Starlette versions, which would bypass the ingress limit.
+        request = Request(scope)
         path = request.url.path
-        if not path.startswith("/api"):
-            return await call_next(request)
-        if path in auth.PUBLIC_PATHS:
-            return await call_next(request)
-        if path == CONFIRM_PATH:
-            # Strict HTTPS + owner authentication is performed inside the route.
-            return await call_next(request)
-        # WebSocket auth is checked separately inside the route — Starlette doesn't
-        # pass WS through HTTP middleware uniformly across versions, so we no-op here.
-        if path == "/api/ws":
-            return await call_next(request)
+        if not path.startswith("/api") or path in auth.PUBLIC_PATHS or path in {CONFIRM_PATH, "/api/ws"}:
+            # Confirm performs strict HTTPS + owner authentication in its route;
+            # WebSocket authentication is also checked by the endpoint itself.
+            await self.app(scope, receive, send)
+            return
 
         sessions = request.app.state.sessions
         token = auth.get_session_token(request)
         if not sessions.validate(token):
-            return JSONResponse(
+            response = JSONResponse(
                 {"detail": "Authentification requise"},
                 status_code=401,
             )
-        return await call_next(request)
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
 
 
 @asynccontextmanager
@@ -141,6 +146,8 @@ async def validation_error(request: Request, exc: RequestValidationError):
     return await request_validation_exception_handler(request, exc)
 
 
+app.add_exception_handler(StarletteHTTPException, body_limit_http_exception_handler)
+app.add_middleware(BodyLimitMiddleware)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(
     CORSMiddleware,

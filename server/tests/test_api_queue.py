@@ -48,6 +48,7 @@ def test_delete_removes_entry(client, png_factory):
     photo_id = upload["photo"]["id"]
     response = client.delete(f"/api/queue/{photo_id}")
     assert response.status_code == 204
+    assert response.content == b""
     assert client.get("/api/queue").json() == []
 
 

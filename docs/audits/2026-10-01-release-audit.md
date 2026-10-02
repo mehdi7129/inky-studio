@@ -42,6 +42,11 @@ Les parcours relus utilisent PhotosPicker, une permission caméra contextuelle e
 
 Ces limites proviennent des rapports du 26 septembre ; elles ne sont pas présentées comme de nouvelles régressions.
 
+Suivi daté : les corrections des limites HTTP et updater, ainsi que leur
+validation et leurs réserves, sont décrites dans le
+[rapport du 2 octobre](2026-10-02-resource-limits.md). Le tableau ci-dessous
+conserve l'état observé lors de cet audit du 1 octobre.
+
 | Niveau / scope | Limite restante |
 | --- | --- |
 | P2 — HTTP ingress | Le cap upload intervient après parsing/spooling multipart ; aucun plafond global de body. Téléchargement compressé updater et allocation initiale des metadata de l'archive encore non plafonnés. |
