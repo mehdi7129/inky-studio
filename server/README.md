@@ -44,7 +44,7 @@ and HTTPS. Authentication still runs first for protected routes.
 
 The release updater limits downloaded archives to **64 MiB**, release API JSON
 to **1 MiB**, and archive contents to **10,000 headers / 512 MiB of file data**.
-Archive limits are checked while parsing each fixed-size header, before
+Archive limits are checked immediately after each fixed-size header, before
 extension metadata can be read. Downloads are counted even without a truthful
 `Content-Length`; incomplete downloads are removed.
 

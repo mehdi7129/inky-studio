@@ -278,7 +278,25 @@ def test_extract_checks_member_and_total_size_budgets_before_extracting(
     tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK, tarfile.GNUTYPE_SPARSE,
     tarfile.REGTYPE,
 ])
-def test_extract_rejects_oversized_header_before_reading_its_body(tmp_path, monkeypatch, kind):
+@pytest.mark.parametrize("parser_dispatch", ["runtime", "bypass_public_frombuf"])
+def test_extract_rejects_oversized_header_before_reading_its_body(
+    tmp_path, monkeypatch, kind, parser_dispatch,
+):
+    if parser_dispatch == "bypass_public_frombuf":
+        # Recent CPython uses _frombuf internally instead of the public
+        # frombuf override. Exercise that bypass on older interpreters too,
+        # retaining the standard post-header member-processing dispatch.
+        base_frombuf = tarfile.TarInfo.frombuf.__func__
+
+        @classmethod
+        def from_base_header(cls, archive):
+            buf = archive.fileobj.read(tarfile.BLOCKSIZE)
+            member = base_frombuf(cls, buf, archive.encoding, archive.errors)
+            member.offset = archive.fileobj.tell() - tarfile.BLOCKSIZE
+            return member._proc_member(archive)
+
+        monkeypatch.setattr(tarfile.TarInfo, "fromtarfile", from_base_header)
+
     # Give tarfile only the raw header: the stream spy fails if parsing attempts
     # to allocate/read an extension body or skip a too-large regular file.
     info = tarfile.TarInfo("huge-metadata")

@@ -184,21 +184,21 @@ def _safe_extract(tarball: Path, dest: Path) -> None:
     total_size = 0
 
     class ReleaseTarInfo(tarfile.TarInfo):
-        @classmethod
-        def frombuf(cls, buf: bytes, encoding: str, errors: str) -> tarfile.TarInfo:
+        def _proc_member(self, archive: tarfile.TarFile) -> tarfile.TarInfo:
             nonlocal member_count, total_size
-            member = super().frombuf(buf, encoding, errors)
-            # frombuf only parses one fixed 512-byte header. Reject extension
-            # types before _proc_member can allocate/read their metadata body.
-            if member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE):
-                raise RuntimeError(f"Unsupported archive entry: {member.name}")
-            if member.size < 0 or (member.isdir() and member.size != 0):
-                raise RuntimeError(f"Invalid archive entry size: {member.name}")
+            # Both old and current Python dispatch here after the fixed header,
+            # before reading extension metadata or skipping the member body.
+            # Recent tarfile versions parse through _frombuf, bypassing an
+            # override of the public frombuf method.
+            if self.type not in (tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE):
+                raise RuntimeError(f"Unsupported archive entry: {self.name}")
+            if self.size < 0 or (self.isdir() and self.size != 0):
+                raise RuntimeError(f"Invalid archive entry size: {self.name}")
             member_count += 1
-            total_size += member.size
+            total_size += self.size
             if member_count > _MAX_ARCHIVE_MEMBERS or total_size > _MAX_ARCHIVE_BYTES:
                 raise RuntimeError("Release archive is too large")
-            return member
+            return super()._proc_member(archive)
 
     dest.mkdir(parents=True, exist_ok=True)
     dest_resolved = dest.resolve()
