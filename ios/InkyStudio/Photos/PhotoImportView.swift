@@ -132,6 +132,7 @@ struct PhotoImportView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var store: AppStore
     @StateObject private var model = PhotoImportModel()
     @State private var selection: PhotosPickerItem?
@@ -187,6 +188,11 @@ struct PhotoImportView: View {
                                 .padding(.horizontal, 16)
                                 .accessibilityIdentifier("photo-import-error")
                         }
+                        // At accessibility sizes the fixed action and its caption
+                        // would cover the crop controls. Keep the whole flow scrollable.
+                        if model.photo != nil && dynamicTypeSize.isAccessibilitySize {
+                            uploadBar
+                        }
                     }
                     .padding(.bottom, 20)
                 }
@@ -222,7 +228,7 @@ struct PhotoImportView: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if model.photo != nil { uploadBar }
+                if model.photo != nil && !dynamicTypeSize.isAccessibilitySize { uploadBar }
             }
         }
         .tint(accent)

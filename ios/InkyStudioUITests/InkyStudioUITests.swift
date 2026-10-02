@@ -276,16 +276,27 @@ final class InkyStudioUITests: XCTestCase {
         let camera = app.buttons["take-photo"]
         XCTAssertTrue(camera.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["choose-photo"].exists)
+        capture("07a Sources de photo")
         camera.tap()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         // Some Simulator runtimes expose a camera. Permission belongs to the
         // system application; never assume the source is universally absent.
-        if springboard.alerts.firstMatch.waitForExistence(timeout: 3) {
-            let deny = springboard.alerts.buttons.matching(NSPredicate(format: "label IN %@", ["Ne pas autoriser", "Don’t Allow", "Don't Allow"])).firstMatch
+        let cameraPermission = springboard.alerts.matching(NSPredicate(format: "label CONTAINS[cd] %@", "camera")).firstMatch
+        let cameraIssue = app.alerts.firstMatch
+        // Camera permission can arrive after several seconds on a busy runtime.
+        // Wait for either outcome together so an unavailable-camera alert does
+        // not incur the whole system-permission timeout.
+        let outcome = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            cameraIssue.exists || cameraPermission.exists
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [outcome], timeout: 20), .completed,
+                       "Taking a photo must show either camera permission or an actionable camera alert.")
+        if cameraPermission.exists {
+            let deny = cameraPermission.buttons.matching(NSPredicate(format: "label IN %@", ["Ne pas autoriser", "Don’t Allow", "Don't Allow"])).firstMatch
             XCTAssertTrue(deny.exists)
             deny.tap()
         }
-        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(cameraIssue.waitForExistence(timeout: 5))
         capture("07 Appareil photo — permission ou indisponibilité")
         let later = app.alerts.buttons["Plus tard"]
         if later.exists { later.tap() } else { app.alerts.buttons["Annuler"].tap() }

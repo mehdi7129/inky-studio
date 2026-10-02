@@ -171,14 +171,17 @@ final class DemoModeUITests: XCTestCase {
 
         let zoom = app.sliders["Zoom de la photo"]
         XCTAssertTrue(zoom.waitForExistence(timeout: 5))
+        capture("16a Aperçu du cadrage grand texte")
         scrollTo(zoom)
         zoom.adjust(toNormalizedSliderPosition: 0.15)
-        capture("16 Cadrage grand texte")
+        capture("16b Réglages du cadrage grand texte")
         scrollTo(app.buttons["Réinitialiser"])
         app.buttons["Réinitialiser"].tap()
         let upload = app.buttons["upload-photo"]
+        scrollTo(upload)
         XCTAssertTrue(upload.isHittable)
         XCTAssertTrue(upload.isEnabled)
+        capture("16c Ajouter à la file grand texte")
         upload.tap()
         XCTAssertTrue(upload.waitForNonExistence(timeout: 10))
         selectTab("File")
