@@ -14,14 +14,14 @@ struct HistoryView: View {
                         .listRowBackground(Color.clear).listRowSeparator(.hidden)
                 }
                 ForEach(days, id: \.self) { day in
-                    Section(dayLabel(day)) {
+                    Section {
                         ForEach(store.history.filter { Calendar.current.isDate(Date(timeIntervalSince1970: $0.displayedAt), inSameDayAs: day) }) { entry in
                             VStack(alignment: .leading, spacing: 12) {
                                 rowLayout {
                                     FramePhoto(photo: entry.photo, accessibilityDescription: "Photo affichée le \(Date(timeIntervalSince1970: entry.displayedAt).formatted(date: .abbreviated, time: .shortened))")
                                         .frame(width: dynamicTypeSize.isAccessibilitySize ? nil : 112)
                                     VStack(alignment: .leading, spacing: 6) {
-                                        Text("Affichée à").font(.caption).foregroundStyle(.secondary)
+                                        Text("Affichée à").font(.caption).foregroundStyle(Bento.secondaryInk)
                                         Text(Date(timeIntervalSince1970: entry.displayedAt), style: .time).font(.headline)
                                     }
                                 }
@@ -29,7 +29,10 @@ struct HistoryView: View {
                                     .buttonStyle(OutlineButtonStyle()).disabled(!store.canMutate).accessibilityIdentifier("history.requeue.\(entry.id)")
                             }.padding(.vertical, 8).swipeActions { Button("Supprimer", role: .destructive) { deleting = entry }.disabled(!store.canMutate) }
                         }
-                    }.listRowBackground(Bento.surface)
+                    } header: {
+                        Text(dayLabel(day)).foregroundStyle(Bento.secondaryInk)
+                    }
+                    .listRowBackground(Bento.surface)
                 }
                 if store.hasMoreHistory {
                     Button { Task { await store.loadMoreHistory() } } label: {

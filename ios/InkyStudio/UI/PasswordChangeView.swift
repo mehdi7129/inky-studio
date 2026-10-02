@@ -28,16 +28,21 @@ struct PasswordChangeView: View {
                         Button("Terminer") { dismiss() }.buttonStyle(PrimaryButtonStyle())
                     } else {
                         Text("Ce mot de passe protège l’accès à votre cadre.")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Bento.secondaryInk)
                         VStack(alignment: .leading, spacing: 16) {
                             passwordField("Mot de passe actuel", value: $current, type: .password, field: .current)
                             passwordField("Nouveau mot de passe", value: $new, type: .newPassword, field: .new)
                             passwordField("Confirmer le mot de passe", value: $confirmation, type: .newPassword, field: .confirmation)
                             Text("8 à 64 caractères. Vous pouvez utiliser une phrase de passe.")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(Bento.secondaryInk)
+                            if !new.isEmpty && new == current {
+                                Text("Choisissez un mot de passe différent du mot de passe actuel.")
+                                    .font(.caption).foregroundStyle(Bento.danger)
+                                    .accessibilityIdentifier("password.unchanged")
+                            }
                             if !confirmation.isEmpty && new != confirmation {
                                 Text("Les nouveaux mots de passe ne correspondent pas.")
-                                    .font(.caption).foregroundStyle(.red)
+                                    .font(.caption).foregroundStyle(Bento.danger)
                             }
                         }.bentoCard()
                         if store.biometricEnabled {
@@ -45,10 +50,10 @@ struct PasswordChangeView: View {
                                 .font(.subheadline).bentoCard()
                         }
                         Text("Les autres connexions au cadre seront fermées. Le mot de passe du Wi-Fi reste inchangé.")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                            .font(.subheadline).foregroundStyle(Bento.secondaryInk)
                         if let failure {
                             Label(failure, systemImage: "exclamationmark.circle")
-                                .font(.subheadline).foregroundStyle(.red)
+                                .font(.subheadline).foregroundStyle(Bento.danger)
                                 .accessibilityIdentifier("password.error")
                         }
                         Button(action: save) {

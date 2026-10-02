@@ -180,7 +180,7 @@ struct PhotoImportView: View {
                         if let error = model.errorMessage {
                             Label(error, systemImage: "exclamationmark.circle")
                                 .font(.callout)
-                                .foregroundStyle(.red)
+                                .foregroundStyle(Bento.danger)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(16)
                                 .background(Bento.surface, in: RoundedRectangle(cornerRadius: 16))
@@ -298,20 +298,14 @@ struct PhotoImportView: View {
                 }
                 Button(action: takePhoto) {
                     Label("Prendre une photo", systemImage: "camera")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(Bento.ink, in: RoundedRectangle(cornerRadius: 14))
-                        .foregroundStyle(Bento.actionText)
                 }
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(!validPanel || isRequestingCamera)
                 .accessibilityIdentifier("take-photo")
                 Button(action: choosePhoto) {
                     Label("Choisir dans Photos", systemImage: "photo.on.rectangle")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(Bento.surface, in: RoundedRectangle(cornerRadius: 14))
-                        .foregroundStyle(Bento.ink)
                 }
+                .buttonStyle(OutlineButtonStyle())
                 .disabled(!validPanel || isRequestingCamera)
                 .accessibilityIdentifier("choose-photo")
             }
@@ -455,14 +449,11 @@ struct PhotoImportView: View {
                         Text(store.isDemo ? "Ajouter à la démo" : "Ajouter à la file")
                     }
                 }
-                .font(.body.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .foregroundStyle(Bento.actionText)
-                .background(Bento.ink, in: RoundedRectangle(cornerRadius: 14))
             }
+            .buttonStyle(PrimaryButtonStyle())
             .disabled(model.isUploading || !validPanel || viewportSize.width <= 0)
             .accessibilityIdentifier("upload-photo")
-            Text(store.isDemo ? "Uniquement sur cet iPhone · aucun envoi au cadre." : "Elle sera affichée à son tour.")
+            Text(store.isDemo ? "Uniquement sur cet iPhone · aucun envoi au cadre." : "Affichage avec Suivante ou selon votre programmation.")
                 .font(.footnote).foregroundStyle(secondary)
         }
         .padding(.horizontal, 16)

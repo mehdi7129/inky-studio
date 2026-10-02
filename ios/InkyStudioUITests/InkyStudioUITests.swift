@@ -324,13 +324,32 @@ final class InkyStudioUITests: XCTestCase {
         scrollTo(change)
         XCTAssertTrue(change.isHittable)
         change.tap()
-        for (field, value) in [("current", "test-password"), ("new", "my-new-frame-password"), ("confirmation", "my-new-frame-password")] {
+        XCTAssertTrue(app.secureTextFields["password.current"].waitForExistence(timeout: 5))
+        capture("08a Changer le mot de passe")
+        for field in ["current", "new", "confirmation"] {
             let input = app.secureTextFields["password.\(field)"]
             XCTAssertTrue(input.waitForExistence(timeout: 5))
-            input.tap(); input.typeText(value)
+            input.tap(); input.typeText("test-password")
         }
         let save = app.buttons["password.save"]
+        let unchanged = app.staticTexts["password.unchanged"]
+        XCTAssertTrue(unchanged.waitForExistence(timeout: 5))
+        XCTAssertFalse(save.isEnabled, "Keeping the same password must explain why saving is unavailable.")
+        // The keyboard's Done action must obey the same validation as the button.
+        app.secureTextFields["password.confirmation"].typeText("\n")
+        XCTAssertFalse(app.staticTexts["password.success"].exists)
+        XCTAssertFalse(app.staticTexts["password.error"].exists)
+        scrollTo(unchanged)
+        capture("08b Mot de passe identique expliqué")
+        for field in ["new", "confirmation"] {
+            let input = app.secureTextFields["password.\(field)"]
+            input.tap()
+            input.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "test-password".count))
+            input.typeText("my-new-frame-password")
+        }
+        XCTAssertFalse(unchanged.exists)
         scrollTo(save)
+        XCTAssertTrue(save.isEnabled)
         save.tap()
         XCTAssertTrue(app.staticTexts["password.success"].waitForExistence(timeout: 10))
         capture("08 Mot de passe personnalisé")

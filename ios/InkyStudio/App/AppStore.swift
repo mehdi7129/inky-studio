@@ -161,7 +161,7 @@ final class AppStore: ObservableObject {
                     try? vault.remove(address: oldAccount)
                 }
             } else {
-                notice = "Le cadre est connecté. Utilise son mot de passe habituel pour ouvrir tes photos."
+                notice = "Le cadre est connecté. Utilisez son mot de passe habituel pour retrouver vos photos."
             }
         } catch { handle(error) }
     }

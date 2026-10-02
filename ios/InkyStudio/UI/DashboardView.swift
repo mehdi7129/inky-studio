@@ -12,10 +12,10 @@ struct DashboardView: View {
                         .font(.caption).foregroundStyle(store.connected ? Bento.success : Bento.secondaryInk)
                     if let current = store.state?.current {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Sur le cadre").font(.subheadline).foregroundStyle(.secondary)
+                            Text("Sur le cadre").font(.subheadline).foregroundStyle(Bento.secondaryInk)
                             FramePhoto(photo: current.photo, accessibilityDescription: "Photo actuellement affichée sur le cadre")
-                            Text("Affichée \(Date(timeIntervalSince1970: current.displayedAt).formatted(date: .abbreviated, time: .shortened))")
-                                .font(.caption).foregroundStyle(.secondary)
+                            Text("Affichée le \(Date(timeIntervalSince1970: current.displayedAt).formatted(date: .abbreviated, time: .shortened))")
+                                .font(.caption).foregroundStyle(Bento.secondaryInk)
                             displayControls
                         }.bentoCard()
                     } else {
@@ -28,22 +28,22 @@ struct DashboardView: View {
                     summaryLayout {
                         VStack(alignment: .leading, spacing: 10) {
                             Image(systemName: "clock").font(.title2).foregroundStyle(Bento.amber)
-                            Text("Prochain changement").font(.caption).foregroundStyle(.secondary)
+                            Text("Prochain changement").font(.caption).foregroundStyle(Bento.secondaryInk)
                             Text(nextChange).font(.headline)
-                        }.bentoCard().frame(maxWidth: .infinity, alignment: .topLeading)
+                        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).bentoCard()
                         VStack(alignment: .leading, spacing: 10) {
                             Image(systemName: "square.stack").font(.title2).foregroundStyle(Bento.blue)
-                            Text("À suivre").font(.caption).foregroundStyle(.secondary)
+                            Text("À suivre").font(.caption).foregroundStyle(Bento.secondaryInk)
                             Text("\(store.queue.count) photo\(store.queue.count == 1 ? "" : "s")").font(.headline)
-                        }.bentoCard().frame(maxWidth: .infinity, alignment: .topLeading)
+                        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).bentoCard()
                     }
                     Button { importing = true } label: { Label("Ajouter une photo", systemImage: "plus") }
                         .buttonStyle(PrimaryButtonStyle()).disabled(!store.canMutate || store.state == nil).accessibilityIdentifier("frame.add")
                     if store.isDemo {
                         Text("Essayez les commandes et ajoutez une image. L’affichage est simulé ; rien n’est envoyé à un Raspberry.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Bento.secondaryInk)
                     } else if store.state?.display.isMock == true {
-                        Label("Écran de démonstration", systemImage: "desktopcomputer").font(.caption).foregroundStyle(.secondary)
+                        Label("Écran de démonstration", systemImage: "desktopcomputer").font(.caption).foregroundStyle(Bento.secondaryInk)
                     }
                 }.padding(16).frame(maxWidth: 680).frame(maxWidth: .infinity)
             }.contentMargins(.bottom, 24, for: .scrollContent)

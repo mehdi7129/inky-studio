@@ -33,14 +33,19 @@ struct RootView: View {
                                 Image(systemName: "wifi.slash")
                                 Text("Raspberry injoignable · données précédentes").font(.caption)
                                 Spacer()
-                                Button("Réessayer") { Task { await store.refresh() } }.font(.caption.weight(.semibold))
+                                Button { Task { await store.refresh() } } label: {
+                                    Text("Réessayer").font(.caption.weight(.semibold))
+                                        .frame(minHeight: 44).contentShape(Rectangle())
+                                }
                             }.padding(12).background(Color.orange.opacity(0.12))
                         }
                         if let message = store.errorMessage {
                             HStack(alignment: .top) {
                                 Text(message).font(.caption).fixedSize(horizontal: false, vertical: true)
                                 Spacer(minLength: 4)
-                                Button { store.errorMessage = nil } label: { Image(systemName: "xmark").frame(width: 32, height: 32) }.accessibilityLabel("Fermer le message")
+                                Button { store.errorMessage = nil } label: {
+                                    Image(systemName: "xmark").frame(width: 44, height: 44).contentShape(Rectangle())
+                                }.accessibilityLabel("Fermer le message")
                             }.padding(.leading, 16).padding(.vertical, 6).background(Color.red.opacity(0.07))
                         }
                     }
