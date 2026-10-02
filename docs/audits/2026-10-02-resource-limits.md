@@ -13,6 +13,7 @@ versions du produit restent identiques à cette baseline.
 | Le plafond de 10 MiB d'une photo est vérifié après parsing multipart. Une requête de **13 631 604 octets** est entièrement consommée en 15 chunks et spoolée avant la réponse 413. | Middleware ASGI : corps HTTP limité à **11 MiB**, enveloppe incluse ; longueur déclarée excessive rejetée avant lecture ; compteur des octets réels sans drainage après dépassement. Le scénario corrigé ferme le tempfile après 10 MiB écrits, sans photo ni événement créé. Un PNG valide de 10 MiB avec son enveloppe reste accepté. |
 | Le téléchargement de release accepte **67 108 865 octets**, soit 64 MiB + 1, sans plafond effectif. | Lectures de 64 KiB maximum, budget réel de **64 MiB** pour l'archive et **1 MiB** pour le JSON GitHub. Le seuil exact est accepté ; l'octet supplémentaire provoque une erreur et la suppression du fichier partiel. Les tests couvrent longueur absente, sous-déclarée et erreur de lecture. |
 | Le nombre et la taille des membres TAR sont vérifiés après `getmembers()` ; les extensions PAX/GNU peuvent déjà avoir alloué leurs données. | Contrôle de chaque header de 512 octets dans `TarInfo.frombuf`, avant traitement des extensions : **10 000 headers / 512 MiB**, tailles négatives et répertoires non vides refusés. Seuls fichiers ordinaires et répertoires sont acceptés. Les spies vérifient le refus avant lecture du corps des extensions. Tous les chemins sont validés avant extraction. |
+| La première exécution avec FastAPI 0.115.0 échoue dès l'import de la route `DELETE /api/queue/{photo_id}` : l'annotation `-> None` avec status 204 est refusée. Cette déclaration existait avant le correctif de limites. | La route renvoie explicitement `Response(status_code=204)`, comme les routes history. L'assertion existante vérifie désormais aussi le corps vide ; le contrat HTTP public reste identique. Le job minimum complet passe ensuite. |
 
 L'ordre des middlewares reste **CORS → authentification → limite du corps →
 routes**. L'authentification devient ASGI pure pour éviter la lecture concurrente
@@ -37,13 +38,16 @@ universelle avec ces archives n'est affirmée.
 - Tests ciblés : **110 passent** pour HTTP/auth/queue/session/WebSocket et
   **75 passent** pour l'updater. Ils font partie de la suite globale, ils ne
   s'ajoutent pas à son total.
-- Suite locale Python 3.11 : **584 passent, 5 échouent sur `bind()` avec EPERM**.
-  Ces cinq tests exigent des sockets Unix interdits par l'environnement local.
-  Le fichier des listeners TCP HTTP/HTTPS est exclu de cette exécution pour la
-  même restriction ; les tests ASGI ne remplacent pas les tests de transport.
+- Première exécution restreinte : **584 passent, 5 échouent sur `bind()` avec
+  EPERM**, listeners TCP exclus. Ces blocages d'environnement sont conservés
+  dans les preuves. Après rétablissement des permissions et correction de la
+  route 204, la suite locale Python 3.11 complète donne **597 tests réussis**,
+  sockets Unix et listeners HTTP/HTTPS inclus.
+- Qualification locale de migration/rotation du mot de passe : **29 contrôles
+  passent** sur de vrais échanges HTTP/WebSocket, avec données temporaires.
 - Ruff et `git diff --check` passent ; le frontend courant se construit.
-- Packaging local avec bsdtar : **971 336 octets compressés**, 103 entrées,
-  3 786 934 octets de fichiers ; extraction et validation complètes réussies.
+- Packaging final local avec bsdtar : **971 369 octets compressés**, 103 entrées,
+  3 786 985 octets de fichiers ; extraction et validation complètes réussies.
   Exclusion des caches et refus d'un symlink avant remplacement de l'archive
   finale vérifiés. Shellcheck, syntaxe Bash et parsing YAML passent.
 - La CI exécute la suite backend complète sur Python 3.11 et 3.13, les migrations
@@ -52,10 +56,10 @@ universelle avec ces archives n'est affirmée.
   ou chunks, sans attendre la fin du corps excessif.
 - Un job distinct vérifie FastAPI **0.115.0**, Starlette **0.37.2** et
   python-multipart **0.0.12** sur les tests HTTP/auth/queue/WebSocket/listeners.
-  Ces versions ont été examinées dans leurs sources mais ne sont pas disponibles
-  dans l'environnement local. **Les résultats des checks de la PR font foi pour
-  ces validations distantes** ; ce rapport ne transforme pas les blocages locaux
-  en succès.
+  Reproduit dans un environnement isolé Python 3.11 : **78 tests passent**,
+  listeners réels inclus, après le correctif 204. L'échec de collecte initial
+  reste archivé séparément. **Les checks de la PR font foi pour les validations
+  distantes Linux/Python 3.11 et 3.13**.
 
 Les logs et reproductions locaux sont conservés sous `build/validation/` dans
 la copie de travail isolée, hors suivi Git. Les tests reproductibles font partie
