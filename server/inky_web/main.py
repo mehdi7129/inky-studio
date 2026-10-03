@@ -63,7 +63,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None):
     init_db()
     app.state.sessions = auth.SessionStore()
     app.state.auth_service = auth.CredentialService(
@@ -73,7 +73,15 @@ async def lifespan(app: FastAPI):
     app.state.password_change_limiter = auth.LoginRateLimiter()
     app.state.bus = EventBus()
     app.state.display = DisplayController()
-    app.state.display.initialize()
+    if stop_requested is not None and stop_requested.is_set():
+        app.state.display.begin_shutdown()
+    else:
+        # Signals and the event loop must remain responsive during driver setup.
+        try:
+            await asyncio.to_thread(app.state.display.initialize)
+        except DisplayUnavailableError:
+            if not app.state.display.closing:
+                raise
     app.state.scheduler = Scheduler(app.state.display, app.state.bus)
     app.state.provisioning = None
     welcome_task = None
@@ -87,7 +95,7 @@ async def lifespan(app: FastAPI):
     # Retry bootstrap display after a power interruption between credential
     # persistence and the first successful screen refresh. Never reveal a
     # personalized password, or overwrite a frame that already has history.
-    if app.state.auth_service.credentials.bootstrap_password and not auth.auth_disabled():
+    if not app.state.display.closing and app.state.auth_service.credentials.bootstrap_password and not auth.auth_disabled():
         # No history yet → show welcome. Run in a thread so lifespan stays snappy.
         from inky_web.services import history as history_service
         from inky_web.welcome import show_welcome
@@ -106,7 +114,7 @@ async def lifespan(app: FastAPI):
             welcome_task = asyncio.create_task(welcome())
 
     try:
-        if os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled():
+        if not app.state.display.closing and os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled():
             from inky_web.provisioning.runtime import ProvisioningRuntime
             app.state.provisioning = ProvisioningRuntime(
                 data_dir() / "provisioning", app.state.auth_service, app.state.display,
@@ -117,9 +125,11 @@ async def lifespan(app: FastAPI):
                 await app.state.provisioning.start()
             except Exception:
                 logging.getLogger(__name__).error("Bluetooth unavailable; existing frame API remains active")
-        await app.state.scheduler.start()
+        if not app.state.display.closing:
+            await app.state.scheduler.start()
         yield
     finally:
+        app.state.display.begin_shutdown()
         try:
             try:
                 if app.state.provisioning is not None:
@@ -129,7 +139,7 @@ async def lifespan(app: FastAPI):
                 if welcome_task is not None:
                     await welcome_task
         finally:
-            app.state.display.shutdown()
+            await asyncio.to_thread(app.state.display.shutdown)
 
 
 app = FastAPI(
@@ -187,22 +197,16 @@ if CLIENT_DIST.is_dir():
 
 
 def run() -> None:
-    if os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled():
-        asyncio.run(serve_with_https())
-        return
-    uvicorn.run(
-        "inky_web.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False,
-        # Bound shutdown so an open WebSocket can't make `systemctl restart`
-        # (used by the in-app update) hang until systemd's SIGKILL timeout.
-        timeout_graceful_shutdown=10,
-    )
+    asyncio.run(serve(with_https=os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled()))
 
 
 async def serve_with_https() -> None:
-    """Two listeners, one lifespan, one scheduler and one hardware owner."""
+    """Compatibility entry point for the dual-listener qualification bench."""
+    await serve(with_https=True)
+
+
+async def serve(*, with_https: bool = False) -> None:
+    """One hardware owner and drain policy for both HTTP and HTTP+HTTPS."""
     from contextlib import contextmanager
 
     from inky_web.provisioning.identity import load_or_create_identity
@@ -212,6 +216,10 @@ async def serve_with_https() -> None:
         def capture_signals(self):
             yield
 
+        async def shutdown(self, sockets=None):
+            await super().shutdown(sockets=sockets)
+            self._drained = True
+
         async def serve(self, sockets=None):
             try:
                 await super().serve(sockets=sockets)
@@ -219,42 +227,63 @@ async def serve_with_https() -> None:
                 # Uvicorn uses SystemExit for bind failures. Letting it escape
                 # an asyncio task cancels the shared lifespan before its workers
                 # can drain. Treat this listener failure as an ordinary error.
-                if self.started:
-                    await self.shutdown(sockets=sockets)
+                shutdown()
                 if isinstance(exc, SystemExit):
                     raise RuntimeError("Frame listener failed to start") from exc
                 raise
-
-    app.state.frame_identity = load_or_create_identity(data_dir() / "provisioning")
-    cert, key = app.state.frame_identity.materialize_tls_files()
-    async with lifespan(app):
-        common = dict(app=app, host="0.0.0.0", lifespan="off", timeout_graceful_shutdown=10)
-        http = uvicorn.Config(port=8000, **common)
-        https = uvicorn.Config(port=8443, ssl_certfile=str(cert), ssl_keyfile=str(key), **common)
-        https.load()
-        # Share the exact context with BLE, including subsequent certificate
-        # renewals. An already established TLS session keeps its own handshake.
-        https.ssl = app.state.provisioning.tls_context
-        servers = [ManagedServer(http), ManagedServer(https)]
-        loop = asyncio.get_running_loop()
-        def shutdown():
-            for server in servers:
-                server.should_exit = True
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(sig, shutdown)
-        tasks = [asyncio.create_task(server.serve()) for server in servers]
-        try:
-            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        finally:
-            shutdown()
-            try:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
             finally:
-                for sig in (signal.SIGTERM, signal.SIGINT):
-                    loop.remove_signal_handler(sig)
-        for result in results:
-            if isinstance(result, BaseException):
-                raise result
+                # Older supported Uvicorn versions return immediately when a
+                # signal arrives during startup; drain their opened sockets too.
+                if self.started and not getattr(self, "_drained", False):
+                    await self.shutdown(sockets=sockets)
+
+    servers = []
+    stop_requested = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    app.state.display = None
+
+    def shutdown():
+        # Repeated TERM/INT never escalates to task cancellation or force_exit.
+        stop_requested.set()
+        if app.state.display is not None:
+            app.state.display.begin_shutdown()
+        scheduler = getattr(app.state, "scheduler", None)
+        if scheduler is not None:
+            scheduler.request_stop()
+        for server in servers:
+            server.should_exit = True
+
+    # Install before identity creation and hardware lifespan initialization.
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, shutdown)
+    try:
+        if with_https:
+            app.state.frame_identity = await asyncio.to_thread(load_or_create_identity, data_dir() / "provisioning")
+            cert, key = await asyncio.to_thread(app.state.frame_identity.materialize_tls_files)
+        async with lifespan(app, stop_requested):
+            if stop_requested.is_set():
+                return
+            # Never cancel an admitted physical operation on a wall-clock timeout.
+            # Explicit workers=1 also ignores inherited WEB_CONCURRENCY.
+            common = dict(app=app, host="0.0.0.0", lifespan="off", workers=1, timeout_graceful_shutdown=None)
+            servers.append(ManagedServer(uvicorn.Config(port=8000, **common)))
+            if with_https:
+                https = uvicorn.Config(port=8443, ssl_certfile=str(cert), ssl_keyfile=str(key), **common)
+                https.load()
+                https.ssl = app.state.provisioning.tls_context
+                servers.append(ManagedServer(https))
+            tasks = [asyncio.create_task(server.serve()) for server in servers]
+            try:
+                await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                shutdown()
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
+    finally:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.remove_signal_handler(sig)
 
 
 if __name__ == "__main__":

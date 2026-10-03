@@ -98,12 +98,60 @@ safety or that the panel is ready after a timeout.
 
 ## Stop, dependency and physical qualification boundaries
 
-The candidate keeps the hardware lock until the original call finishes.
-**The legacy installer still has `TimeoutStopSec=20`.** Do not use that stop
-deadline for this bench: InkyOS's operator/runtime owner must provide a drain
-policy before activation. A timeout in the operator UI should report that work
-continues, not cancel the thread or issue SIGKILL while the display owns SPI.
-No suitable overall timeout has been physically measured in this change.
+### Service drain contract
+
+The installer emits this policy for the application service:
+
+```ini
+[Service]
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=infinity
+SendSIGKILL=no
+```
+
+The main process owns graceful shutdown. Systemd sends it SIGTERM and waits;
+the service does not impose an arbitrary stop deadline or a final SIGKILL.
+These settings must also be applied and verified in the InkyOS application
+unit before qualifying active-service stop. Copying application files or using
+the existing online updater does **not** update an already installed unit.
+The Bluetooth installer already orders Studio after `inky-network.service`,
+so normal ordered shutdown keeps that helper available for cancellation.
+
+At the first SIGTERM/SIGINT, the process asks both HTTP listeners to stop
+accepting requests and closes display admission without waiting for SPI. An
+operation that already owns the lock finishes its original driver call and its
+queue/history commit.
+Queued and new display operations are rejected; they cannot start a second
+refresh during drain. Repeated signals request the same drain, rather than
+force-exiting. The single-process owner ignores `WEB_CONCURRENCY`; launching
+multiple independent Studio services on the same SPI device remains invalid.
+
+Uvicorn no longer cancels in-flight requests after ten seconds. Idle WebSockets
+are closed by its normal shutdown. Scheduler, welcome and provisioning workers
+are drained before releasing the driver, with lock waiting off the event loop.
+Shutdown does not initiate a new QR-restoration refresh; adoption is closed and
+its persisted recovery marker is retained for the next authorized startup.
+
+An indefinitely blocked driver or admitted HTTP request can therefore keep the
+unit **deactivating** indefinitely. An operator UI timeout must report that work
+continues; it must
+not report `inactive`, issue a forced kill, begin another hardware owner or
+power off the host. This policy covers a normal service stop/restart, not forced
+host shutdown, power loss, OOM, an external kill or electrical safety. Even a
+normal reboot/poweroff must be preceded by a completed service drain and a
+verified `inactive/dead` state; a host watchdog or global shutdown/job timeout
+is outside this unit's contract. No overall physical refresh/stop duration is
+certified here. InkyOS still owns Linux-unit integration and real-panel stop
+qualification.
+
+### Startup is a hardware action
+
+A hardware-mode start can display the welcome screen on a fresh frame or
+restore a persisted adoption image. Treat startup as explicit authorization
+to refresh after the bench gates; it is **not** passive diagnostic observation.
+`/api/display/status` itself does not refresh the panel. No separate diagnostic
+startup mode is introduced by this candidate.
 
 Freeze and record the full payload and dependency versions, including `inky`,
 `gpiod`, `gpiodevice`, `spidev`, Pillow and Python. The Inky pin alone does not
@@ -132,6 +180,9 @@ notice. These are software tests, not Raspberry qualification.
 - [Pimoroni 2.3.0 EEPROM mapping](https://github.com/pimoroni/inky/blob/v2.3.0/inky/eeprom.py)
 - [Pimoroni 2.3.0 AC073 driver](https://github.com/pimoroni/inky/blob/v2.3.0/inky/inky_ac073tc1a.py)
 - [libgpiod LineRequest contract](https://libgpiod.readthedocs.io/en/v2.3/python_line_request.html)
+- [systemd stop timeout](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html#TimeoutStopSec=)
+- [systemd signal and kill policy](https://www.freedesktop.org/software/systemd/man/latest/systemd.kill.html)
+- [Uvicorn graceful shutdown](https://uvicorn.dev/server-behavior/#graceful-process-shutdown)
 
 The AC073 file is byte-identical in tags and PyPI sdists 2.3.0 and 2.4.0
 (SHA-256 `ab31898c7c291ce1b63a4c21798860a40e3a9c2a68e57dab933f882d5ecf5582`).
@@ -139,7 +190,7 @@ The historical GPIO incident remains unresolved; attributing it to a change in
 that file between those versions is not supported. This correction does not
 authorize an upgrade.
 
-## Candidate software validation, 3 October 2026
+## Initial candidate software validation, 3 October 2026 (`98a17a0`)
 
 | Check | Result and boundary |
 |---|---|
@@ -155,3 +206,27 @@ authorize an upgrade.
 These results are local software evidence. The draft PR's CI and the eventual
 ARM64 payload/bench qualification are separate checkpoints. No release, merge,
 SD mutation or physical display refresh was performed.
+
+## Stop-drain follow-up validation, 3 October 2026
+
+- Full backend suite: **411 passed** on macOS/Python 3.13, including eleven new
+  lifecycle/admission/provisioning cases and the emitted-unit installer test.
+- Real subprocess tests cover HTTP-only and dual HTTP/TLS listeners, an active
+  refresh held beyond the old ten-second deadline, queue/history completion,
+  a rejected waiter, idle WebSocket closure, repeated SIGTERM/SIGINT, early
+  initialization/welcome shutdown, and a failed listener while work is active.
+- Adoption shutdown closes the token, preserves the recovery marker, cancels
+  the network transaction and starts no second refresh.
+- Full offline producer/dependency validation suite: **80 pytest cases passed**.
+- Backend and packaging Ruff, installer/CLI ShellCheck and `git diff --check`
+  passed. Independent review found no remaining software blocker.
+- `systemd-analyze verify` passed in the isolated Linux builder. This checks the
+  emitted unit's syntax/policy with `ExecStart` substituted by `/usr/bin/true`;
+  it neither installs a unit nor starts a process and is not an active-service
+  stop test. The actual installed unit/drop-ins remain an InkyOS qualification
+  gate.
+
+The immutable ARM64 source/frontend/wheelhouse bundle is produced separately
+from the committed follow-up. Its manifest starts with empty qualification
+evidence. Candidate assembly and these software tests do not grant a release
+or physical-display qualification.

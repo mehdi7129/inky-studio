@@ -48,11 +48,15 @@ class Scheduler:
         logger.info("Scheduler started")
 
     async def stop(self) -> None:
-        self._stop.set()
+        self.request_stop()
         if self._task is not None:
             await self._task
             self._task = None
         logger.info("Scheduler stopped")
+
+    def request_stop(self) -> None:
+        """Stop producing work without waiting for an already admitted refresh."""
+        self._stop.set()
 
     def next_change_at(self) -> float | None:
         """Return the unix timestamp of the next scheduled change, or None for manual mode."""

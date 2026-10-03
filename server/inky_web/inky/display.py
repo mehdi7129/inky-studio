@@ -68,13 +68,30 @@ class DisplayController:
         self._driver_info: dict[str, Any] = {}
         self._observations: list[dict[str, Any]] = []
         self._lock = threading.RLock()
+        self._closing = threading.Event()
+        self._operation_local = threading.local()
         self._reservation: str | None = None
 
     @contextmanager
     def operation(self) -> Iterator[None]:
         """Serialize selection, hardware refresh, and its persisted result."""
         with self._lock:
-            yield
+            depth = getattr(self._operation_local, "depth", 0)
+            if depth == 0 and self._closing.is_set():
+                raise DisplayUnavailableError("Le service d’affichage est en cours d’arrêt.", "display_stopping")
+            self._operation_local.depth = depth + 1
+            try:
+                yield
+            finally:
+                self._operation_local.depth = depth
+
+    def begin_shutdown(self) -> None:
+        """Close admission immediately, without waiting for the active SPI owner."""
+        self._closing.set()
+
+    @property
+    def closing(self) -> bool:
+        return self._closing.is_set()
 
     @property
     def reserved(self) -> bool:
@@ -163,7 +180,7 @@ class DisplayController:
     def status(self) -> dict[str, Any]:
         # Do not acquire the SPI lock: operator diagnostics must remain readable
         # while the owner is blocked inside a long hardware refresh.
-        state = "error" if self._error else "busy" if self._refreshing else "mock" if self._is_mock else "ready" if self._impl else "uninitialized"
+        state = "stopping" if self.closing else "error" if self._error else "busy" if self._refreshing else "mock" if self._is_mock else "ready" if self._impl else "uninitialized"
         return {
             "mode": self._mode,
             "profile": self._profile or None,
@@ -176,7 +193,9 @@ class DisplayController:
         }
 
     def shutdown(self) -> None:
-        with self.operation():
+        self.begin_shutdown()
+        # Bypass the admission gate; wait through selection, show and persistence.
+        with self._lock:
             self._busy_observer = None
             self._impl = None
             self._error = DisplayUnavailableError("Le service d’affichage est arrêté.")
