@@ -132,6 +132,7 @@ struct PhotoImportView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var store: AppStore
     @StateObject private var model = PhotoImportModel()
     @State private var selection: PhotosPickerItem?
@@ -180,16 +181,25 @@ struct PhotoImportView: View {
                         if let error = model.errorMessage {
                             Label(error, systemImage: "exclamationmark.circle")
                                 .font(.callout)
-                                .foregroundStyle(.red)
+                                .foregroundStyle(Bento.danger)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(16)
                                 .background(Bento.surface, in: RoundedRectangle(cornerRadius: 16))
                                 .padding(.horizontal, 16)
                                 .accessibilityIdentifier("photo-import-error")
                         }
+                        // At accessibility sizes the fixed action and its caption
+                        // would cover the crop controls. Keep the whole flow scrollable.
+                        if model.photo != nil && dynamicTypeSize.isAccessibilitySize {
+                            uploadBar
+                        }
                     }
                     .padding(.bottom, 20)
                 }
+                // A newly selected photo starts at its preview, rather than
+                // retaining the source selector's scroll position.
+                .id(model.photo.map { ObjectIdentifier($0.image) })
+                .accessibilityIdentifier("photo.scroll")
                 .background(background)
             }
             .navigationTitle(model.photo == nil ? "Ajouter une photo" : "Cadrer la photo")
@@ -222,7 +232,7 @@ struct PhotoImportView: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if model.photo != nil { uploadBar }
+                if model.photo != nil && !dynamicTypeSize.isAccessibilitySize { uploadBar }
             }
         }
         .tint(accent)
@@ -298,20 +308,14 @@ struct PhotoImportView: View {
                 }
                 Button(action: takePhoto) {
                     Label("Prendre une photo", systemImage: "camera")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(Bento.ink, in: RoundedRectangle(cornerRadius: 14))
-                        .foregroundStyle(Bento.actionText)
                 }
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(!validPanel || isRequestingCamera)
                 .accessibilityIdentifier("take-photo")
                 Button(action: choosePhoto) {
                     Label("Choisir dans Photos", systemImage: "photo.on.rectangle")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(Bento.surface, in: RoundedRectangle(cornerRadius: 14))
-                        .foregroundStyle(Bento.ink)
                 }
+                .buttonStyle(OutlineButtonStyle())
                 .disabled(!validPanel || isRequestingCamera)
                 .accessibilityIdentifier("choose-photo")
             }
@@ -374,6 +378,7 @@ struct PhotoImportView: View {
             )
             .allowsHitTesting(!model.isUploading)
             .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("photo.crop")
             .accessibilityLabel("Cadrage de la photo")
             .accessibilityHint("Utilisez le réglage de zoom ou les actions pour déplacer la photo.")
             .accessibilityAction(named: "Déplacer la photo à gauche") { movePhoto(x: -0.1, y: 0) }
@@ -455,14 +460,11 @@ struct PhotoImportView: View {
                         Text(store.isDemo ? "Ajouter à la démo" : "Ajouter à la file")
                     }
                 }
-                .font(.body.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .foregroundStyle(Bento.actionText)
-                .background(Bento.ink, in: RoundedRectangle(cornerRadius: 14))
             }
+            .buttonStyle(PrimaryButtonStyle())
             .disabled(model.isUploading || !validPanel || viewportSize.width <= 0)
             .accessibilityIdentifier("upload-photo")
-            Text(store.isDemo ? "Uniquement sur cet iPhone · aucun envoi au cadre." : "Elle sera affichée à son tour.")
+            Text(store.isDemo ? "Uniquement sur cet iPhone · aucun envoi au cadre." : "Affichage avec Suivante ou selon votre programmation.")
                 .font(.footnote).foregroundStyle(secondary)
         }
         .padding(.horizontal, 16)

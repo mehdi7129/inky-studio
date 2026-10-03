@@ -276,16 +276,27 @@ final class InkyStudioUITests: XCTestCase {
         let camera = app.buttons["take-photo"]
         XCTAssertTrue(camera.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["choose-photo"].exists)
+        capture("07a Sources de photo")
         camera.tap()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         // Some Simulator runtimes expose a camera. Permission belongs to the
         // system application; never assume the source is universally absent.
-        if springboard.alerts.firstMatch.waitForExistence(timeout: 3) {
-            let deny = springboard.alerts.buttons.matching(NSPredicate(format: "label IN %@", ["Ne pas autoriser", "Don’t Allow", "Don't Allow"])).firstMatch
+        let cameraPermission = springboard.alerts.matching(NSPredicate(format: "label CONTAINS[cd] %@", "camera")).firstMatch
+        let cameraIssue = app.alerts.firstMatch
+        // Camera permission can arrive after several seconds on a busy runtime.
+        // Wait for either outcome together so an unavailable-camera alert does
+        // not incur the whole system-permission timeout.
+        let outcome = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            cameraIssue.exists || cameraPermission.exists
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [outcome], timeout: 20), .completed,
+                       "Taking a photo must show either camera permission or an actionable camera alert.")
+        if cameraPermission.exists {
+            let deny = cameraPermission.buttons.matching(NSPredicate(format: "label IN %@", ["Ne pas autoriser", "Don’t Allow", "Don't Allow"])).firstMatch
             XCTAssertTrue(deny.exists)
             deny.tap()
         }
-        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(cameraIssue.waitForExistence(timeout: 5))
         capture("07 Appareil photo — permission ou indisponibilité")
         let later = app.alerts.buttons["Plus tard"]
         if later.exists { later.tap() } else { app.alerts.buttons["Annuler"].tap() }
@@ -324,13 +335,32 @@ final class InkyStudioUITests: XCTestCase {
         scrollTo(change)
         XCTAssertTrue(change.isHittable)
         change.tap()
-        for (field, value) in [("current", "test-password"), ("new", "my-new-frame-password"), ("confirmation", "my-new-frame-password")] {
+        XCTAssertTrue(app.secureTextFields["password.current"].waitForExistence(timeout: 5))
+        capture("08a Changer le mot de passe")
+        for field in ["current", "new", "confirmation"] {
             let input = app.secureTextFields["password.\(field)"]
             XCTAssertTrue(input.waitForExistence(timeout: 5))
-            input.tap(); input.typeText(value)
+            input.tap(); input.typeText("test-password")
         }
         let save = app.buttons["password.save"]
+        let unchanged = app.staticTexts["password.unchanged"]
+        XCTAssertTrue(unchanged.waitForExistence(timeout: 5))
+        XCTAssertFalse(save.isEnabled, "Keeping the same password must explain why saving is unavailable.")
+        // The keyboard's Done action must obey the same validation as the button.
+        app.secureTextFields["password.confirmation"].typeText("\n")
+        XCTAssertFalse(app.staticTexts["password.success"].exists)
+        XCTAssertFalse(app.staticTexts["password.error"].exists)
+        scrollTo(unchanged)
+        capture("08b Mot de passe identique expliqué")
+        for field in ["new", "confirmation"] {
+            let input = app.secureTextFields["password.\(field)"]
+            input.tap()
+            input.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "test-password".count))
+            input.typeText("my-new-frame-password")
+        }
+        XCTAssertFalse(unchanged.exists)
         scrollTo(save)
+        XCTAssertTrue(save.isEnabled)
         save.tap()
         XCTAssertTrue(app.staticTexts["password.success"].waitForExistence(timeout: 10))
         capture("08 Mot de passe personnalisé")

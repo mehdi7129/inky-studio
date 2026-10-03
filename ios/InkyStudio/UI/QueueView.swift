@@ -11,7 +11,7 @@ struct QueueView: View {
             List {
                 Section {
                     if store.queue.isEmpty {
-                        EmptyCard(symbol: "square.stack", title: "La file est vide", message: "Ajoutez vos prochaines photos. Elles défileront à leur tour.")
+                        EmptyCard(symbol: "square.stack", title: "La file est vide", message: "Ajoutez vos prochaines photos. Retrouvez les commandes d’affichage dans l’onglet Cadre.")
                             .listRowBackground(Color.clear).listRowSeparator(.hidden)
                     }
                     ForEach(Array(store.queue.enumerated()), id: \.element.id) { index, entry in
@@ -45,16 +45,17 @@ struct QueueView: View {
                     .onDelete { indices in if let index = indices.first { deleting = store.queue[index] } }
                 } header: {
                     Text("\(store.queue.count) photo\(store.queue.count == 1 ? "" : "s") dans la file")
-                        .font(.subheadline).textCase(nil)
+                        .font(.subheadline).foregroundStyle(Bento.secondaryInk).textCase(nil)
                 }
                 if !store.queue.isEmpty {
                     Section {
-                        Text("Maintenez une photo pour la déplacer, ou choisissez Modifier la file.").font(.caption).foregroundStyle(.secondary)
+                        Text("Maintenez une photo pour ouvrir ses options, ou touchez Modifier la file pour changer l’ordre.").font(.caption).foregroundStyle(Bento.secondaryInk)
                         Button(editing ? "Terminer" : "Modifier la file") { withAnimation { editing.toggle() } }
                             .accessibilityIdentifier("queue.edit").disabled(!store.canMutate).frame(maxWidth: .infinity, minHeight: 44)
                     }.listRowBackground(Bento.surface)
                 }
-            }.listStyle(.insetGrouped).scrollContentBackground(.hidden).screenBackground()
+            }.accessibilityIdentifier("queue.list")
+                .listStyle(.insetGrouped).scrollContentBackground(.hidden).screenBackground()
                 .contentMargins(.bottom, 24, for: .scrollContent)
                 .environment(\.editMode, .constant(editing ? .active : .inactive))
                 .navigationTitle("À suivre").toolbar {

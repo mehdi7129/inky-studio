@@ -10,25 +10,25 @@ struct GettingStartedView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Un cadre, vos photos.").font(.title.weight(.bold))
                         Text("Quelques repères pour la première connexion.")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Bento.secondaryInk)
                     }.padding(.vertical, 8)
                     step("1", title: "Préparer le cadre", symbol: "photo.artframe") {
                         Text("Il vous faut un Raspberry Pi, un écran Inky compatible et le serveur Inky Studio déjà installé sur le Raspberry.")
-                        Text("L’app iPhone accompagne ce matériel. Elle n’installe pas le serveur sur un Raspberry vierge.").foregroundStyle(.secondary)
+                        Text("L’app iPhone accompagne ce matériel. Elle n’installe pas le serveur sur un Raspberry vierge.").foregroundStyle(Bento.secondaryInk)
                     }
                     step("2", title: "Rejoindre le même Wi-Fi", symbol: "wifi") {
                         Text("Pour commencer, connectez l’iPhone et le cadre au même réseau local.")
                         Text("Saisissez le nom local du Raspberry ou son adresse IP, avec le port du serveur : par exemple inky.local:8000.")
-                        Text("Autorisez « Réseau local » quand iOS le demande. Le partage des photos nécessite que les deux appareils puissent communiquer sur ce réseau.").foregroundStyle(.secondary)
+                        Text("Autorisez « Réseau local » quand iOS le demande. Le partage des photos nécessite que les deux appareils puissent communiquer sur ce réseau.").foregroundStyle(Bento.secondaryInk)
                     }
                     step("3", title: "Ouvrir votre cadre", symbol: "key") {
                         Text("Utilisez le mot de passe de l’app du cadre. Il est distinct du mot de passe Wi-Fi et du compte Linux / SSH.")
-                        Text("Vous pourrez activer Face ID si vous le souhaitez, puis personnaliser le mot de passe dans Réglages.").foregroundStyle(.secondary)
+                        Text("Vous pourrez activer Face ID si vous le souhaitez, puis personnaliser le mot de passe dans Réglages.").foregroundStyle(Bento.secondaryInk)
                     }
                     step("4", title: "Préparer les prochains voyages", symbol: "antenna.radiowaves.left.and.right") {
                         Text("Une fois connecté au cadre, ouvrez Réglages → Configurer le Wi-Fi du cadre, puis scannez son QR pour associer cet iPhone.")
                         Text("Cet iPhone déjà associé pourra ensuite transmettre un nouveau réseau au cadre par Bluetooth. La première association nécessite encore une connexion locale au cadre.")
-                        Text("Privilégiez un réseau WPA2 personnel en 2,4 GHz. Les portails d’hôtel et réseaux d’entreprise ne sont pas pris en charge. L’app ne commande pas le cadre à distance via le réseau mobile.").foregroundStyle(.secondary)
+                        Text("Privilégiez un réseau WPA2 personnel en 2,4 GHz. Les portails d’hôtel et réseaux d’entreprise ne sont pas pris en charge. L’app ne commande pas le cadre à distance via le réseau mobile.").foregroundStyle(Bento.secondaryInk)
                     }
                     DisclosureGroup {
                         VStack(alignment: .leading, spacing: 18) {
@@ -48,7 +48,8 @@ struct GettingStartedView: View {
                     Button("Fermer le guide") { dismiss() }
                         .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("guide.connect")
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
-            }.navigationTitle("Premiers pas").screenBackground()
+            }.accessibilityIdentifier("guide.scroll")
+                .navigationTitle("Premiers pas").screenBackground()
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Fermer") { dismiss() }.accessibilityIdentifier("guide.close")
@@ -69,7 +70,7 @@ struct GettingStartedView: View {
     private func help(_ title: String, _ message: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
-            Text(message).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(message).font(.subheadline).foregroundStyle(Bento.secondaryInk).fixedSize(horizontal: false, vertical: true)
         }
     }
 }

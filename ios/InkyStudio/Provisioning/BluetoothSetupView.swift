@@ -30,12 +30,12 @@ struct BluetoothSetupView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(title).font(.title2.weight(.bold))
-                        Text(message).font(.subheadline).foregroundStyle(.secondary)
+                        Text(message).font(.subheadline).foregroundStyle(Bento.secondaryInk)
                     }
                     content
                     if let error = coordinator.errorMessage {
                         Label(error, systemImage: "exclamationmark.circle")
-                            .font(.subheadline).foregroundStyle(.red)
+                            .font(.subheadline).foregroundStyle(Bento.danger)
                             .accessibilityIdentifier("bluetooth.error")
                     }
                 }.padding(20).frame(maxWidth: 540).frame(maxWidth: .infinity)
@@ -119,7 +119,7 @@ struct BluetoothSetupView: View {
         case .networks: return "Choisissez un réseau personnel WPA2. Les réseaux ouverts, d’entreprise ou avec portail de connexion ne sont pas pris en charge."
         case .credentials: return "Le mot de passe sera transmis au cadre par une connexion chiffrée."
         case .applying: return "Le cadre essaie le nouveau réseau. L’ancien réseau reste disponible en cas d’échec."
-        case .confirming: return "Connectez aussi cet iPhone au réseau « \(coordinator.selectedSSID) ». La configuration sera terminée après vérification de l’accès au cadre."
+        case .confirming: return "Sur cet iPhone, ouvrez Réglages → Wi-Fi et rejoignez « \(coordinator.selectedSSID) ». Revenez ensuite dans Inky Studio pour terminer la vérification."
         case .suspended: return "Restez près du cadre pour retrouver l’état de la configuration par Bluetooth."
         case .completed: return "L’accès au cadre a été vérifié sur le nouveau réseau. Vous pouvez retrouver vos photos."
         case .rolledBack: return "Le nouveau réseau n’a pas été confirmé. Le cadre conserve ses anciens réglages Wi-Fi."
@@ -141,7 +141,7 @@ struct BluetoothSetupView: View {
                 }.buttonStyle(OutlineButtonStyle()).accessibilityIdentifier("bluetooth.scanQR")
                 if beginWindow == nil {
                     Text("Pour une première association, affichez le QR depuis les réglages du cadre connecté. Un iPhone déjà associé peut retrouver le cadre ci-dessous.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Bento.secondaryInk)
                 }
             }.bentoCard()
             if !coordinator.savedFrames.isEmpty {
@@ -154,7 +154,7 @@ struct BluetoothSetupView: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("Cadre · \(record.id.uuidString.prefix(6))").font(.subheadline.weight(.medium))
                                     Text(record.wifiTransactionID == nil ? "Changer le Wi-Fi" : "Reprendre la vérification Wi-Fi")
-                                        .font(.caption).foregroundStyle(.secondary)
+                                        .font(.caption).foregroundStyle(Bento.secondaryInk)
                                 }
                                 Spacer()
                                 Image(systemName: "chevron.right").font(.caption)
@@ -172,9 +172,9 @@ struct BluetoothSetupView: View {
                         Text(transport.isScanning ? "Recherche de votre cadre…" : "Aucun cadre détecté").font(.subheadline)
                     }
                     Text("Vérifiez que le cadre est allumé et que le Bluetooth est autorisé sur cet iPhone.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Bento.secondaryInk)
                 }
-                if let error = transport.error { Text(error).font(.subheadline).foregroundStyle(.red) }
+                if let error = transport.error { Text(error).font(.subheadline).foregroundStyle(Bento.danger) }
                 ForEach(transport.discoveredFrames) { frame in
                     Button { Task { await coordinator.connect(peripheralID: frame.id) } } label: {
                         HStack {
@@ -194,14 +194,14 @@ struct BluetoothSetupView: View {
         case .networks:
             VStack(alignment: .leading, spacing: 12) {
                 if coordinator.scanningNetworks { ProgressView("Recherche des réseaux…") }
-                if let current = coordinator.currentSSID { Label("Réseau actuel : \(current)", systemImage: "wifi").font(.caption).foregroundStyle(.secondary) }
+                if let current = coordinator.currentSSID { Label("Réseau actuel : \(current)", systemImage: "wifi").font(.caption).foregroundStyle(Bento.secondaryInk) }
                 ForEach(coordinator.networks) { network in
                     Button { coordinator.chooseNetwork(network) } label: {
                         HStack {
                             Image(systemName: network.supported ? "wifi" : "wifi.exclamationmark")
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(network.ssid).font(.subheadline.weight(.medium)).lineLimit(2)
-                                if !network.supported { Text("Non compatible").font(.caption).foregroundStyle(.secondary) }
+                                if !network.supported { Text("Non compatible").font(.caption).foregroundStyle(Bento.secondaryInk) }
                             }
                             Spacer()
                             if network.supported { Image(systemName: "lock.fill").font(.caption) }
@@ -217,7 +217,7 @@ struct BluetoothSetupView: View {
                     .padding(12).background(Bento.background, in: RoundedRectangle(cornerRadius: 10)).accessibilityIdentifier("bluetooth.ssid")
                 SecureField("Mot de passe Wi-Fi", text: $password).textContentType(.password)
                     .padding(12).background(Bento.background, in: RoundedRectangle(cornerRadius: 10)).accessibilityIdentifier("bluetooth.password")
-                Text("Réseau personnel WPA2 uniquement.").font(.caption).foregroundStyle(.secondary)
+                Text("Réseau personnel WPA2 uniquement.").font(.caption).foregroundStyle(Bento.secondaryInk)
             }.bentoCard()
             Button("Connecter le cadre") {
                 let secret = password
@@ -230,9 +230,10 @@ struct BluetoothSetupView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) { ProgressView(); Text("Vérification de l’accès au cadre…").font(.subheadline) }
                 if let remaining = coordinator.remainingSeconds, remaining > 0 {
-                    Text("L’essai sera annulé s’il n’est pas confirmé dans \(remaining) s.").font(.caption).foregroundStyle(.secondary)
+                    Text("L’essai sera annulé s’il n’est pas confirmé dans \(remaining) s.").font(.caption).foregroundStyle(Bento.secondaryInk)
                 }
-                settingsLink
+                Text("La vérification reprend automatiquement à votre retour dans l’app.")
+                    .font(.caption).foregroundStyle(Bento.secondaryInk)
             }.bentoCard()
             Button("Annuler l’essai Wi-Fi", role: .destructive) { Task { await coordinator.cancelWiFi() } }.frame(minHeight: 44)
         case .suspended:
@@ -249,14 +250,14 @@ struct BluetoothSetupView: View {
     }
 
     private var settingsLink: some View {
-        Link("Ouvrir les réglages iOS", destination: URL(string: UIApplication.openSettingsURLString)!)
+        Link("Ouvrir les réglages d’Inky Studio", destination: URL(string: UIApplication.openSettingsURLString)!)
             .font(.subheadline).frame(minHeight: 44)
     }
 
     private var scanner: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                Text("Placez le QR affiché sur le cadre dans le viseur.").font(.subheadline).foregroundStyle(.secondary)
+                Text("Placez le QR affiché sur le cadre dans le viseur.").font(.subheadline).foregroundStyle(Bento.secondaryInk)
                 #if DEBUG && targetEnvironment(simulator)
                 if ProcessInfo.processInfo.arguments.contains("--uitesting") {
                     QRTestInput { text in scanningQR = false; coordinator.acceptQRCode(text) }

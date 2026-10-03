@@ -15,15 +15,15 @@ struct ConnectionView: View {
                 Label("Inky Studio", systemImage: "photo").font(.title3.weight(.bold)).padding(.top, 28)
                 VStack(alignment: .leading, spacing: 8) {
                     Text(store.hasSavedFrame ? "Retrouver mon cadre" : "Bonjour, Inky.").font(.largeTitle.weight(.bold)).tracking(-1)
-                    Text(store.hasSavedFrame ? "Votre cadre vous attend." : "Vos photos, sur votre cadre.").font(.title3).foregroundStyle(.secondary)
+                    Text(store.hasSavedFrame ? "Votre cadre vous attend." : "Vos photos, sur votre cadre.").font(.title3).foregroundStyle(Bento.secondaryInk)
                 }
                 if !store.hasSavedFrame { discoveryActions }
                 if store.hasSavedFrame {
                     HStack(spacing: 16) {
-                        Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary)
+                        Image(systemName: "photo").font(.largeTitle).foregroundStyle(Bento.secondaryInk)
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Mon cadre").font(.headline)
-                            Text(store.address).font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled)
+                            Text(store.address).font(.subheadline).foregroundStyle(Bento.secondaryInk).textSelection(.enabled)
                         }
                         Spacer(minLength: 0)
                     }.bentoCard()
@@ -34,12 +34,12 @@ struct ConnectionView: View {
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                             .padding(12).background(Bento.background, in: RoundedRectangle(cornerRadius: 10))
                             .accessibilityIdentifier("connection.address")
-                        Text("Saisissez son nom local ou son adresse IP.").font(.caption).foregroundStyle(.secondary)
+                        Text("Saisissez son nom local ou son adresse IP.").font(.caption).foregroundStyle(Bento.secondaryInk)
                     }.bentoCard()
                 }
                 if biometric {
                     Image(systemName: store.biometricName == "Face ID" ? "faceid" : "touchid")
-                        .font(.system(size: 84, weight: .ultraLight)).foregroundStyle(.secondary)
+                        .font(.system(size: 84, weight: .ultraLight)).foregroundStyle(Bento.secondaryInk)
                         .frame(maxWidth: .infinity).padding(.vertical, 28).accessibilityHidden(true)
                     Button { Task { await store.loginWithBiometrics() } } label: {
                         if store.connecting { ProgressView().tint(Bento.actionText) }
@@ -55,7 +55,7 @@ struct ConnectionView: View {
                             .accessibilityIdentifier("connection.password")
                         if let capability = store.vault.capability {
                             Toggle("Activer \(capability)", isOn: $remember).font(.subheadline).tint(Bento.blue)
-                            Text("Autorise l’utilisation du mot de passe enregistré sur cet iPhone.").font(.caption).foregroundStyle(.secondary)
+                            Text("Autorise l’utilisation du mot de passe enregistré sur cet iPhone.").font(.caption).foregroundStyle(Bento.secondaryInk)
                         }
                     }.bentoCard()
                     Button(action: connect) {
@@ -72,19 +72,19 @@ struct ConnectionView: View {
                         .frame(maxWidth: .infinity, minHeight: 44).accessibilityIdentifier("connection.cancel")
                 }
                 if let error = store.errorMessage {
-                    Text(error).font(.subheadline).foregroundStyle(.red).accessibilityIdentifier("connection.error")
+                    Text(error).font(.subheadline).foregroundStyle(Bento.danger).accessibilityIdentifier("connection.error")
                     if let url = URL(string: UIApplication.openSettingsURLString) {
                         Link("Ouvrir les réglages iOS", destination: url).font(.subheadline)
                     }
                 }
                 Text("Votre iPhone et le cadre doivent être sur le même réseau Wi-Fi.")
-                    .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
+                    .font(.subheadline).foregroundStyle(Bento.secondaryInk).multilineTextAlignment(.center).frame(maxWidth: .infinity)
                 Button { bluetoothSetup = true } label: {
                     Label("Configurer le Wi-Fi du cadre", systemImage: "wifi")
                 }.buttonStyle(OutlineButtonStyle()).disabled(store.connecting)
                     .accessibilityIdentifier("connection.bluetooth")
                 Text("Pour un iPhone déjà associé au cadre. La première association se prépare après la connexion, dans Réglages.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Bento.secondaryInk)
                 if store.hasSavedFrame {
                     Button("Changer de cadre") { Task { await store.logout(forget: true); showPassword = false; password = ""; remember = false } }
                         .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 8).disabled(store.connecting)
@@ -93,7 +93,8 @@ struct ConnectionView: View {
                 SupportPrivacyLinks(identifierPrefix: "connection")
             }.padding(20).frame(maxWidth: 540)
                 .frame(maxWidth: .infinity)
-        }.background(Bento.background).scrollDismissesKeyboard(.interactively)
+        }.accessibilityIdentifier("connection.scroll")
+            .background(Bento.background).scrollDismissesKeyboard(.interactively)
             .onAppear { remember = store.biometricEnabled }
             .onChange(of: store.biometricEnabled) { _, enabled in remember = enabled }
             .sheet(isPresented: $gettingStarted) { GettingStartedView() }
@@ -110,7 +111,7 @@ struct ConnectionView: View {
             }.buttonStyle(OutlineButtonStyle()).disabled(store.connecting)
                 .accessibilityIdentifier("connection.demo")
             Text("Découvrez l’app sans cadre. Les essais restent temporaires sur cet iPhone.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(Bento.secondaryInk)
             Button { gettingStarted = true } label: {
                 Label("Préparer mon cadre", systemImage: "questionmark.circle")
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -149,7 +150,7 @@ struct SupportPrivacyLinks: View {
             Label(title, systemImage: systemImage)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
-            Image(systemName: "arrow.up.right").foregroundStyle(.secondary).accessibilityHidden(true)
+            Image(systemName: "arrow.up.right").foregroundStyle(Bento.secondaryInk).accessibilityHidden(true)
         }
         .font(.body).foregroundStyle(Bento.blue)
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
