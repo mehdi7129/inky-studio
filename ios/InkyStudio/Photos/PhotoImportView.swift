@@ -196,6 +196,7 @@ struct PhotoImportView: View {
                     }
                     .padding(.bottom, 20)
                 }
+                .accessibilityIdentifier("photo.scroll")
                 .background(background)
             }
             .navigationTitle(model.photo == nil ? "Ajouter une photo" : "Cadrer la photo")

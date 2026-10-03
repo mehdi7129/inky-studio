@@ -39,7 +39,8 @@ struct HistoryView: View {
                         if store.loadingHistory { ProgressView() } else { Text("Charger les photos précédentes") }
                     }.disabled(store.loadingHistory).frame(maxWidth: .infinity, minHeight: 44)
                 }
-            }.listStyle(.insetGrouped).scrollContentBackground(.hidden).screenBackground()
+            }.accessibilityIdentifier("history.list")
+                .listStyle(.insetGrouped).scrollContentBackground(.hidden).screenBackground()
                 .contentMargins(.bottom, 24, for: .scrollContent)
                 .navigationTitle("Historique").refreshable { await store.refresh() }
                 .toolbar { if !store.history.isEmpty { ToolbarItem(placement: .topBarTrailing) { Button { clearAll = true } label: { Image(systemName: "trash") }.accessibilityLabel("Vider l’historique").disabled(!store.canMutate) } } }

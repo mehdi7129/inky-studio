@@ -46,7 +46,8 @@ struct DashboardView: View {
                         Label("Écran de démonstration", systemImage: "desktopcomputer").font(.caption).foregroundStyle(Bento.secondaryInk)
                     }
                 }.padding(16).frame(maxWidth: 680).frame(maxWidth: .infinity)
-            }.contentMargins(.bottom, 24, for: .scrollContent)
+            }.accessibilityIdentifier("frame.scroll")
+                .contentMargins(.bottom, 24, for: .scrollContent)
                 .navigationTitle("Inky Studio").screenBackground().refreshable { await store.refresh() }
                 .overlay { if store.state == nil && store.refreshing { ProgressView() } }
                 .sheet(isPresented: $importing) { PhotoImportView(panelWidth: store.panelWidth, panelHeight: store.panelHeight) { data, filename in try await store.upload(data, filename: filename) } }

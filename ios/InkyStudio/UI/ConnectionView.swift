@@ -93,7 +93,8 @@ struct ConnectionView: View {
                 SupportPrivacyLinks(identifierPrefix: "connection")
             }.padding(20).frame(maxWidth: 540)
                 .frame(maxWidth: .infinity)
-        }.background(Bento.background).scrollDismissesKeyboard(.interactively)
+        }.accessibilityIdentifier("connection.scroll")
+            .background(Bento.background).scrollDismissesKeyboard(.interactively)
             .onAppear { remember = store.biometricEnabled }
             .onChange(of: store.biometricEnabled) { _, enabled in remember = enabled }
             .sheet(isPresented: $gettingStarted) { GettingStartedView() }

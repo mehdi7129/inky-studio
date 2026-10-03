@@ -54,7 +54,8 @@ struct QueueView: View {
                             .accessibilityIdentifier("queue.edit").disabled(!store.canMutate).frame(maxWidth: .infinity, minHeight: 44)
                     }.listRowBackground(Bento.surface)
                 }
-            }.listStyle(.insetGrouped).scrollContentBackground(.hidden).screenBackground()
+            }.accessibilityIdentifier("queue.list")
+                .listStyle(.insetGrouped).scrollContentBackground(.hidden).screenBackground()
                 .contentMargins(.bottom, 24, for: .scrollContent)
                 .environment(\.editMode, .constant(editing ? .active : .inactive))
                 .navigationTitle("À suivre").toolbar {

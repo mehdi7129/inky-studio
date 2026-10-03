@@ -48,7 +48,8 @@ struct GettingStartedView: View {
                     Button("Fermer le guide") { dismiss() }
                         .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("guide.connect")
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
-            }.navigationTitle("Premiers pas").screenBackground()
+            }.accessibilityIdentifier("guide.scroll")
+                .navigationTitle("Premiers pas").screenBackground()
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Fermer") { dismiss() }.accessibilityIdentifier("guide.close")

@@ -125,7 +125,8 @@ struct SettingsView: View {
                     Text("Inky Studio pour iPhone · \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")")
                         .font(.caption).foregroundStyle(Bento.secondaryInk).padding(.bottom, 16)
                 }.padding(16).frame(maxWidth: 680).frame(maxWidth: .infinity)
-            }.navigationTitle("Réglages").screenBackground()
+            }.accessibilityIdentifier("settings.scroll")
+                .navigationTitle("Réglages").screenBackground()
                 .task { if !loaded, let settings = store.settings { draft = settings; loaded = true } }
                 .onChange(of: store.settings) { old, new in if !loaded || draft == old { if let new { draft = new; loaded = true } } }
                 .sheet(isPresented: $gettingStarted) { GettingStartedView() }
