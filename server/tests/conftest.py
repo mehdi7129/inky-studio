@@ -18,6 +18,8 @@ def inky_env(tmp_path, monkeypatch):
     """Isolate every test: fresh data dir, auth off, DB initialized."""
     monkeypatch.setenv("INKY_STUDIO_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("INKY_STUDIO_DISABLE_AUTH", "1")
+    monkeypatch.setenv("INKY_STUDIO_DISPLAY_MODE", "mock")
+    monkeypatch.delenv("INKY_STUDIO_DISPLAY_PROFILE", raising=False)
     from inky_web.db import init_db
     init_db()
     yield tmp_path

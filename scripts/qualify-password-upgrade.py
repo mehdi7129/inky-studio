@@ -37,6 +37,8 @@ def serve(fd: int, directory: Path) -> None:
             or (directory / ".qualification-only").read_text() != MARKER):
         raise QualificationFailure("invalid_private_test_directory")
     os.environ["INKY_STUDIO_DATA_DIR"] = str(directory)
+    os.environ["INKY_STUDIO_DISPLAY_MODE"] = "mock"
+    os.environ.pop("INKY_STUDIO_DISPLAY_PROFILE", None)
     os.environ.pop("INKY_STUDIO_DISABLE_AUTH", None)
     logging.disable(logging.CRITICAL)
 

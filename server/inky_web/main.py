@@ -22,6 +22,7 @@ from inky_web.api import router as api_router
 from inky_web.db import data_dir, init_db
 from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
+from inky_web.inky.errors import DisplayUnavailableError
 from inky_web.provisioning.api import CONFIRM_PATH
 from inky_web.provisioning.api import router as provisioning_router
 from inky_web.services.scheduler import Scheduler
@@ -95,7 +96,14 @@ async def lifespan(app: FastAPI):
             logging.getLogger(__name__).info(
                 "First boot detected — pushing welcome screen to the Inky"
             )
-            welcome_task = asyncio.create_task(asyncio.to_thread(show_welcome, app.state.display))
+            async def welcome():
+                try:
+                    await asyncio.to_thread(show_welcome, app.state.display)
+                except DisplayUnavailableError as exc:
+                    logging.getLogger(__name__).error("Welcome display unavailable: %s", exc.code)
+                    app.state.bus.broadcast("display_error", exc.payload())
+
+            welcome_task = asyncio.create_task(welcome())
 
     try:
         if os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled():
@@ -130,6 +138,11 @@ app = FastAPI(
     description="Web UI for the Inky e-ink photo frame",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(DisplayUnavailableError)
+async def display_error(request: Request, exc: DisplayUnavailableError):
+    return JSONResponse(status_code=503, content=exc.payload())
 
 
 @app.exception_handler(RequestValidationError)

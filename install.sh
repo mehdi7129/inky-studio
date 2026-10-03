@@ -329,6 +329,7 @@ User=${RUN_USER}
 WorkingDirectory=${INSTALL_DIR}/server
 Environment="INKY_STUDIO_DATA_DIR=${DATA_DIR}"
 Environment="INKY_STUDIO_REPO_SLUG=${REPO_SLUG}"
+Environment="INKY_STUDIO_DISPLAY_MODE=hardware"
 ExecStart=${INSTALL_DIR}/server/.venv/bin/inky-studio-server
 Restart=on-failure
 RestartSec=5

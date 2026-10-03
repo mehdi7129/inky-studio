@@ -61,7 +61,10 @@ def test_detected_driver_metadata_matches_pimoroni_230(
     monkeypatch.setitem(sys.modules, "inky.auto", auto_module)
     monkeypatch.setattr("inky_web.inky.display.platform.system", lambda: "Linux")
 
-    display = DisplayController()
+    # This catalogue test checks metadata, not the separately tested hardware
+    # qualification/profile and busy observer.
+    monkeypatch.setattr(DisplayController, "_configure_hardware", lambda self: None)
+    display = DisplayController(mode="hardware")
     display.initialize()
 
     assert auto_calls == [{"ask_user": False, "verbose": False}]
