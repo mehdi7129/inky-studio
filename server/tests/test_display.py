@@ -7,6 +7,7 @@ from types import ModuleType
 import pytest
 
 from inky_web.inky.display import DisplayController
+from inky_web.inky.errors import DisplayUnavailableError
 from inky_web.services import photos
 
 
@@ -61,7 +62,10 @@ def test_detected_driver_metadata_matches_pimoroni_230(
     monkeypatch.setitem(sys.modules, "inky.auto", auto_module)
     monkeypatch.setattr("inky_web.inky.display.platform.system", lambda: "Linux")
 
-    display = DisplayController()
+    # This catalogue test checks metadata, not the separately tested hardware
+    # qualification/profile and busy observer.
+    monkeypatch.setattr(DisplayController, "_configure_hardware", lambda self: None)
+    display = DisplayController(mode="hardware")
     display.initialize()
 
     assert auto_calls == [{"ask_user": False, "verbose": False}]
@@ -118,3 +122,58 @@ def test_hardware_buffer_and_refresh_are_serialized(data_dir, png_factory):
         two.result(timeout=3)
 
     assert driver.shown == [(10, 0, 0), (20, 0, 0)]
+
+
+def test_shutdown_gate_allows_nested_active_work_but_rejects_waiters():
+    display = DisplayController(mode="mock")
+    admitted, continue_work, waiting, releasing = (Event() for _ in range(4))
+    actions = []
+
+    def active():
+        with display.operation():
+            admitted.set()
+            assert continue_work.wait(3)
+            with display.operation():
+                actions.append("nested-show")
+            actions.append("history-and-ack")
+
+    def queued():
+        waiting.set()
+        with display.operation():
+            actions.append("forbidden-show")
+
+    def shutdown():
+        releasing.set()
+        display.shutdown()
+        actions.append("released")
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        owner = pool.submit(active)
+        assert admitted.wait(3)
+        waiter = pool.submit(queued)
+        assert waiting.wait(3)
+        display.begin_shutdown()
+        assert display.status()["state"] == "stopping"
+        closer = pool.submit(shutdown)
+        assert releasing.wait(3)
+        assert not closer.done()
+        continue_work.set()
+        owner.result(timeout=3)
+        with pytest.raises(DisplayUnavailableError, match="cours d’arrêt"):
+            waiter.result(timeout=3)
+        closer.result(timeout=3)
+    assert actions == ["nested-show", "history-and-ack", "released"]
+    with pytest.raises(DisplayUnavailableError):
+        with display.operation():
+            pytest.fail("New work must not enter a stopped controller")
+
+
+def test_failed_operation_does_not_leak_thread_local_admission():
+    display = DisplayController(mode="mock")
+    with pytest.raises(ValueError):
+        with display.operation():
+            raise ValueError("inert failure")
+    display.begin_shutdown()
+    with pytest.raises(DisplayUnavailableError):
+        with display.operation():
+            pytest.fail("Admission depth must be restored on exceptions")

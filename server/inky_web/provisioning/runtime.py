@@ -82,7 +82,7 @@ class ProvisioningRuntime:
 
     async def begin_adoption(self):
         async with self.mutation_lock:
-            if not self.available:
+            if not self.available or self.display.closing:
                 raise NetworkUnavailable("bluetooth_unavailable")
             await self.end_adoption()
             async with self._screen_lock:
@@ -112,7 +112,12 @@ class ProvisioningRuntime:
     async def _clear_screen(self):
         async with self._screen_lock:
             self.owners.close_window()
-            await _display_work(screen.restore_if_reserved, self.display, self.directory)
+            # Shutdown drains existing SPI work but does not start a second
+            # refresh. Keep the durable marker: start() restores it next boot.
+            if self.display.closing:
+                await _display_work(self.display.release, screen.RESERVATION)
+            else:
+                await _display_work(screen.restore_if_reserved, self.display, self.directory)
 
     def authorize(self, owner_id, owner_token):
         return self.owners.authenticate(owner_id, owner_token)
@@ -134,6 +139,8 @@ class ProvisioningRuntime:
             owner_id = canonical_uuid(message["owner_id"])
             owner_token = validate_token(message["owner_token"])
             async with self.mutation_lock:
+                if self.display.closing:
+                    raise NetworkUnavailable("service_stopping")
                 if operation == "claim":
                     if not self._claim_limiter.record_and_check("adoption"):
                         raise OwnershipError("rate_limited")
@@ -181,6 +188,8 @@ class ProvisioningRuntime:
 
     async def confirm(self, owner_id, owner_token, transaction_id):
         async with self.mutation_lock:
+            if self.display.closing:
+                raise NetworkUnavailable("service_stopping")
             self.authorize(owner_id, owner_token)
             return await self.network.call("confirm", id=canonical_uuid(transaction_id), owner_id=owner_id)
 

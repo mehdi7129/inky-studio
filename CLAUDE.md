@@ -40,13 +40,13 @@ install.sh              one-line installer (repo root)
 
 ## Dev commands
 
-Backend (works off-Pi — the display driver auto-mocks):
+Backend (auto mode mocks off Linux; select mock explicitly on Linux dev/CI):
 
 ```bash
 cd server
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"     # ".[pi]" only installs on a real Pi
-inky-studio-server          # serves on :8000
+INKY_STUDIO_DISPLAY_MODE=mock inky-studio-server  # serves on :8000, no GPIO
 ruff check . && pytest
 ```
 
@@ -108,8 +108,14 @@ The installer and updater pull the **latest GitHub Release**, so shipping is:
 
 ## Hardware notes
 
-- The `inky` package is pinned to `2.3.0`: `2.4.0` re-claims SPI/GPIO on every
-  `show()` and aborts. Don't bump without testing on real hardware.
+- The `inky` package stays pinned to `2.3.0` pending coordinated hardware
+  qualification. AC073 source is byte-identical in 2.3/2.4, so the historical
+  GPIO failure cannot be attributed to a change in that file. Its cause remains
+  unresolved. The AC073 busy observer targets 2.3.0; do not bump independently.
 - Newer Inky panels need `dtoverlay=spi0-0cs` (no kernel chip-select on SPI0)
   or the first refresh fails with "pins in use" on GPIO8.
-- Off-Pi, `DisplayController` falls back to a mock (no SPI/GPIO required).
+- `INKY_STUDIO_DISPLAY_MODE=auto|hardware|mock`: auto selects hardware on Linux
+  and mock elsewhere. Hardware failures never fall back to mock. The diagnostic
+  API stays alive, while display/state/upload/actions return 503 until restart.
+- The explicit `ac073-800x480` display profile accepts only the reviewed raw
+  EEPROM tuples; see `docs/inkyos/HARDWARE-CANDIDATE.md`. Never rewrite EEPROM.

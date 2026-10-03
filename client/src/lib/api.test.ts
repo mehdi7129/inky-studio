@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, removeFromQueue, triggerNext, triggerPrevious, updateSettings } from './api'
+import { ApiError, fetchState, removeFromQueue, triggerNext, triggerPrevious, updateSettings, uploadToQueue } from './api'
 
 const fetchMock = vi.fn<typeof fetch>()
 
@@ -8,6 +8,38 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
 })
 afterEach(() => vi.unstubAllGlobals())
+
+describe('API error response handling', () => {
+  it.each([
+    ['GET', fetchState],
+    ['POST', triggerNext],
+    ['upload', () => uploadToQueue(new Blob(['photo']), 'photo.png')],
+  ])('shows the server detail for a failed %s request', async (_method, request) => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      detail: 'L’écran du cadre est indisponible.', code: 'display_unavailable',
+    }), { status: 503 }))
+    const promise = request()
+    await expect(promise).rejects.toBeInstanceOf(ApiError)
+    await expect(promise).rejects.toMatchObject({
+      status: 503, message: 'L’écran du cadre est indisponible.',
+    })
+  })
+
+  it.each([
+    '<html>Service unavailable</html>',
+    '{"detail":',
+    '{"detail":{"error":"unavailable"}}',
+    '{"detail":[{"msg":"unavailable"}]}',
+    '{"detail":"  "}',
+    'null',
+    '',
+  ])('uses a readable fallback for an unusable error body (%s)', async (body) => {
+    fetchMock.mockResolvedValue(new Response(body, { status: 503 }))
+    await expect(fetchState()).rejects.toMatchObject({
+      status: 503, message: 'La requête a échoué (HTTP 503).',
+    })
+  })
+})
 
 describe('API mutation response handling', () => {
   it.each([
@@ -35,16 +67,6 @@ describe('API mutation response handling', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/settings', expect.objectContaining({
       method: 'POST', body: '{"saturation":1.5}',
     }))
-  })
-
-  it('preserves HTTP status and error body on failure', async () => {
-    fetchMock.mockResolvedValue(new Response('{"detail":"Display unavailable"}', { status: 503 }))
-    const promise = triggerNext()
-    await expect(promise).rejects.toBeInstanceOf(ApiError)
-    await expect(promise).rejects.toMatchObject({
-      status: 503,
-      message: 'POST /api/display/next → 503: {"detail":"Display unavailable"}',
-    })
   })
 
   it('does not silently accept malformed non-empty JSON', async () => {
