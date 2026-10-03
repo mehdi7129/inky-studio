@@ -171,6 +171,12 @@ final class DemoModeUITests: XCTestCase {
 
         let zoom = app.sliders["Zoom de la photo"]
         XCTAssertTrue(zoom.waitForExistence(timeout: 5))
+        let crop = app.descendants(matching: .any)["photo.crop"].firstMatch
+        XCTAssertTrue(crop.waitForExistence(timeout: 5))
+        let cropViewport = unobscuredViewport(of: app.scrollViews["photo.scroll"])
+        XCTAssertTrue(crop.isHittable, "A newly selected photo must open at its preview.")
+        XCTAssertGreaterThanOrEqual(crop.frame.minY, cropViewport.minY - 1)
+        XCTAssertLessThanOrEqual(crop.frame.maxY, cropViewport.maxY + 1)
         capture("16a Aperçu du cadrage grand texte")
         scrollTo(zoom, in: app.scrollViews["photo.scroll"], horizontalOffset: 0.95)
         zoom.adjust(toNormalizedSliderPosition: 0.15)

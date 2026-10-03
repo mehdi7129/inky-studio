@@ -196,6 +196,9 @@ struct PhotoImportView: View {
                     }
                     .padding(.bottom, 20)
                 }
+                // A newly selected photo starts at its preview, rather than
+                // retaining the source selector's scroll position.
+                .id(model.photo.map { ObjectIdentifier($0.image) })
                 .accessibilityIdentifier("photo.scroll")
                 .background(background)
             }
@@ -375,6 +378,7 @@ struct PhotoImportView: View {
             )
             .allowsHitTesting(!model.isUploading)
             .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("photo.crop")
             .accessibilityLabel("Cadrage de la photo")
             .accessibilityHint("Utilisez le réglage de zoom ou les actions pour déplacer la photo.")
             .accessibilityAction(named: "Déplacer la photo à gauche") { movePhoto(x: -0.1, y: 0) }
