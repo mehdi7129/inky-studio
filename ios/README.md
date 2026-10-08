@@ -2,7 +2,7 @@
 
 Native SwiftUI companion for Inky Studio v0.4.2+. Requires iOS 18 or newer. Photo transfer requires a Raspberry reachable on the same local network; the offline demo needs no frame. There is no cloud account. The local `InkyTLS` Swift package embeds pinned Mbed TLS 4.1.1 for secure Bluetooth provisioning. Password changes and Bluetooth require a compatible updated server; normal photo workflows remain compatible with v0.4.2.
 
-The available beta is build 3. Build 4 contains Bluetooth but awaits export compliance; source candidate build 5 also includes the demo and connection guide. Source/build success does not establish TestFlight availability. See [delivery status](../docs/ios/TESTFLIGHT-DELIVERY.md).
+On **2026-10-08**, Apple approved export compliance and **1.0.0 (8)** was assigned to the internal TestFlight group. App Store Connect reports installation on the tester’s iPhone 15 Pro Max. This source branch adds subsequent stability and accessibility improvements; they are not included in build 8. See [delivery status](../docs/ios/TESTFLIGHT-DELIVERY.md) and [the latest review](../docs/ios/reviews/2026-10-08-stability/README.md).
 
 ## Run
 
@@ -66,7 +66,7 @@ python3 ios/scripts/smoke-api.py
 # xcrun simctl boot <SIMULATOR_UDID>
 # python3 ios/scripts/seed-simulator-photo.py <SIMULATOR_UDID>
 xcodebuild -project ios/InkyStudio.xcodeproj -scheme InkyStudio \
-  -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' \
+  -destination 'platform=iOS Simulator,id=<SIMULATOR_UDID>' \
   -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
 ```
 

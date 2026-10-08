@@ -16,7 +16,8 @@
 <key>NSLocalNetworkUsageDescription</key><string>Inky Studio se connecte à votre Raspberry sur le même réseau Wi-Fi pour gérer les photos de votre cadre.</string>
 <key>NSFaceIDUsageDescription</key><string>Face ID autorise l’utilisation du mot de passe de votre cadre enregistré sur cet iPhone.</string>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
-<!-- Mbed TLS adds bundled encryption. Use App Store Connect's manual export
-     questionnaire until Apple supplies an approved compliance code. Do not
-     declare an exemption or invent an ITSEncryptionExportComplianceCode. -->
+<!-- Approved by Apple on 2026-10-08 for the declared build 8 cryptography.
+     Reassess the declaration if the cryptographic characteristics change. -->
+<key>ITSAppUsesNonExemptEncryption</key><true/>
+<key>ITSEncryptionExportComplianceCode</key><string>e1f9f3fe-8061-4d68-9bfc-955ac4ca05b4</string>
 </dict></plist>

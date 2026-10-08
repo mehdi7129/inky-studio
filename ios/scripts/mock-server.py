@@ -3,6 +3,8 @@
 
 Run: python3 ios/scripts/mock-server.py --port 8765
 Test password: test-password. Never connects to or changes a physical frame.
+Fault controls: POST /__test/availability {"available": false/true},
+POST /__test/settings-delay {"seconds": 0..5}; /__test/reset clears both.
 """
 from __future__ import annotations
 
@@ -59,12 +61,12 @@ class Fixture:
 
     def reset(self) -> None:
         with self.lock:
-            for connection in self.sockets:
-                try:
-                    connection.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
-            self.sockets.clear()
+            self.close_sockets()
+            if hasattr(self, "delay_cancelled"):
+                self.delay_cancelled.set()
+            self.delay_cancelled = threading.Event()
+            self.available = True
+            self.settings_delay = 0.0
             self.sessions: set[str] = set()
             self.password = PASSWORD
             self.login_attempts: list[float] = []
@@ -92,6 +94,16 @@ class Fixture:
             self.next_history_id = 3
             self.navigation_history_id = 2
             self.display = {"model": 'Mock Inky Impression 7.3" (Spectra 6)', "width": WIDTH, "height": HEIGHT, "colors": 6, "is_mock": True}
+
+    def close_sockets(self) -> None:
+        """Drop transports without invalidating authenticated fixture sessions."""
+        with self.lock:
+            for connection in self.sockets:
+                try:
+                    connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+            self.sockets.clear()
 
     def state(self) -> dict:
         with self.lock:
@@ -219,6 +231,30 @@ class Handler(BaseHTTPRequestHandler):
             FIXTURE.reset()
             self.reply(200, {"reset": True})
             return
+        if path == "/__test/availability" and method == "POST":
+            available = body.get("available")
+            if not isinstance(available, bool):
+                self.failure(400, "Expected an available boolean")
+                return
+            with FIXTURE.lock:
+                FIXTURE.available = available
+                if not available:
+                    FIXTURE.close_sockets()
+            self.reply(200, {"available": available})
+            return
+        if path == "/__test/settings-delay" and method == "POST":
+            seconds = body.get("seconds")
+            if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not 0 <= seconds <= 5:
+                self.failure(400, "Expected seconds between 0 and 5")
+                return
+            with FIXTURE.lock:
+                FIXTURE.settings_delay = float(seconds)
+            self.reply(200, {"seconds": seconds})
+            return
+        with FIXTURE.lock:
+            if path.startswith("/api/") and not FIXTURE.available:
+                self.failure(503, "Fixture API temporarily unavailable")
+                return
         if path == "/api/health" and method == "GET":
             self.reply(200, {"status": "ok", "version": "0.4.2"})
             return
@@ -341,6 +377,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/settings" and method in {"GET", "POST"}:
             if method == "POST":
+                with FIXTURE.lock:
+                    delay, cancelled = FIXTURE.settings_delay, FIXTURE.delay_cancelled
+                if cancelled.wait(delay):
+                    self.failure(503, "Fixture reset during settings save")
+                    return
                 rules = {
                     "change_mode": lambda value: value in {"daily", "interval", "manual"},
                     "change_hour": lambda value: isinstance(value, int) and 0 <= value <= 23,
@@ -352,6 +393,9 @@ class Handler(BaseHTTPRequestHandler):
                         self.reply(422, {"detail": [{"loc": ["body", key], "msg": f"Invalid {key}", "type": "value_error"}]})
                         return
                 with FIXTURE.lock:
+                    if cancelled.is_set() or not FIXTURE.available:
+                        self.failure(503, "Fixture API temporarily unavailable")
+                        return
                     FIXTURE.settings.update({key: value for key, value in body.items() if key in rules and value is not None})
             self.reply(200, FIXTURE.settings)
             if method == "POST":
@@ -438,14 +482,17 @@ class Handler(BaseHTTPRequestHandler):
             self.failure(400, "WebSocket upgrade required")
             return
         accept = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
-        self.send_response(101)
-        self.send_header("Upgrade", "websocket")
-        self.send_header("Connection", "Upgrade")
-        self.send_header("Sec-WebSocket-Accept", accept)
-        self.end_headers()
-        self.wfile.flush()
         write_lock = threading.Lock()
         with FIXTURE.lock:
+            if not FIXTURE.available:
+                self.failure(503, "Fixture API temporarily unavailable")
+                return
+            self.send_response(101)
+            self.send_header("Upgrade", "websocket")
+            self.send_header("Connection", "Upgrade")
+            self.send_header("Sec-WebSocket-Accept", accept)
+            self.end_headers()
+            self.wfile.flush()
             FIXTURE.sockets[self.connection] = (self.token, write_lock)
         self.close_connection = True
         try:

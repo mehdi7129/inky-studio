@@ -1,8 +1,164 @@
+import Combine
 import XCTest
 @testable import InkyStudio
 
 @MainActor
 final class AppStoreTests: XCTestCase {
+    func testCancelledRefreshPreservesConnectionAndLoadedState() async throws {
+        let fixture = StoreFixture(totals: ["frame.local": 1])
+        defer { fixture.dispose() }
+        let store = fixture.store
+        await fixture.login("frame.local")
+        let gate = fixture.stub.hold(host: "frame.local", path: "/api/state")
+        let refresh = Task { await store.refresh() }
+        await fulfillment(of: [gate.started], timeout: 3)
+
+        refresh.cancel()
+        await refresh.value
+
+        XCTAssertTrue(store.authenticated)
+        XCTAssertTrue(store.connected, "Cancelling a refresh does not establish that the frame is offline.")
+        XCTAssertFalse(store.refreshing)
+        XCTAssertEqual(store.state?.display.model, "frame.local")
+        XCTAssertEqual(store.history.count, 1)
+        XCTAssertNil(store.errorMessage)
+    }
+
+    func testRequestedRefreshRunsAfterInFlightRefreshFails() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let store = fixture.store
+        await fixture.login("frame.local")
+        let before = fixture.stub.requests.filter { $0.url?.path == "/api/state" }.count
+        let gate = fixture.stub.hold(host: "frame.local", path: "/api/state")
+        let refresh = Task { await store.refresh() }
+        await fulfillment(of: [gate.started], timeout: 3)
+
+        // A foreground return or explicit retry arrives before the old failure.
+        await store.refresh()
+        gate.release(status: 503)
+        await refresh.value
+
+        let after = fixture.stub.requests.filter { $0.url?.path == "/api/state" }.count
+        XCTAssertEqual(after - before, 2, "The explicitly requested retry must survive the in-flight failure.")
+        XCTAssertTrue(store.authenticated)
+        XCTAssertTrue(store.connected)
+        XCTAssertFalse(store.refreshing)
+        XCTAssertNil(store.errorMessage, "A recovered refresh must clear its transient failure message.")
+    }
+
+    func testRecoveredRefreshPreservesNewerOperationError() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let store = fixture.store
+        await fixture.login("frame.local")
+        let updateGate = fixture.stub.hold(host: "frame.local", path: "/api/system/update")
+        let update = Task { await store.checkUpdate() }
+        await fulfillment(of: [updateGate.started], timeout: 3)
+        let refreshGate = fixture.stub.hold(host: "frame.local", path: "/api/state")
+        let refresh = Task { await store.refresh() }
+        await fulfillment(of: [refreshGate.started], timeout: 3)
+        refreshGate.release(status: 503)
+        await refresh.value
+        XCTAssertFalse(store.connected)
+        XCTAssertNotNil(store.errorMessage)
+
+        updateGate.release(status: 422)
+        await update.value
+        let operationError = try XCTUnwrap(store.errorMessage)
+        await store.refresh()
+
+        XCTAssertTrue(store.connected)
+        XCTAssertTrue(store.authenticated)
+        XCTAssertEqual(store.errorMessage, operationError,
+                       "Recovering the connection must not erase a newer operation error.")
+    }
+
+    func testRequestedRefreshRunsInNewTaskAfterCancellation() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let store = fixture.store
+        await fixture.login("frame.local")
+        fixture.enterForegroundWithoutMonitoring()
+        let before = fixture.stub.requests.filter { $0.url?.path == "/api/state" }.count
+        let cancelledGate = fixture.stub.hold(host: "frame.local", path: "/api/state")
+        let refresh = Task { await store.refresh() }
+        await fulfillment(of: [cancelledGate.started], timeout: 3)
+        await store.refresh()
+        let retryGate = fixture.stub.hold(host: "frame.local", path: "/api/state")
+
+        refresh.cancel()
+        await refresh.value
+        await fulfillment(of: [retryGate.started], timeout: 3)
+        XCTAssertTrue(store.refreshing)
+        let finished = expectation(description: "Pending refresh completed")
+        let observation = store.$refreshing.dropFirst().filter { !$0 }.sink { _ in finished.fulfill() }
+        defer { observation.cancel() }
+        retryGate.release()
+        await fulfillment(of: [finished], timeout: 3)
+
+        let after = fixture.stub.requests.filter { $0.url?.path == "/api/state" }.count
+        XCTAssertEqual(after - before, 2, "Cancellation must hand the requested refresh to a non-cancelled task exactly once.")
+        XCTAssertFalse(store.refreshing)
+        XCTAssertTrue(store.connected)
+        XCTAssertTrue(store.authenticated)
+        XCTAssertNil(store.errorMessage)
+    }
+
+    func testCancelledRefreshDoesNotRetryAfterEnteringBackground() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let store = fixture.store
+        await fixture.login("frame.local")
+        fixture.enterForegroundWithoutMonitoring()
+        let cancelledGate = fixture.stub.hold(host: "frame.local", path: "/api/state")
+        let refresh = Task { await store.refresh() }
+        await fulfillment(of: [cancelledGate.started], timeout: 3)
+        await store.refresh()
+        let unexpectedRetry = fixture.stub.hold(host: "frame.local", path: "/api/state")
+        unexpectedRetry.started.isInverted = true
+
+        store.sceneActive(false)
+        refresh.cancel()
+        await refresh.value
+        await fulfillment(of: [unexpectedRetry.started], timeout: 0.2)
+
+        XCTAssertFalse(store.refreshing)
+        XCTAssertTrue(store.authenticated)
+        XCTAssertTrue(store.connected)
+        XCTAssertNil(store.errorMessage)
+    }
+
+    func testCancelledOldRefreshCannotRetryInNewSession() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let store = fixture.store
+        await fixture.login("old-frame.local")
+        fixture.enterForegroundWithoutMonitoring()
+        let cancelledGate = fixture.stub.hold(host: "old-frame.local", path: "/api/state")
+        let refresh = Task { await store.refresh() }
+        await fulfillment(of: [cancelledGate.started], timeout: 3)
+        await store.refresh()
+
+        store.sceneActive(false)
+        await fixture.login("new-frame.local")
+        fixture.enterForegroundWithoutMonitoring()
+        let unexpectedRetry = fixture.stub.hold(host: "new-frame.local", path: "/api/state")
+        unexpectedRetry.started.isInverted = true
+        refresh.cancel()
+        await refresh.value
+        await fulfillment(of: [unexpectedRetry.started], timeout: 0.2)
+
+        XCTAssertEqual(store.state?.display.model, "new-frame.local")
+        XCTAssertEqual(fixture.stub.requests.filter {
+            $0.url?.host == "old-frame.local" && $0.url?.path == "/api/state"
+        }.count, 2, "Only the login snapshot and the cancelled refresh may use the old frame.")
+        XCTAssertFalse(store.refreshing)
+        XCTAssertTrue(store.authenticated)
+        XCTAssertTrue(store.connected)
+        XCTAssertNil(store.errorMessage)
+    }
+
     func testForegroundAndPhotoReadsWaitForPasswordRotation() async throws {
         let fixture = StoreFixture(totals: ["frame.local": 101])
         defer { fixture.dispose() }
@@ -310,6 +466,14 @@ private final class StoreFixture {
         await store.login(password: "synthetic-test-password")
         XCTAssertTrue(store.authenticated)
         XCTAssertTrue(store.connected)
+    }
+
+    func enterForegroundWithoutMonitoring() {
+        // Exercise foreground-only refresh behavior without opening a real WebSocket.
+        let authenticated = store.authenticated
+        store.authenticated = false
+        store.sceneActive(true)
+        store.authenticated = authenticated
     }
 
     func dispose() {

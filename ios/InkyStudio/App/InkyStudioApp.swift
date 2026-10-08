@@ -1,3 +1,4 @@
+import Accessibility
 import SwiftUI
 
 @main
@@ -62,6 +63,12 @@ struct RootView: View {
         .onChange(of: phase) { _, value in store.sceneActive(value == .active) }
         .onChange(of: store.authenticated) { _, _ in selection = 0 }
         .onChange(of: store.sessionIdentity) { _, _ in selection = 0 }
+        .onChange(of: store.notice) { previous, current in
+            guard let message = current?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !message.isEmpty,
+                  message != previous?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+            AccessibilityNotification.Announcement(message).post()
+        }
     }
     private var demoBanner: some View {
         HStack(spacing: 12) {

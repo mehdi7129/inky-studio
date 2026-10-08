@@ -1,5 +1,20 @@
 # Inventaire cryptographique et conformité iOS
 
+## Approbation Apple — 8 octobre 2026
+
+Apple a approuvé les documents de chiffrement ; la déclaration approuvée est
+associée au build **1.0.0 (8)**, désormais distribué au groupe TestFlight interne.
+Le code fourni par App Store Connect est reporté dans `Info.plist` avec
+`ITSAppUsesNonExemptEncryption=true` pour les prochains builds conservant ces
+caractéristiques cryptographiques. Aucun algorithme ni paramètre TLS n'est
+modifié par ce changement de métadonnées. Toute évolution du chiffrement doit
+faire réexaminer la déclaration.
+
+Cette approbation porte sur la conformité export. Elle ne constitue ni une
+validation fonctionnelle du Bluetooth, ni une approbation publique App Review.
+Voir [l'état de livraison](TESTFLIGHT-DELIVERY.md). Les sections suivantes
+conservent les constats historiques, antérieurs à cette approbation.
+
 ## Préparation de 1.0.0 (6) — 1 octobre 2026
 
 Le candidat source 6 conserve Mbed TLS 4.1.1, TF-PSA-Crypto 1.1.1 et la

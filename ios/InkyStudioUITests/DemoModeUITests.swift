@@ -117,6 +117,29 @@ final class DemoModeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["connection.demo"].waitForExistence(timeout: 5))
     }
 
+    /// Audit semantic accessibility on real rendered screens. This does not
+    /// replace listening to VoiceOver or testing every scrolled/offscreen item.
+    func testPublicScreensHaveAccessibleDescriptionsAndTraits() throws {
+        launch()
+        XCTAssertTrue(app.buttons["connection.demo"].waitForExistence(timeout: 10))
+        try app.performAccessibilityAudit(for: [.sufficientElementDescription, .trait])
+        scrollTo(app.buttons["connection.demo"], in: app.scrollViews["connection.scroll"])
+        app.buttons["connection.demo"].tap()
+        XCTAssertTrue(app.buttons["demo.exit"].waitForExistence(timeout: 5))
+        for name in ["Cadre", "File", "Historique", "Réglages"] {
+            selectTab(name)
+            try app.performAccessibilityAudit(for: [.sufficientElementDescription, .trait])
+        }
+        selectTab("Cadre")
+        scrollTo(app.buttons["frame.add"], in: app.scrollViews["frame.scroll"])
+        app.buttons["frame.add"].tap()
+        scrollTo(app.buttons["photo.demoSample"], in: app.scrollViews["photo.scroll"])
+        try app.performAccessibilityAudit(for: [.sufficientElementDescription, .trait])
+        app.buttons["photo.demoSample"].tap()
+        XCTAssertTrue(app.buttons["upload-photo"].waitForExistence(timeout: 5))
+        try app.performAccessibilityAudit(for: [.sufficientElementDescription, .trait])
+    }
+
     /// Follows the Simulator's current appearance so the same journey can be
     /// inspected in light and dark without adding a production launch override.
     func testAllTabsAndPhotoImportWithAccessibilityText() {

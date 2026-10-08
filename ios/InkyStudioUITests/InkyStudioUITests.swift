@@ -206,6 +206,73 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertFalse(element("frame.next").exists, "Authenticated actions must disappear after logout.")
     }
 
+    func testSettingsSaveKeepsAccessibleLabelWhileSaving() {
+        launchFixtureApp()
+        login()
+        selectTab("settings", fallback: "Réglages")
+        let manual = app.segmentedControls["settings.mode"].buttons["Manuel"]
+        XCTAssertTrue(manual.waitForExistence(timeout: 5))
+        manual.tap()
+        let save = app.buttons["settings.save"]
+        scrollTo(save)
+        XCTAssertTrue(save.isEnabled)
+        XCTAssertEqual(save.label, "Enregistrer les réglages")
+        configureFixture("__test/settings-delay", body: ["seconds": 5])
+        defer { configureFixture("__test/settings-delay", body: ["seconds": 0]) }
+        save.tap()
+
+        let saving = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@ AND value == %@ AND enabled == false",
+                                   "Enregistrer les réglages", "Opération en cours"), object: save)
+        XCTAssertEqual(XCTWaiter.wait(for: [saving], timeout: 3), .completed,
+                       "The disabled save button must retain its action label and expose progress through its value.")
+        XCTAssertTrue(app.staticTexts["Réglages enregistrés."].waitForExistence(timeout: 10))
+        XCTAssertEqual(save.label, "Enregistrer les réglages")
+        XCTAssertNotEqual(save.value as? String, "Opération en cours")
+        XCTAssertFalse(save.isEnabled, "A saved draft must no longer be dirty.")
+    }
+
+    func testForegroundOfflineKeepsDataAndRecoversWithoutLogin() {
+        launchFixtureApp()
+        login()
+        selectTab("queue", fallback: "File")
+        let firstPhoto = element("queue.row.a11050000002")
+        let secondPhoto = element("queue.row.5ad000000003")
+        XCTAssertTrue(firstPhoto.waitForExistence(timeout: 5))
+        XCTAssertTrue(secondPhoto.exists)
+        XCTAssertTrue(app.staticTexts["2 photos dans la file"].exists)
+
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5), "The app must enter the background before the outage.")
+        configureFixture("__test/availability", body: ["available": false])
+        defer { configureFixture("__test/availability", body: ["available": true]) }
+        app.activate()
+        let offline = app.staticTexts["Raspberry injoignable · données précédentes"]
+        XCTAssertTrue(offline.waitForExistence(timeout: 10), "Returning offline must show the cached-data banner.")
+        XCTAssertTrue(firstPhoto.exists)
+        XCTAssertTrue(secondPhoto.exists)
+        XCTAssertTrue(app.staticTexts["2 photos dans la file"].exists)
+        XCTAssertFalse(app.buttons["queue.edit"].isEnabled, "Cached data must remain read-only during the outage.")
+        XCTAssertFalse(app.secureTextFields["connection.password"].exists, "A transport failure must preserve the session.")
+        capture("Reprise hors ligne — données conservées")
+
+        let retry = app.buttons["Réessayer"]
+        XCTAssertTrue(retry.isHittable)
+        retry.tap()
+        XCTAssertTrue(offline.exists, "Retrying while the frame is unavailable must keep the recoverable state.")
+        configureFixture("__test/availability", body: ["available": true])
+        // The WebSocket reconnect and the 20-second polling fallback may recover
+        // first. Do not race either against a tap on a disappearing retry button.
+        XCTAssertTrue(offline.waitForNonExistence(timeout: 30), "Restoring the frame must clear the offline banner without another login.")
+        XCTAssertTrue(firstPhoto.exists)
+        XCTAssertTrue(secondPhoto.exists)
+        XCTAssertTrue(app.buttons["queue.edit"].isEnabled)
+        XCTAssertFalse(app.secureTextFields["connection.password"].exists, "Recovery must use the existing session without logging in again.")
+        selectTab("frame", fallback: "Cadre")
+        XCTAssertTrue(app.staticTexts["Raspberry connecté"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["frame.next"].isEnabled)
+    }
+
     func testNextPhotoConsumesQueueAndUpdatesFrame() {
         launchFixtureApp()
         login()
@@ -421,9 +488,16 @@ final class InkyStudioUITests: XCTestCase {
     }
 
     private func resetFixture() {
-        let ready = expectation(description: "Local fixture reset")
-        var request = URLRequest(url: fixtureURL.appendingPathComponent("__test/reset"))
+        configureFixture("__test/reset")
+    }
+
+    private func configureFixture(_ endpoint: String, body: [String: Any] = [:]) {
+        let ready = expectation(description: "Local fixture \(endpoint)")
+        var request = URLRequest(url: fixtureURL.appendingPathComponent(endpoint))
         request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        do { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
+        catch { XCTFail("Invalid fixture configuration: \(error)"); return }
         request.timeoutInterval = 5
         URLSession.shared.dataTask(with: request) { _, response, error in
             XCTAssertNil(error, "Start python3 ios/scripts/mock-server.py before running UI tests.")

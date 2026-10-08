@@ -1,4 +1,9 @@
-# Native iPhone validation — 2026-09-27
+# Native iPhone validation
+
+Latest: [2026-10-08 stability and accessibility review](reviews/2026-10-08-stability/README.md).
+[Current TestFlight delivery](TESTFLIGHT-DELIVERY.md) is tracked separately from local tests.
+
+## Historical validation — 2026-09-27
 
 The approved six-screen bento design is implemented in SwiftUI. Minimum iOS version: 18.0. Server compatibility tested against the existing v0.4.2 release. No production Pi files, photos, queue entries or settings were changed by these checks.
 

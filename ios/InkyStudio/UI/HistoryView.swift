@@ -38,6 +38,8 @@ struct HistoryView: View {
                     Button { Task { await store.loadMoreHistory() } } label: {
                         if store.loadingHistory { ProgressView() } else { Text("Charger les photos précédentes") }
                     }.disabled(store.loadingHistory).frame(maxWidth: .infinity, minHeight: 44)
+                        .accessibilityLabel("Charger les photos précédentes")
+                        .accessibilityValue(store.loadingHistory ? "Chargement en cours" : "")
                 }
             }.accessibilityIdentifier("history.list")
                 .listStyle(.insetGrouped).scrollContentBackground(.hidden).screenBackground()
