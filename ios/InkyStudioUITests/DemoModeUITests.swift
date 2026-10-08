@@ -14,12 +14,10 @@ final class DemoModeUITests: XCTestCase {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
         app.launch()
-        let teardown: @Sendable () -> Void = { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                if (self.testRun?.failureCount ?? 0) > 0 { self.capture("Failure") }
-                self.app.terminate()
-            }
+        let teardown: @MainActor @Sendable () -> Void = { [weak self] in
+            guard let self else { return }
+            if (self.testRun?.failureCount ?? 0) > 0 { self.capture("Failure") }
+            self.app.terminate()
         }
         addTeardownBlock(teardown)
     }

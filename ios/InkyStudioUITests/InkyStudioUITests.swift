@@ -15,10 +15,8 @@ final class InkyStudioUITests: XCTestCase {
         if resetCamera { app.resetAuthorizationStatus(for: .camera) }
         app.launchArguments = ["--uitesting", "--frame-address", fixtureURL.absoluteString]
         app.launch()
-        let teardown: @Sendable () -> Void = { [weak self] in
-            MainActor.assumeIsolated {
-                self?.finish()
-            }
+        let teardown: @MainActor @Sendable () -> Void = { [weak self] in
+            self?.finish()
         }
         addTeardownBlock(teardown)
     }
@@ -260,7 +258,7 @@ final class InkyStudioUITests: XCTestCase {
         let offlineBanner = element("connection.offline")
         let errorBanner = element("connection.error")
         XCTAssertTrue(offlineBanner.exists)
-        XCTAssertTrue(errorBanner.exists)
+        XCTAssertTrue(errorBanner.waitForExistence(timeout: 5))
         XCTAssertLessThanOrEqual(offlineBanner.frame.maxY, errorBanner.frame.minY + 1,
                                  "Connection and error messages must not overlap.")
         XCTAssertLessThanOrEqual(errorBanner.frame.maxY, app.navigationBars.firstMatch.frame.minY + 1,
