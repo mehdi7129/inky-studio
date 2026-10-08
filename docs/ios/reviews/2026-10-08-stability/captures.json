@@ -1,0 +1,103 @@
+[
+  {
+    "file": "screenshots/grand-texte-envoi-light.png",
+    "test": "DemoModeUITests/testAllTabsAndPhotoImportWithAccessibilityText()",
+    "attachment": "29EAADC4-BD5F-4103-87DB-3BEDFDB403D9.png",
+    "source_result": "final-light.xcresult (interrupted later; this test passed)",
+    "source_commit": "18849de"
+  },
+  {
+    "file": "screenshots/grand-texte-cadre-light.png",
+    "test": "DemoModeUITests/testAllTabsAndPhotoImportWithAccessibilityText()",
+    "attachment": "58222802-2E47-43EF-AD44-0112D537485A.png",
+    "source_result": "final-light.xcresult (interrupted later; this test passed)",
+    "source_commit": "18849de"
+  },
+  {
+    "file": "before/offline-overlap-light.png",
+    "test": "InkyStudioUITests/testForegroundOfflineKeepsDataAndRecoversWithoutLogin()",
+    "attachment": "B482BD6E-48A9-4ECF-8F45-770D0172295E.png",
+    "source_result": "final-light.xcresult (interrupted later; this test passed)",
+    "source_commit": "18849de"
+  },
+  {
+    "file": "screenshots/offline-light.png",
+    "test": "InkyStudioUITests/testForegroundOfflineKeepsDataAndRecoversWithoutLogin()",
+    "attachment": "9386599A-9B33-4423-8A36-A71B63310AC7.png",
+    "source_result": "resume-light.xcresult (2 tests passed)",
+    "source_commit": "ea074256d77b3f4eb46ae9a40abb71fe7971da7a",
+    "sha256": "8db8ec6786ed3d3f58d8113b9a305492dc382a077e8408191d552dfc9f0b37cd"
+  },
+  {
+    "file": "screenshots/reglages-light.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "attachment": "9D7888C4-5659-401E-AB8E-8E4BAE591A51.png",
+    "source_result": "resume-light.xcresult (2 tests passed)",
+    "source_commit": "ea074256d77b3f4eb46ae9a40abb71fe7971da7a",
+    "sha256": "014eec46eb9dccfe0e0089f115065c40543ec571e984a7243d51fdc278fbb860"
+  },
+  {
+    "file": "screenshots/historique-light.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "attachment": "1D425F53-2DE3-405F-A521-A01BB2A4241E.png",
+    "source_result": "resume-light.xcresult (2 tests passed)",
+    "source_commit": "ea074256d77b3f4eb46ae9a40abb71fe7971da7a",
+    "sha256": "7240e3ed260cd4acb100bb3df6ed84fe5908035a7dc9a66d50cfdc098a422434"
+  },
+  {
+    "file": "screenshots/file-light.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "attachment": "31160237-ADEC-46B2-9EBD-8E386AB3EAAA.png",
+    "source_result": "resume-light.xcresult (2 tests passed)",
+    "source_commit": "ea074256d77b3f4eb46ae9a40abb71fe7971da7a",
+    "sha256": "0b1f701006be999242b68a28097d1321d2ad3738e0273797346ce627183bd773"
+  },
+  {
+    "file": "screenshots/cadre-light.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "attachment": "C2EEF891-0A8F-4542-813D-3EA3D9B7517A.png",
+    "source_result": "resume-light.xcresult (2 tests passed)",
+    "source_commit": "ea074256d77b3f4eb46ae9a40abb71fe7971da7a",
+    "sha256": "c8fbf7d02e1385d4dc1a4d4ef24d3743932b88c750f8164839a4ac1c3375b188"
+  },
+  {
+    "file": "screenshots/cadre-dark.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "attachment": "22873A3A-C7CF-4A88-89A3-C428DB771A70.png",
+    "source_result": "verified-dark.xcresult (this test passed; separate accessibility audit failed its navigation oracle)",
+    "source_commit": "fca004a",
+    "sha256": "6bb1cdb2b2aa34d316be445d15d5baf678afb9ee603e6c0ba2fe47a83d1a3f1f"
+  },
+  {
+    "file": "screenshots/file-dark.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "attachment": "9C764A63-EEEE-4804-9699-E4D052385B76.png",
+    "source_result": "verified-dark.xcresult (this test passed; separate accessibility audit failed its navigation oracle)",
+    "source_commit": "fca004a",
+    "sha256": "926277ee3911e66638a0b36f083e9e522dd31ccbcc6dd445762b312e54c61934"
+  },
+  {
+    "file": "screenshots/historique-dark.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "attachment": "C6110404-7F74-45A5-A155-02DA44B9B157.png",
+    "source_result": "verified-dark.xcresult (this test passed; separate accessibility audit failed its navigation oracle)",
+    "source_commit": "fca004a",
+    "sha256": "6fd8326a7ddb6a55e66f2534ce500ee34c41c576527972df27c1d14107082d57"
+  },
+  {
+    "file": "screenshots/reglages-dark.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "attachment": "288E2222-7AB0-4848-9C1D-694055E7DCFA.png",
+    "source_result": "verified-dark.xcresult (this test passed; separate accessibility audit failed its navigation oracle)",
+    "source_commit": "fca004a",
+    "sha256": "8d4811a83c3009a4cc566092bec0bacddb1b27acf98db9468e8c46ce288155d5"
+  },
+  {
+    "file": "screenshots/cadrage-dark.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "attachment": "5927ED65-5522-41F1-8808-54AF460388D0.png",
+    "source_result": "verified-dark.xcresult (this test passed; separate accessibility audit failed its navigation oracle)",
+    "source_commit": "fca004a",
+    "sha256": "df586bbb94472368dbf2608e831f3bb6cef588ecd9d3c78ec05816fa1fda1bd7"
+  }
+]

@@ -491,10 +491,22 @@ final class InkyStudioUITests: XCTestCase {
             let bars = app.navigationBars.matching(identifier: title)
             XCTAssertTrue(bars.firstMatch.waitForExistence(timeout: 5))
             XCTAssertEqual(bars.count, 1, "The selected tab must have one destination title.")
-            let visible = XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "exists == true AND hittable == true"), object: bars.element)
-            XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed,
-                           "The selected tab's destination must be visible.")
+            // A static navigation title need not accept taps. Verify geometry
+            // and the screen's own visible content container instead.
+            let titleFrame = bars.element.frame
+            XCTAssertFalse(titleFrame.isEmpty)
+            XCTAssertTrue(window.frame.contains(titleFrame), "The destination title must be visible.")
+            let container: XCUIElement
+            switch identifier {
+            case "frame": container = app.scrollViews["frame.scroll"]
+            case "queue": container = app.collectionViews["queue.list"]
+            case "history": container = app.collectionViews["history.list"]
+            case "settings": container = app.scrollViews["settings.scroll"]
+            default: XCTFail("Unknown tab: \(identifier)"); return
+            }
+            XCTAssertTrue(container.waitForExistence(timeout: 5))
+            XCTAssertFalse(container.frame.intersection(window.frame).isEmpty,
+                           "The selected tab's own content must be onscreen.")
         } else {
             target.tap()
             XCTAssertTrue(waitForSelected(target), "The tab must actually become selected.")

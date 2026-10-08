@@ -243,10 +243,28 @@ final class DemoModeUITests: XCTestCase {
             let bars = app.navigationBars.matching(identifier: title)
             XCTAssertTrue(bars.firstMatch.waitForExistence(timeout: 5))
             XCTAssertEqual(bars.count, 1, "The selected tab must have one destination title.")
+            let navigation = bars.element
+            XCTAssertFalse(navigation.frame.isEmpty)
+            XCTAssertTrue(window.frame.contains(navigation.frame), "The destination title must be on screen.")
+            // A title-only navigation bar need not have a hittable point.
+            // Require an actual control belonging to this destination instead.
+            let control: XCUIElement
+            switch label {
+            case "Cadre":
+                control = app.buttons["frame.next"]
+                scrollTo(control, in: app.scrollViews["frame.scroll"])
+            case "File": control = navigation.buttons["Ajouter une photo"]
+            case "Historique": control = navigation.buttons["Vider l’historique"]
+            case "Réglages":
+                control = app.buttons["demo.reset"]
+                scrollTo(control, in: app.scrollViews["settings.scroll"])
+            default: XCTFail("Unknown tab: \(label)"); return
+            }
             let visible = XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "exists == true AND hittable == true"), object: bars.element)
+                predicate: NSPredicate(format: "exists == true AND hittable == true"), object: control)
             XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed,
-                           "The selected tab's destination must be visible.")
+                           "The selected tab must expose its own accessible control.")
+            XCTAssertTrue(readyToTap(control, in: window.frame))
         } else {
             tab.tap()
         }
@@ -256,7 +274,6 @@ final class DemoModeUITests: XCTestCase {
         // Each screen owns a stable container identifier. A modal can leave
         // other scroll views in the tree, so never choose a container heuristically.
         XCTAssertTrue(scrollView.waitForExistence(timeout: 5))
-        let isList = scrollView.elementType == .collectionView || scrollView.elementType == .table
         for _ in 0..<maxGestures {
             XCTAssertTrue(scrollView.exists, "Scrolling must keep its original screen or sheet open.")
             let viewport = unobscuredViewport(of: scrollView)
@@ -267,13 +284,19 @@ final class DemoModeUITests: XCTestCase {
                 if element.frame.minY < viewport.minY { towardsTop = true }
                 else if element.frame.maxY > viewport.maxY { towardsTop = false }
             }
-            // In iOS 18.5 a slow drag starting over a SwiftUI button/link can
-            // activate it. CI recordings showed example selection, upload and
-            // iOS Settings opening during scrollTo. Use the padded controls'
-            // empty right margin. The photo crop canvas is full-width, so this
-            // margin does not bypass its drag gesture; the start height matters.
-            // Native lists retain their central scrolling lane.
-            let x = isList ? viewport.midX : viewport.maxX - min(12, viewport.width * 0.05)
+            // Use a scrolling gesture, without a press-and-hold on a control.
+            // CI showed the slow edge drag selecting the example photo and
+            // grabbing the guide's scroll indicator instead of its content.
+            let crop = scrollView.descendants(matching: .any)["photo.crop"].firstMatch
+            if !crop.exists {
+                if towardsTop { scrollView.swipeDown() }
+                else { scrollView.swipeUp() }
+                continue
+            }
+            // The full-width crop canvas owns its drag gesture. Start below
+            // it when moving down through the controls, in their left margin
+            // and away from the scroll indicator on the right.
+            let x = viewport.minX + min(12, viewport.width * 0.05)
             // Freeze the observed points in window coordinates before the
             // gesture; XCTest must not resolve the scrolling element mid-drag.
             let window = app.windows.firstMatch
@@ -283,7 +306,7 @@ final class DemoModeUITests: XCTestCase {
                 dy: viewport.minY + viewport.height * (towardsTop ? 0.25 : 0.75) - windowFrame.minY))
             let end = origin.withOffset(CGVector(dx: x - windowFrame.minX,
                 dy: viewport.minY + viewport.height * (towardsTop ? 0.75 : 0.25) - windowFrame.minY))
-            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+            start.press(forDuration: 0, thenDragTo: end, withVelocity: .default, thenHoldForDuration: 0)
         }
         XCTAssertTrue(element.exists, "Element absent: \(element)")
         XCTAssertTrue(readyToTap(element, in: unobscuredViewport(of: scrollView)), "Element inaccessible or covered by navigation: \(element)")
@@ -294,11 +317,11 @@ final class DemoModeUITests: XCTestCase {
         var top = bounds.minY
         var bottom = bounds.maxY
         let navigation = app.navigationBars.firstMatch
-        if navigation.exists && navigation.isHittable && navigation.frame.intersects(bounds) {
+        if navigation.exists && !navigation.frame.isEmpty && navigation.frame.intersects(bounds) {
             top = max(top, navigation.frame.maxY)
         }
         let tabs = app.tabBars.firstMatch
-        if tabs.exists && tabs.isHittable && tabs.frame.intersects(bounds) {
+        if tabs.exists && !tabs.frame.isEmpty && tabs.frame.intersects(bounds) {
             bottom = min(bottom, tabs.frame.minY)
         }
         return CGRect(x: bounds.minX, y: top, width: bounds.width, height: max(0, bottom - top))
