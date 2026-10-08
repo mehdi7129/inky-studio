@@ -327,8 +327,12 @@ final class InkyStudioUITests: XCTestCase {
             let title = NSPredicate(format: "label BEGINSWITH %@", "Enregistrer le mot de passe")
             let sheet = app.sheets.matching(title).firstMatch
             let systemSheet = XCUIApplication(bundleIdentifier: "com.apple.springboard").sheets.matching(title).firstMatch
-            for (prompt, timeout) in [(sheet, 6.0), (systemSheet, 2.0)] {
-                guard prompt.waitForExistence(timeout: timeout) else { continue }
+            // The app-owned remote sheet can arrive while we are checking
+            // SpringBoard. Finish discovery first, then resolve both owners
+            // again so a late app sheet is not skipped.
+            _ = sheet.waitForExistence(timeout: 6) || systemSheet.waitForExistence(timeout: 2)
+            for prompt in [sheet, systemSheet] {
+                guard prompt.exists else { continue }
                 // The remote password UI can ignore a tap while it finishes
                 // presenting. Resolve the same dismiss button again, once.
                 for _ in 0..<2 {
