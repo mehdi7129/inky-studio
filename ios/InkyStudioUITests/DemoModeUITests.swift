@@ -222,7 +222,34 @@ final class DemoModeUITests: XCTestCase {
     private func selectTab(_ label: String) {
         let tab = app.tabBars.buttons[label]
         XCTAssertTrue(tab.waitForExistence(timeout: 5))
-        tab.tap()
+        if #available(iOS 27, *) {
+            // The floating tab bar can resolve to an SF Symbol child with an
+            // invalid automatic hit point. Tap its observed window position,
+            // then require the unique, visible destination screen.
+            let window = app.windows.firstMatch
+            let rect = tab.frame
+            XCTAssertTrue(window.frame.contains(rect))
+            XCTAssertGreaterThan(rect.width, 0)
+            window.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: rect.midX - window.frame.minX, dy: rect.midY - window.frame.minY)).tap()
+            let title: String
+            switch label {
+            case "Cadre": title = "Inky Studio"
+            case "File": title = "À suivre"
+            case "Historique": title = "Historique"
+            case "Réglages": title = "Réglages"
+            default: XCTFail("Unknown tab: \(label)"); return
+            }
+            let bars = app.navigationBars.matching(identifier: title)
+            XCTAssertTrue(bars.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertEqual(bars.count, 1, "The selected tab must have one destination title.")
+            let visible = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == true AND hittable == true"), object: bars.element)
+            XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed,
+                           "The selected tab's destination must be visible.")
+        } else {
+            tab.tap()
+        }
     }
     private func scrollTo(_ element: XCUIElement, in scrollView: XCUIElement,
                           up: Bool = false, maxGestures: Int = 20) {
@@ -242,8 +269,9 @@ final class DemoModeUITests: XCTestCase {
             }
             // In iOS 18.5 a slow drag starting over a SwiftUI button/link can
             // activate it. CI recordings showed example selection, upload and
-            // iOS Settings opening during scrollTo. These screens have at least
-            // 16 pt of content padding: use the scroll view's empty right margin.
+            // iOS Settings opening during scrollTo. Use the padded controls'
+            // empty right margin. The photo crop canvas is full-width, so this
+            // margin does not bypass its drag gesture; the start height matters.
             // Native lists retain their central scrolling lane.
             let x = isList ? viewport.midX : viewport.maxX - min(12, viewport.width * 0.05)
             // Freeze the observed points in window coordinates before the
