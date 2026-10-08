@@ -15,9 +15,12 @@ final class InkyStudioUITests: XCTestCase {
         if resetCamera { app.resetAuthorizationStatus(for: .camera) }
         app.launchArguments = ["--uitesting", "--frame-address", fixtureURL.absoluteString]
         app.launch()
-        addTeardownBlock { @MainActor [weak self] () async throws in
-            self?.finish()
+        let teardown: @Sendable () -> Void = { [weak self] in
+            MainActor.assumeIsolated {
+                self?.finish()
+            }
         }
+        addTeardownBlock(teardown)
     }
 
     private func finish() {
@@ -254,6 +257,14 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["2 photos dans la file"].exists)
         XCTAssertFalse(app.buttons["queue.edit"].isEnabled, "Cached data must remain read-only during the outage.")
         XCTAssertFalse(app.secureTextFields["connection.password"].exists, "A transport failure must preserve the session.")
+        let offlineBanner = element("connection.offline")
+        let errorBanner = element("connection.error")
+        XCTAssertTrue(offlineBanner.exists)
+        XCTAssertTrue(errorBanner.exists)
+        XCTAssertLessThanOrEqual(offlineBanner.frame.maxY, errorBanner.frame.minY + 1,
+                                 "Connection and error messages must not overlap.")
+        XCTAssertLessThanOrEqual(errorBanner.frame.maxY, app.navigationBars.firstMatch.frame.minY + 1,
+                                 "The navigation title must stay below both messages.")
         capture("Reprise hors ligne — données conservées")
 
         let retry = app.buttons["Réessayer"]
@@ -457,15 +468,35 @@ final class InkyStudioUITests: XCTestCase {
         if #available(iOS 27, *) {
             // The floating native tab bar reports a valid AX frame but XCTest's
             // automatic hit point can be {-1,-1}. Use its observed frame and
-            // verify the actual selection; no model-specific coordinates.
+            // verify the displayed screen; no model-specific coordinates.
             let window = app.windows.firstMatch
             let rect = target.frame
             XCTAssertTrue(window.frame.contains(rect))
             XCTAssertGreaterThan(rect.width, 0)
             window.coordinate(withNormalizedOffset: .zero)
                 .withOffset(CGVector(dx: rect.midX - window.frame.minX, dy: rect.midY - window.frame.minY)).tap()
-        } else { target.tap() }
-        XCTAssertTrue(waitForSelected(target), "The tab must actually become selected.")
+            // iOS 27 can resolve `target` to the tab's SF Symbol child after
+            // selection. Its `selected` trait is not the tab's state. Require
+            // the unique, visible destination instead of trusting that child.
+            let title: String
+            switch identifier {
+            case "frame": title = "Inky Studio"
+            case "queue": title = "À suivre"
+            case "history": title = "Historique"
+            case "settings": title = "Réglages"
+            default: XCTFail("Unknown tab: \(identifier)"); return
+            }
+            let bars = app.navigationBars.matching(identifier: title)
+            XCTAssertTrue(bars.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertEqual(bars.count, 1, "The selected tab must have one destination title.")
+            let visible = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == true AND hittable == true"), object: bars.element)
+            XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed,
+                           "The selected tab's destination must be visible.")
+        } else {
+            target.tap()
+            XCTAssertTrue(waitForSelected(target), "The tab must actually become selected.")
+        }
     }
 
     private func waitForSelected(_ element: XCUIElement) -> Bool {
@@ -492,18 +523,53 @@ final class InkyStudioUITests: XCTestCase {
     }
 
     private func configureFixture(_ endpoint: String, body: [String: Any] = [:]) {
-        let ready = expectation(description: "Local fixture \(endpoint)")
         var request = URLRequest(url: fixtureURL.appendingPathComponent(endpoint))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         do { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
         catch { XCTFail("Invalid fixture configuration: \(error)"); return }
         request.timeoutInterval = 5
-        URLSession.shared.dataTask(with: request) { _, response, error in
-            XCTAssertNil(error, "Start python3 ios/scripts/mock-server.py before running UI tests.")
-            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let ready = expectation(description: "Local fixture \(endpoint)")
+        let result = FixtureRequestResult(ready: ready)
+        let task = URLSession.shared.dataTask(with: request) { _, response, error in
+            result.complete(response: response, error: error)
+        }
+        task.resume()
+        let waitResult = XCTWaiter.wait(for: [ready], timeout: 7)
+        // Close before cancellation and assertions: a late callback must not
+        // fulfill an old expectation or record a failure in the next test.
+        let outcome = result.close()
+        task.cancel()
+        guard waitResult == .completed, let outcome else {
+            XCTFail("Local fixture \(endpoint) did not complete within 7 seconds (\(waitResult)).")
+            return
+        }
+        XCTAssertNil(outcome.error, "Start python3 ios/scripts/mock-server.py before running UI tests.")
+        XCTAssertEqual(outcome.statusCode, 200)
+    }
+}
+
+private final class FixtureRequestResult: @unchecked Sendable {
+    private let lock = NSLock()
+    private let ready: XCTestExpectation
+    private var pending = true
+    private var outcome: (statusCode: Int?, error: Error?)?
+
+    init(ready: XCTestExpectation) { self.ready = ready }
+
+    func complete(response: URLResponse?, error: Error?) {
+        lock.withLock {
+            guard pending else { return }
+            pending = false
+            outcome = ((response as? HTTPURLResponse)?.statusCode, error)
             ready.fulfill()
-        }.resume()
-        wait(for: [ready], timeout: 7)
+        }
+    }
+
+    func close() -> (statusCode: Int?, error: Error?)? {
+        lock.withLock {
+            pending = false
+            return outcome
+        }
     }
 }

@@ -14,11 +14,14 @@ final class DemoModeUITests: XCTestCase {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
         app.launch()
-        addTeardownBlock { @MainActor [weak self] in
-            guard let self else { return }
-            if (self.testRun?.failureCount ?? 0) > 0 { self.capture("Failure") }
-            self.app.terminate()
+        let teardown: @Sendable () -> Void = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if (self.testRun?.failureCount ?? 0) > 0 { self.capture("Failure") }
+                self.app.terminate()
+            }
         }
+        addTeardownBlock(teardown)
     }
 
     func testPublicDemoCropQueueHistorySettingsAndReset() {
@@ -99,7 +102,7 @@ final class DemoModeUITests: XCTestCase {
         app.buttons["connection.guide"].tap()
         XCTAssertTrue(app.buttons["guide.close"].waitForExistence(timeout: 5))
         capture("07 Premiers pas grand texte")
-        scrollTo(app.buttons["guide.connect"], in: app.scrollViews["guide.scroll"], maxGestures: 60, horizontalOffset: 0.5)
+        scrollTo(app.buttons["guide.connect"], in: app.scrollViews["guide.scroll"], maxGestures: 60)
         capture("08 Guide et aide grand texte")
         app.buttons["guide.connect"].tap()
         scrollTo(app.buttons["connection.demo"], in: app.scrollViews["connection.scroll"], up: true)
@@ -201,13 +204,13 @@ final class DemoModeUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(crop.frame.minY, cropViewport.minY - 1)
         XCTAssertLessThanOrEqual(crop.frame.maxY, cropViewport.maxY + 1)
         capture("16a Aperçu du cadrage grand texte")
-        scrollTo(zoom, in: app.scrollViews["photo.scroll"], horizontalOffset: 0.95)
+        scrollTo(zoom, in: app.scrollViews["photo.scroll"])
         zoom.adjust(toNormalizedSliderPosition: 0.15)
         capture("16b Réglages du cadrage grand texte")
-        scrollTo(app.buttons["Réinitialiser"], in: app.scrollViews["photo.scroll"], horizontalOffset: 0.95)
+        scrollTo(app.buttons["Réinitialiser"], in: app.scrollViews["photo.scroll"])
         app.buttons["Réinitialiser"].tap()
         let upload = app.buttons["upload-photo"]
-        scrollTo(upload, in: app.scrollViews["photo.scroll"], horizontalOffset: 0.95)
+        scrollTo(upload, in: app.scrollViews["photo.scroll"])
         XCTAssertTrue(upload.isHittable)
         XCTAssertTrue(upload.isEnabled)
         capture("16c Ajouter à la file grand texte")
@@ -224,33 +227,36 @@ final class DemoModeUITests: XCTestCase {
         tab.tap()
     }
     private func scrollTo(_ element: XCUIElement, in scrollView: XCUIElement,
-                          up: Bool = false, maxGestures: Int = 20,
-                          horizontalOffset: CGFloat = 0.5) {
+                          up: Bool = false, maxGestures: Int = 20) {
         // Each screen owns a stable container identifier. A modal can leave
         // other scroll views in the tree, so never choose a container heuristically.
         XCTAssertTrue(scrollView.waitForExistence(timeout: 5))
         let isList = scrollView.elementType == .collectionView || scrollView.elementType == .table
         for _ in 0..<maxGestures {
+            XCTAssertTrue(scrollView.exists, "Scrolling must keep its original screen or sheet open.")
             let viewport = unobscuredViewport(of: scrollView)
+            XCTAssertGreaterThan(viewport.height, 0, "The scroll container must have a visible gesture area.")
             if readyToTap(element, in: viewport) { return }
             var towardsTop = up
             if element.exists && !element.frame.isEmpty {
                 if element.frame.minY < viewport.minY { towardsTop = true }
                 else if element.frame.maxY > viewport.maxY { towardsTop = false }
             }
-            // Scroll inside content rather than its outer margin. Only crop
-            // controls explicitly use the edge to avoid dragging the photo.
-            let gestureArea = isList ? viewport : scrollView.frame
-            let x = gestureArea.minX + gestureArea.width * (isList ? 0.5 : horizontalOffset)
+            // In iOS 18.5 a slow drag starting over a SwiftUI button/link can
+            // activate it. CI recordings showed example selection, upload and
+            // iOS Settings opening during scrollTo. These screens have at least
+            // 16 pt of content padding: use the scroll view's empty right margin.
+            // Native lists retain their central scrolling lane.
+            let x = isList ? viewport.midX : viewport.maxX - min(12, viewport.width * 0.05)
             // Freeze the observed points in window coordinates before the
             // gesture; XCTest must not resolve the scrolling element mid-drag.
             let window = app.windows.firstMatch
             let windowFrame = window.frame
             let origin = window.coordinate(withNormalizedOffset: .zero)
             let start = origin.withOffset(CGVector(dx: x - windowFrame.minX,
-                dy: gestureArea.minY + gestureArea.height * (towardsTop ? 0.45 : 0.70) - windowFrame.minY))
+                dy: viewport.minY + viewport.height * (towardsTop ? 0.25 : 0.75) - windowFrame.minY))
             let end = origin.withOffset(CGVector(dx: x - windowFrame.minX,
-                dy: gestureArea.minY + gestureArea.height * (towardsTop ? 0.70 : 0.45) - windowFrame.minY))
+                dy: viewport.minY + viewport.height * (towardsTop ? 0.75 : 0.25) - windowFrame.minY))
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
         }
         XCTAssertTrue(element.exists, "Element absent: \(element)")

@@ -27,12 +27,12 @@ struct DashboardView: View {
                     }
                     summaryLayout {
                         VStack(alignment: .leading, spacing: 10) {
-                            Image(systemName: "clock").font(.title2).foregroundStyle(Bento.amber)
+                            Image(systemName: "clock").font(.title2).foregroundStyle(Bento.amber).accessibilityHidden(true)
                             Text("Prochain changement").font(.caption).foregroundStyle(Bento.secondaryInk)
                             Text(nextChange).font(.headline)
                         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).bentoCard()
                         VStack(alignment: .leading, spacing: 10) {
-                            Image(systemName: "square.stack").font(.title2).foregroundStyle(Bento.blue)
+                            Image(systemName: "square.stack").font(.title2).foregroundStyle(Bento.blue).accessibilityHidden(true)
                             Text("À suivre").font(.caption).foregroundStyle(Bento.secondaryInk)
                             Text("\(store.queue.count) photo\(store.queue.count == 1 ? "" : "s")").font(.headline)
                         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).bentoCard()
