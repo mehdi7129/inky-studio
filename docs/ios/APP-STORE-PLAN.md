@@ -1,29 +1,40 @@
 # iPhone publication plan
 
-Status snapshot: **2026-09-27**. The path is **private TestFlight → real-device
+Status snapshot: **2026-10-09**. The path is **private TestFlight → real-device
 acceptance → public readiness → final candidate → App Review → manual release**.
 Public release remains a separate decision after Mehdi's hardware feedback.
-Bluetooth setup is implemented in a candidate awaiting TestFlight compliance
-and physical iPhone/Wi-Fi qualification. InkyOS and remote family access remain
-separate workstreams.
+Build **1.0.0 (9)** is delivered to the internal TestFlight group. Apple approved
+export compliance on **2026-10-08**; real iPhone/frame qualification remains open.
+InkyOS and remote family access remain separate workstreams.
+
+Mehdi reports on **2026-10-09** that the app works well and that no screen is
+currently connected. This is positive user feedback, without an exact installed
+build number or a pass for each hardware journey. Work can continue using the
+[tests without a frame](TEST-WITHOUT-FRAME.md). App Store Connect was inspected
+**read-only on 2026-10-09 around 09:10 UTC**, after the session became accessible
+again. The saved choices below were observed without modifying any Apple field.
+They describe the current draft, not a public-release decision or legal opinion.
 
 ## 1. Verified delivery and remaining gates
 
 | Item | Current evidence |
 |---|---|
-| App | Native SwiftUI iPhone companion, iOS 18+, French UI; rounded bento, system light/dark appearance, portrait only and camera import in available build 3 |
+| App | Native SwiftUI iPhone companion, iOS 18+, French UI; rounded bento, system light/dark appearance, portrait only, camera import and a visible offline demo in delivered build 9 |
 | Identity | `fr.mehdiguiard.inkystudio`; App Store Connect app **6816637620** |
-| Available beta | **1.0.0 (3)**, source **9bd24bd**, assigned to **Mehdi — test iPhone** with one internal tester; Mehdi accepted the physical iPhone test step. This is not exhaustive evidence for every journey below |
-| Bluetooth binary | **1.0.0 (4)**, source **70148f5**, Xcode 27; uploaded **2026-09-27 14:04:25 UTC**, Apple processing complete, **Internal Only** |
-| Build 4 distribution | **Missing Compliance / Informations manquantes**, **zero assigned groups**; no Bluetooth TestFlight update is available yet |
-| Validation | Backend/TLS/GATT, Simulator and Mac–Pi radio checks passed within their documented scope. Backend and iOS CI are green for deployed source **ae61df1** and documentation commit **6f4eb30**. Real iPhone QR adoption and Wi-Fi commit/rollback remain open |
-| Encryption paperwork | Technical annex and a private official XFA draft with 49 populated fields prepared; static review companion visually checked. XFA rendering remains unverified; no signature, submission or Apple approval |
-| Public metadata | French description, promotional text, keywords, subtitle **Vos photos, sur votre cadre**, **Photo & Video** category, 2026 Mehdi Guiard copyright and manual release saved as a draft; no public candidate submitted |
-| App Privacy | **No Data Collected** saved in draft from the current self-hosted data-flow audit; not yet published |
-| EU trader status | App Store Connect already identifies this developer as a trader for the app; existing account declaration was not changed, details remain to verify before release |
+| Available beta | **1.0.0 (9)**, clean source **181edb2**, uploaded and assigned to **Mehdi — test iPhone** with one internal tester on **2026-10-09**; French test notes saved. Exact currently installed build remains to record |
+| Bluetooth delivery | Included in the delivered beta; real QR adoption and Wi-Fi commit/rollback still require the frame. Historical build 4 compliance is no longer the current delivery gate |
+| Validation | Build 9: **76/76 archive/IPA checks**, **109 unit tests + 17 UI tests**, one expected simulated Face ID skip, no failures; iPhone Release and general CI pass. TLS 15/15, Bluetooth transport 13/13, HTTPS 52/52 and fixture 45 checks pass. These do not establish physical iPhone QR adoption, Wi-Fi transition or screen refresh |
+| Encryption | Apple export approval recorded **2026-10-08**; the live app-information page shows **two approved documents**. Build 9 includes the approved code and non-exempt encryption declaration; Apple processed it without a missing-compliance gate. This is not public App Review approval |
+| Public metadata | Version 1.0.0 is **À finaliser avant soumission**, with **manual release** selected. French description, promotional text, keywords, support/marketing URLs, demo review notes and review contacts are filled. No public candidate has been submitted |
+| Public candidate | The draft still selects **build 7**, labelled **Informations manquantes**. Replace it with the qualified final candidate before submission; this older selection does not block delivered TestFlight build 9 |
+| Listing screenshots | Eight existing assets are visible; the inspected medium-size slot reuses existing resources and has zero slot-specific uploads. Completeness and agreement with the final candidate still need review |
+| App Privacy | **Données non collectées**, **Publié il y a 9 jours**, with the privacy URL present and validated in the live review |
+| EU trader status | Current DSA declaration explicitly says **non-trader / non-commerçant**. This corrects the older note claiming trader status; no declaration was changed |
+| Price / availability | **0 EUR** in France; **France only (1/175)**; future distribution **Public**. Mac and Apple Vision Pro availability are unchecked |
+| Category / rights / age | **Photo et vidéo**, third-party content-rights answer **Yes** saved, age rating **4+** |
 | Website | **https://inky-studio.netlify.app** deployed on the existing free Netlify plan; home, support and privacy verified over HTTPS, mobile layout and local links checked |
 | Support | Mehdi explicitly approved **mehdi071292@gmail.com** as the public contact |
-| Hardware | Pi Zero 2 W Rev 1.0; server candidate **0.5.0-rc.2**, source **ae61df1**, deployed with active network helper. HTTP/HTTPS, authentication, driver detection and local BlueZ registration checked; no real Wi-Fi transition qualified |
+| Hardware (last recorded deployment; not rechecked today) | Pi Zero 2 W Rev 1.0; server candidate **0.5.0-rc.2**, source **ae61df1**, deployed with active network helper. HTTP/HTTPS, authentication, driver detection and local BlueZ registration checked; no real Wi-Fi transition qualified |
 
 Evidence: [TESTFLIGHT-DELIVERY.md](TESTFLIGHT-DELIVERY.md),
 [SERVER-BLUETOOTH-DELIVERY.md](SERVER-BLUETOOTH-DELIVERY.md),
@@ -37,34 +48,34 @@ historical delivery statements there do not supersede the current reports above.
 Preserve the archive, dSYMs, source SHA, IPA checksum and upload receipt outside
 temporary storage. Simulator success is not physical-device acceptance.
 
-## 2. Finish private TestFlight delivery
+## 2. Continue private TestFlight acceptance
 
 **Owner:** release engineer and Mehdi.
 
-- Resolve the actual encryption-document gate for **1.0.0 (4)**. Review the
-  private prefilled form, validate its rendering in a compatible XFA reader,
-  complete the reserved administrative choices and obtain the required signed
-  documents and Apple approval. The inherited prechecked combined formality is
-  not a confirmed selection; no exemption or authorization reference is established.
-  See [the preparation and remaining limits](export/PREPARATION-FORMULAIRE.md).
-- Once compliance permits distribution, assign build 4 to **Mehdi — test
-  iPhone** and verify the update appears, installs and launches on Mehdi's iPhone.
-  Record the exact iPhone/iOS/build. Build 3 remains the available beta meanwhile.
-- Keep the beta private; build 4 was deliberately uploaded **Internal Only**
-  and cannot become the external/public candidate. A later public candidate needs
-  an eligible upload and its own validation/compliance. The French build 4 notes
-  already identify the deployed rc.2 backend and the outstanding physical tests.
-- Internal testers must be eligible App Store Connect users. External testing
-  requires its own beta information and applicable Beta App Review. Refresh the
-  build before its 90-day expiry if testing continues. See Apple's
-  [TestFlight workflow](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/).
+Build **1.0.0 (9)** was uploaded, processed and assigned to **Mehdi — test iPhone**
+on **2026-10-09**. The signed archive/IPA, source SHA, checksums and delivery
+observations are recorded in [TESTFLIGHT-DELIVERY.md](TESTFLIGHT-DELIVERY.md).
+No extra upload or old build 4 compliance action is needed merely to continue
+these tests.
 
-**Acceptance:** build 4 compliance is resolved, the internal group is assigned,
-and Mehdi installs and opens it through TestFlight. Delivery enables the hardware
-qualification below; it does not require those tests to have already passed.
-Mehdi prefers TestFlight and Simulator checks, so the signed Xcode development
-export is not the current delivery path. No external/public beta or App Store
-availability is implied.
+- Record the version/build shown in TestFlight, iPhone model and iOS version
+  before attaching a result to build 9. Mehdi's positive feedback today does not
+  supply that exact version or a detailed acceptance log.
+- Complete the [short no-frame checklist](TEST-WITHOUT-FRAME.md): demo, navigation,
+  appearance, large text, import/crop, reset and real iPhone camera/VoiceOver where
+  available. Engineering can continue regression, documentation and listing
+  preparation while the hardware is absent.
+- Keep QR adoption, Bluetooth Wi-Fi, authentication with the real frame and actual
+  e-ink output explicitly untested until the hardware returns.
+- Continue internal TestFlight distribution. External testing, App Review and
+  public release remain separate steps; no public submission is authorized by
+  this readiness work. Recheck the current beta availability/expiry in TestFlight
+  when scheduling further testing.
+
+**Acceptance:** the installed build is identified and no-frame results are
+recorded separately from physical-frame results. Build 9 delivery is complete;
+full hardware acceptance is not. Mehdi prefers TestFlight and Simulator checks,
+so direct signed Xcode installation is not the current delivery path.
 
 ## 3. Real iPhone and frame acceptance
 
@@ -86,7 +97,7 @@ model/resolution, network and PASS/FAIL/NOT TESTED for each row.
 | Lifecycle | Lock/unlock, background/foreground, terminate/relaunch. State resynchronizes and authentication is understandable |
 | Fault recovery | Leave LAN/cellular-only, interrupt/recover Wi-Fi, expired session or safe Pi restart, invalid address, cancelled login. No endless spinner, stale success or replayed mutation |
 | Concurrent changes | Change queue/settings in the web app while iPhone is open. State converges; late results cannot restore a signed-out session |
-| Bluetooth Wi-Fi | Build 4 with rc.2: physical QR adoption, wrong Wi-Fi password, rollback, selected 2.4 GHz hotspot, pinned HTTPS confirmation and photo transfer. See section 10 for recovery cases |
+| Bluetooth Wi-Fi | Delivered build 9 with the identified compatible server: physical QR adoption, wrong Wi-Fi password, rollback, selected 2.4 GHz hotspot, pinned HTTPS confirmation and photo transfer. See section 10 for recovery cases |
 | Pi update | Check version/release information. Actual update only in an agreed maintenance window with recovery, not as an incidental acceptance action |
 
 Do not reset Mehdi's Face ID or restart/upgrade production hardware merely to
@@ -107,18 +118,17 @@ and physical regression. Mehdi then decides to proceed with public readiness.
 
 ### Reviewer access
 
-The uploaded build 4 needs a private LAN frame. The Python loopback fixture and
-Debug launch arguments do not provide App Review access. A later source addition
-implements a visible offline demo and first-connection guide; see
-[behavior, isolation and walkthrough](DEMO-AND-ONBOARDING.md). It needs a new
-validated binary before it can be used by reviewers or TestFlight users.
+Delivered build 9 includes a visible offline demo and first-connection guide;
+see [behavior, isolation and walkthrough](DEMO-AND-ONBOARDING.md). It can be
+explored without a frame. The Python loopback fixture and Debug launch arguments
+remain test infrastructure, not the public reviewer entry point.
 
-**Implemented in source:** a visible **Explorer la démo** entry point using
-original locally drawn examples and the real native screens. Crop, queue/history
-and settings are interactive; physical refresh, scheduling and update limits are
-explicit. Demo state is temporary and separate, with reset/exit and no real-frame
-authentication or commands. No real credentials or household photos are shipped,
-and the user's Pi remains private. A later validated binary must deliver it.
+**Delivered behavior:** **Explorer la démo** uses original locally drawn examples
+and the real native screens. Crop, queue/history and settings are interactive;
+physical refresh, scheduling and update limits are explicit. Demo state is
+temporary and separate, with reset/exit and no real-frame authentication or
+commands. No real credentials or household photos are shipped, and the user's Pi
+remains private. An automated walkthrough is not an Apple acceptance decision.
 
 A built-in demo is a recommendation, not a blanket Apple requirement. For hardware
 environments that are difficult to reproduce, Apple describes preparing a demo
@@ -139,19 +149,18 @@ no demo action may mutate a connected real frame. Approval is not guaranteed.
   session, from later Bluetooth Wi-Fi recovery by an already-adopted phone.
   Publish a verified hardware matrix; one 800×480 panel does not validate all
   Inky displays. Do not imply cellular remote access.
-- **Support** and **Privacy** links are now implemented in source before login
-  and in settings, using the existing rounded card and system colors. Their
-  HTTPS destinations both returned 200. This source addition is newer than the
-  uploaded build 4; it needs a future numbered beta/public candidate and must
-  not be claimed as already delivered through TestFlight. The privacy manifest
-  does not replace a public policy. Apple's
-  [sections 1.5 and 5.1.1(i)](https://developer.apple.com/app-store/review/guidelines/)
-  cover contact information and accessible privacy links.
+- **Support** and **Privacy** links are delivered before login and in settings,
+  using the existing rounded cards and system colors. Recheck their destinations
+  and agreement with the final listing. The privacy manifest does not replace a
+  public policy; the support/privacy source addition is included in build 9.
 - Validate VoiceOver, Dynamic Type through accessibility sizes, contrast, reduced
   motion, non-color status cues and touch targets. Provide usable alternatives to
-  precise crop/reorder gestures. Test a small and large iPhone, portrait-only
-  behavior and both system appearances. Confirm actual platform availability; do not claim untested iPad
-  or Mac support. Advertise only verified accessibility features.
+  precise crop/reorder gestures. Use only the existing local **iPhone 15 Pro Max
+  Simulator**; do not create another local Simulator. Test portrait-only behavior
+  and both system appearances there, and keep untested device sizes explicit.
+  Confirm actual platform availability; do not claim untested iPad or Mac support.
+  Automated accessibility checks do not replace listening with real VoiceOver.
+  Advertise only verified accessibility features.
 
 **Acceptance:** a new user understands prerequisites, can recover permissions,
 find support/privacy and complete core tasks with VoiceOver and large text.
@@ -190,13 +199,25 @@ No implied manufacturer partnership. English metadata is optional; English app
 UI is a separate choice and must not be claimed while the interface is French.
 
 State iOS 18+, separate Raspberry/Inky equipment, installed Inky Studio server,
-same-network operation and optional Face ID. Capture the final public UI on a
-**6.9-inch iPhone**, preferably **1320×2868 portrait**: frame, crop, queue, history,
-settings and biometric connection. Lead with useful functionality and use
-non-personal content. Existing 1206×2622 screenshots are QA evidence, not the
-principal 6.9-inch set. Apple accepts 1–10 JPEG/PNG assets without alpha; recheck
-[current screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/)
-at upload. Localize artwork only for published localizations; video is optional.
+same-network operation and optional Face ID. Capture the final public UI using
+only the existing local **iPhone 15 Pro Max Simulator**: frame, crop, queue,
+history and settings, with non-personal content and clear demo context. Preserve
+the rounded Bento design. Existing QA captures are evidence, not automatically a
+complete App Store screenshot set.
+
+The read-only check on **2026-10-09 around 09:10 UTC** showed eight existing
+assets: `01-cadre`, `02-cadrage`, `03-file`, `04-historique`, `05-reglages`,
+`06-face-id`, `08-cadre-demo` and `07-accueil-demo`. The inspected medium-size
+slot uses existing resources and has **zero uploads specific to that slot**;
+this is not evidence that the screenshot section is empty. The set still needs
+a visual review against the final candidate and the required device slots.
+
+Before uploading, inspect the slots and size validation in App Store Connect's
+official screenshot manager and recheck Apple's
+[current screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/).
+Do not require or install a local 6.9-inch Simulator based on the obsolete plan.
+Record which existing assets are accepted and what, if anything, remains missing.
+Localize artwork only for published localizations; video remains optional.
 
 **Acceptance:** all assets match the submitted build, pass size validation, contain
 no personal data, and communicate hardware requirements before installation.
@@ -205,14 +226,14 @@ no personal data, and communicate hardware requirements before installation.
 
 | Area | Required verification / acceptance |
 |---|---|
-| App Privacy | Current draft says **No Data Collected**: selected photos go to the user's Pi, with no developer/SDK access or analytics. Re-audit final data flows, demo and diagnostics before publishing; policy, answers and manifest must agree |
+| App Privacy | Live check: **Données non collectées**, **Publié il y a 9 jours**, privacy URL validated. Keep final data flows, demo and diagnostics consistent with policy, answers and manifest; no declaration was changed |
 | Privacy manifest | Recheck required-reason APIs. Current manifest declares local UserDefaults use, no tracking and no collected types; resolve any archive warnings |
-| Age rating | Answer the current questionnaire based on actual features/content. Do not guess a final age or claim Kids Category |
-| Encryption | Build 4 embeds Mbed TLS outside the OS; the former automatic `ITSAppUsesNonExemptEncryption=false` declaration is removed. Its actual France `Yes` questionnaire requires documents and Apple approval. Drafts are unsigned/unsubmitted; no exemption is established. Reconcile the final public candidate with [the inventory](ENCRYPTION-INVENTORY.md) |
-| Countries / price | Mehdi confirms initial territories and free/paid model. No IAP/subscription exists. Paid distribution requires applicable agreements/tax/banking setup and revised scope |
-| EU trader status | Existing account declaration identifies a trader. Confirm its accuracy and verify required public contact/identity details before EU publication; free does not imply non-trader. TestFlight-only testing is separate |
-| Account / rights | Confirm seller identity, agreements, team, category, content licenses and available platforms |
-| Review information | Reachable contact, hardware/dependency explanation, reproducible demo/video/hardware instructions. Private review credentials, if needed, stay in App Store Connect, never Git |
+| Age rating | Live check: **4+** classification saved. Confirm continued consistency if candidate features/content change; no Kids Category claim is made |
+| Encryption | Apple approved export compliance on **2026-10-08**; two approved documents are visible live. Build 9 declares non-exempt encryption and includes the approved code. Reconcile later cryptographic changes with [the inventory](ENCRYPTION-INVENTORY.md). Export approval does not approve the app for public release |
+| Countries / price | Live saved choices: **0 EUR**, **France only (1/175)** and future **Public** distribution. Preserve these choices; no IAP/subscription exists |
+| EU trader status | Live saved declaration: **non-commerçant**. The earlier trader note was inaccurate/outdated. This read-only check does not change or legally assess the declaration |
+| Account / rights | Live saved choices: third-party content-rights answer **Yes**, **Photo et vidéo**, Mac/Apple Vision Pro unchecked. Check any remaining account agreements at submission without changing existing personal declarations |
+| Review information | Demo notes and review contacts are filled live. Validate instructions against the final candidate and record remaining hardware/video evidence; private contact details stay in App Store Connect, not this document |
 
 Use Apple's [privacy definitions](https://developer.apple.com/app-store/app-privacy-details/),
 [age-rating definitions](https://developer.apple.com/help/app-store-connect/reference/app-information/age-ratings-values-and-definitions/),
@@ -258,11 +279,12 @@ compatibility or document a migration before release.
 
 ## 10. Bluetooth candidate: finish physical Wi-Fi qualification
 
-**Implemented in iOS 1.0.0 (4) and server 0.5.0-rc.2; not yet qualified end to
-end on iPhone.** Build 3 has no Bluetooth flow. The backend is deployed, while
-build 4 awaits the compliance gate described in section 2. Photos continue to
-use Wi-Fi. [PR #11](https://github.com/mehdi7129/inky-studio/pull/11) remains draft;
-merge and public release await the hardware criteria, not just green CI.
+**Included in delivered iOS 1.0.0 (9); not yet qualified end to end on iPhone.**
+The last recorded server deployment was **0.5.0-rc.2**; identify its actual
+version when the frame is available again. Apple export compliance no longer
+blocks this internal beta. Photos continue to use Wi-Fi. The Bluetooth and iOS
+PR chain remains unmerged; green CI and beta delivery do not replace the physical
+criteria below or authorize a merge/public release.
 
 The Pi Zero 2 W supports
 [Bluetooth 4.2/BLE and 2.4 GHz Wi-Fi](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/).
@@ -337,20 +359,24 @@ the personal frame or an existing SD as disposable image-test hardware.
 
 ## Remaining decisions
 
-- Build 4 compliance resolution and private TestFlight delivery, then Mehdi's
-  physical iPhone/Bluetooth/Wi-Fi results and public-readiness go-ahead.
+- Identify the currently installed build, collect the remaining no-frame results,
+  then physical iPhone/Bluetooth/Wi-Fi results when hardware returns.
 - Review arrangement, compatibility scope and optional English UI/metadata.
-- Initial territories, price/commercial model and verification of existing EU trader details.
-- Final age/privacy/encryption answers based on the eligible public candidate;
-  unresolved administrative choices and accepted compliance documents cannot be
-  inferred from a prepared draft.
+- Preserve the observed free France-only distribution and non-trader declaration;
+  ask only about future changes or choices that are actually unresolved.
+- Replace the draft's old build 7 with the qualified final candidate and review
+  the eight existing screenshots against it. Preserve the observed age/privacy
+  declarations and export approval; recheck consistency if the candidate changes.
+  Do not reopen the former build 4 blocker without new evidence.
 - Public travel claims based on the qualified WPA2 scope and documented limits;
   first adoption without an existing LAN belongs to the coordinated InkyOS work.
 - Remote-family requirements and whether a hosted service is wanted.
 - Public review submission and the subsequent manual release decision.
 
-Public listing, InkyOS and remote-family choices do not prevent preparing the
-private beta. Build 4 delivery does depend on resolving its actual compliance gate.
+Public listing, InkyOS and remote-family choices do not prevent testing the
+already-delivered private beta or continuing the work that needs no frame.
+Historical entries below describe their date only and do not override build 9
+delivery or Apple export approval recorded above.
 
 ## Historical delivery — build 2 and initial public documentation
 
