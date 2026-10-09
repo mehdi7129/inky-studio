@@ -76,6 +76,28 @@ assertions, are used to qualify the helper corrections. The accessibility audit
 keeps every description/trait check; redundant decorative images are hidden
 individually in the app.
 
+The subsequent [CI run 37843573956](https://github.com/mehdi7129/inky-studio/actions/runs/37843573956)
+on head `1ef5592` (PR merge `04ee9733` into `15b5e536`) passed 109 unit and 15 UI
+tests; one Face ID case was skipped. Two demo tests failed, so the Release step
+was skipped. TLS 15/15, Bluetooth transport 13/13, HTTPS 52/52 and fixture 45
+checks passed. No runner SIGABRT was observed; all teardowns completed.
+
+The two remaining CI failures were reproduced in their recordings: a dynamic
+`firstMatch` history query switched from entry 2 to entry 1 while scrolling;
+entry 1 was already queued, so the app correctly kept two photos. The test now
+pins the intended, unqueued entry. A full-screen swipe also repeatedly moved
+Save from below to above the viewport; the helper uses bounded gestures based
+on the missing visible distance.
+
+Locally, `final-accessibility.log` on `1ef5592` records passing large-text guide
+and description/trait audits. The large-text photo test found a separate harness
+error: the tab bar **behind** the photo sheet shortened its viewport from y932
+to y849, rejecting a fully visible button ending at y854. Only root tab screens
+now subtract that bar. The later fixture test stalled in Simulator automation;
+the run was interrupted and is not a complete pass. A sample showed the app's
+main thread waiting in its UIKit run loop, without a blocking AppStore stack;
+this does not prove the runtime's underlying cause.
+
 Final targeted validation is in progress. No incomplete or interrupted run is
 reported as a full-suite pass.
 

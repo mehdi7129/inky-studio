@@ -163,7 +163,9 @@ final class DemoModeUITests: XCTestCase {
         edit.tap()
 
         selectTab("Historique")
-        let requeue = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.requeue.")).firstMatch
+        // The seeded photo 2 is in history but not already in the queue.
+        // Choosing it explicitly makes the expected count independent of row order.
+        let requeue = app.buttons["history.requeue.2"]
         XCTAssertTrue(requeue.waitForExistence(timeout: 5))
         scrollTo(requeue, in: app.collectionViews["history.list"])
         XCTAssertTrue(requeue.isEnabled)
@@ -284,18 +286,31 @@ final class DemoModeUITests: XCTestCase {
                 if element.frame.minY < viewport.minY { towardsTop = true }
                 else if element.frame.maxY > viewport.maxY { towardsTop = false }
             }
-            // Use a scrolling gesture, without a press-and-hold on a control.
-            // CI showed the slow edge drag selecting the example photo and
-            // grabbing the guide's scroll indicator instead of its content.
-            let crop = scrollView.descendants(matching: .any)["photo.crop"].firstMatch
-            if !crop.exists {
-                if towardsTop { scrollView.swipeDown() }
-                else { scrollView.swipeUp() }
-                continue
+            // Stop close to the target instead of flinging past short controls.
+            let maximumDistance = viewport.height * 0.4
+            var requestedDistance = maximumDistance
+            if element.exists && !element.frame.isEmpty {
+                requestedDistance = towardsTop
+                    ? viewport.minY - element.frame.minY + 12
+                    : element.frame.maxY - viewport.maxY + 12
             }
-            // The full-width crop canvas owns its drag gesture. Start below
-            // it when moving down through the controls, in their left margin
-            // and away from the scroll indicator on the right.
+            let boundedDistance = min(maximumDistance, max(44, requestedDistance))
+            var gestureTop = viewport.minY + 12
+            // Keep the start outside the system home-indicator gesture area.
+            let gestureBottom = viewport.maxY - 44
+            let crop = scrollView.descendants(matching: .any)["photo.crop"].firstMatch
+            // The full-width crop owns its drag gesture. Keep the whole scroll
+            // gesture below its visible area so scrolling cannot change the crop.
+            if crop.exists && !crop.frame.isEmpty && crop.frame.intersects(viewport) {
+                gestureTop = max(gestureTop, crop.frame.maxY + 12)
+            }
+            let availableDistance = gestureBottom - gestureTop
+            XCTAssertGreaterThan(availableDistance, 0, "Scrolling needs an area outside the crop canvas.")
+            let distance = min(boundedDistance, availableDistance)
+            let startY = towardsTop ? gestureTop : gestureBottom
+            let endY = startY + (towardsTop ? distance : -distance)
+            // Use the left content margin, clear of the right scroll indicator,
+            // with no press-and-hold that could activate a photo or control.
             let x = viewport.minX + min(12, viewport.width * 0.05)
             // Freeze the observed points in window coordinates before the
             // gesture; XCTest must not resolve the scrolling element mid-drag.
@@ -303,9 +318,9 @@ final class DemoModeUITests: XCTestCase {
             let windowFrame = window.frame
             let origin = window.coordinate(withNormalizedOffset: .zero)
             let start = origin.withOffset(CGVector(dx: x - windowFrame.minX,
-                dy: viewport.minY + viewport.height * (towardsTop ? 0.25 : 0.75) - windowFrame.minY))
+                dy: startY - windowFrame.minY))
             let end = origin.withOffset(CGVector(dx: x - windowFrame.minX,
-                dy: viewport.minY + viewport.height * (towardsTop ? 0.75 : 0.25) - windowFrame.minY))
+                dy: endY - windowFrame.minY))
             start.press(forDuration: 0, thenDragTo: end, withVelocity: .default, thenHoldForDuration: 0)
         }
         XCTAssertTrue(element.exists, "Element absent: \(element)")
@@ -320,9 +335,13 @@ final class DemoModeUITests: XCTestCase {
         if navigation.exists && !navigation.frame.isEmpty && navigation.frame.intersects(bounds) {
             top = max(top, navigation.frame.maxY)
         }
-        let tabs = app.tabBars.firstMatch
-        if tabs.exists && !tabs.frame.isEmpty && tabs.frame.intersects(bounds) {
-            bottom = min(bottom, tabs.frame.minY)
+        // Only root tabs can cover these containers. A presented sheet keeps
+        // its underlying tab bar in the accessibility hierarchy.
+        if ["frame.scroll", "queue.list", "history.list", "settings.scroll"].contains(scrollView.identifier) {
+            let tabs = app.tabBars.firstMatch
+            if tabs.exists && !tabs.frame.isEmpty && tabs.frame.intersects(bounds) {
+                bottom = min(bottom, tabs.frame.minY)
+            }
         }
         return CGRect(x: bounds.minX, y: top, width: bounds.width, height: max(0, bottom - top))
     }
