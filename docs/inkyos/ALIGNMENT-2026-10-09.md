@@ -11,11 +11,11 @@ Il ne donne pas à l'image le statut de release qualifiée.
 | Backend / payload SD | `c31b13afdc957425571810c46230eaaf52fa5d14`, candidat `0.5.0-rc.2`, branche `codex/display-hardware-qualification`, PR #20 encore draft |
 | Helper réseau | Celui du même payload ; aucune migration v1 requise par le build iOS 9 |
 | App iPhone | TestFlight **1.0.0 (9)**, source `181edb2f89034bb0c411b145c95fe303f112b460` |
-| Distribution Apple | Revérifiée en lecture seule vers **11:17 UTC** : binaire **Validé**, groupe interne **Mehdi — test iPhone**, un testeur. Le blocage de conformité des anciens builds n'empêche plus cet essai |
+| Distribution Apple | Revérifiée en lecture seule vers **11:17 UTC** : binaire **Validé**, groupe interne affecté avec un testeur. Le blocage de conformité des anciens builds n'empêche plus cet essai |
 | Source de ce relevé | Branche de documentation issue de `966711f` ; elle n'ajoute aucun code applicatif depuis la source iOS ci-dessus |
-| OS / SD | La session InkyOS annonce `0f2d222`, capsule Wi-Fi signée installée/relue, retour natif 35 + 10 PASS, app/helper masqués et SSH bloqué par `name_resolution_failed`. Ces résultats sont rapportés par InkyOS, pas reproduits par Studio |
+| OS / SD | La session InkyOS annonce base système `0f2d222`, documentation d'alignement poussée à `688140d`, capsule Wi-Fi signée installée/relue, retour natif 35 + 10 PASS, app/helper masqués et SSH bloqué par `name_resolution_failed`. Cette SD TEST exige une admission et un état applicatif vierge par boot ; la reprise produit après reboot n'est pas qualifiée. Résultats rapportés par InkyOS, pas reproduits par Studio |
 
-Le retour positif de Mehdi sur l'app ne précise pas son build installé et ne
+Le retour positif de l'utilisateur sur l'app ne précise pas son build installé et ne
 qualifie pas le cadre absent. Relever **1.0.0 (9)** dans TestFlight avant le banc.
 Les détails d'archive et de CI sont dans [la livraison iOS](../ios/TESTFLIGHT-DELIVERY.md).
 
@@ -24,7 +24,7 @@ Les détails d'archive et de CI sont dans [la livraison iOS](../ios/TESTFLIGHT-D
 Conserver le candidat déjà associé à la SD. Le répertoire local vérifié est :
 
 ```text
-/Users/mehdiguiard/Desktop/inky-studio/build/display-hardware-qualification-2026-10-03/build/offline-candidate-c31b13a
+~/Desktop/inky-studio/build/display-hardware-qualification-2026-10-03/build/offline-candidate-c31b13a
 ```
 
 Les quatre fichiers ont été rehashés le 9 octobre. Le tar contient
@@ -88,10 +88,16 @@ fusion revue, des tests combinés et un nouveau manifeste.
    ensuite une photo, observer réellement le rafraîchissement et le rendu e-ink.
 4. Depuis une session authentifiée, demander le QR dans Réglages, le scanner
    sur le cadre et associer l'iPhone par BLE.
-5. Tester un mauvais mot de passe Wi-Fi et son rollback, puis un réseau WPA2
-   personnel 2,4 GHz autorisé. Rejoindre ce réseau sur l'iPhone et confirmer
-   par HTTPS. Consigner le commit, le rollback et les interruptions séparément.
-6. Vérifier reprise, ownership conservé et arrêt effectif `inactive/dead`.
+5. **Reporter les changements Wi-Fi tant qu'un chemin de récupération n'est pas
+   éprouvé.** Sur cette SD TEST, le contrôle réseau est lié au profil signé et
+   ce secours n'est pas encore établi. Le futur banc dédié testera mauvais mot
+   de passe/rollback, puis réseau WPA2 personnel 2,4 GHz et confirmation HTTPS.
+6. Pour ce soir, terminer par le drain et l'arrêt effectif `inactive/dead`.
+   Reboot/coupure et reprise produit avec ownership conservé relèvent d'un banc
+   distinct : la règle d'admission de cette SD TEST ne les qualifie pas.
+
+Priorité convenue : **réseau → préflight → accueil → photo → QR/BLE → drain**.
+Cette liste ne transforme pas la capsule Wi-Fi TEST en parcours produit final.
 
 L'association BLE ne crée pas à elle seule une session photo : l'app reprend
 le mot de passe déverrouillé par Face ID s'il existe, sinon demande le mot de
