@@ -3,6 +3,25 @@
 Latest: [2026-10-08 stability and accessibility review](reviews/2026-10-08-stability/README.md).
 [Current TestFlight delivery](TESTFLIGHT-DELIVERY.md) is tracked separately from local tests.
 
+## Delivered internal build 9 — 2026-10-09
+
+Clean source `181edb2f89034bb0c411b145c95fe303f112b460` produced a successful
+signed Release archive and distribution IPA export. **76/76 package checks
+passed**. Upload succeeded at **06:46:08 UTC**; Apple processing completed with
+the approved compliance code recognized. Build 9 was assigned to the existing
+**Mehdi — test iPhone** internal group, one tester, at **07:04 UTC**.
+Installation and physical acceptance of build 9 are not yet established; build 8
+is the last version reported installed.
+
+The [native CI run](https://github.com/mehdi7129/inky-studio/actions/runs/37894502277)
+**passed on the same source**: 109 unit tests and 17 UI tests passed, with
+one expected simulated Face ID skip and zero failures. The iPhone Release build
+also passed. TLS 15/15, Bluetooth transport 13/13, HTTPS 52/52 and 45 fixture
+checks passed; four general CI jobs also passed. The previously failing
+large-text/import and full-demo journeys now pass. See the
+[stability review](reviews/2026-10-08-stability/README.md) for the complete
+result and the separately retained failed/interrupted local runs.
+
 ## Historical validation — 2026-09-27
 
 The approved six-screen bento design is implemented in SwiftUI. Minimum iOS version: 18.0. Server compatibility tested against the existing v0.4.2 release. No production Pi files, photos, queue entries or settings were changed by these checks.

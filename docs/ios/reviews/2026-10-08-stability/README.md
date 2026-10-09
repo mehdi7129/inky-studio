@@ -98,14 +98,39 @@ the run was interrupted and is not a complete pass. A sample showed the app's
 main thread waiting in its UIKit run loop, without a blocking AppStore stack;
 this does not prove the runtime's underlying cause.
 
-Final targeted validation is in progress. No incomplete or interrupted run is
-reported as a full-suite pass.
+The final [native CI run 37894502277](https://github.com/mehdi7129/inky-studio/actions/runs/37894502277)
+**passed on source `181edb2`**: 109 unit tests and 18 UI cases, comprising
+**17 passes and one expected simulated Face ID skip**, with zero failures.
+The previously failing large-text/import journey passed in 130.950 seconds;
+the complete public demo passed in 103.544 seconds. The description/trait audit
+and large-text guide also passed. XCTest reported **TEST SUCCEEDED** on
+October 9 at **06:58:55 UTC**; the iPhone Release step reported
+**BUILD SUCCEEDED at 07:01:16 UTC**. TLS 15/15, Bluetooth transport 13/13,
+HTTPS 52/52, fixture 45 checks and four general CI jobs passed.
+
+This CI ran remotely on an iPhone 16 / iOS 18.5 Simulator with Xcode 16.4;
+it created no local simulator. It tested PR merge `5251b25c` from head
+`181edb2` into the unchanged base `15b5e536`. The local iPhone 15 Pro Max /
+iOS 27 evidence is recorded separately above. The Face ID case is skipped
+because this CI fixture does not enable simulated biometric matching.
+
+This is a completed CI suite on that source. Earlier failed or interrupted
+local runs remain recorded above and are not reclassified as successful.
+The CI log, run status and artifact index are retained under ignored
+`build/ci-181edb2/{job.log,run.json,artifacts.json}`.
 
 The unsigned generic iPhone **Release build on `11dd76a` passed** with Xcode 27.
 Its compiled Info.plist contains non-exempt encryption = true and the exact Apple
 approval code. The build emits existing incomplete-umbrella warnings from
 MbedTLS and an AppIntents metadata warning; a successful build is not proof of
 installation or hardware behaviour.
+
+On October 9, clean source `181edb2f89034bb0c411b145c95fe303f112b460`
+produced the **signed Release archive and distribution IPA for build 9**.
+Both archive and export succeeded, and **76/76 package checks passed**.
+IPA SHA-256:
+`c7642ef10fca15494a41cf8581249dbcce6e25a85328a908f62f51bc49ff1070`.
+This packaging validation is separate from the successful native CI suite above.
 
 Local evidence is retained outside Git under
 `build/ios/stability-2026-10-07/` (the session began October 7).
@@ -166,10 +191,18 @@ tests; this review does not qualify runtime performance on a physical phone.
 
 ## Delivery boundaries
 
-**Build 1.0.0 (8)** was assigned to the internal TestFlight group on October 8
-following Apple's export approval. App Store Connect reports installation on
-the tester's iPhone 15 Pro Max. That binary predates these changes; a later
-build is needed to test this PR on the phone. See [delivery status](../../TESTFLIGHT-DELIVERY.md).
+**Build 1.0.0 (9)**, from clean source `181edb2`, was uploaded successfully on
+October 9 at **06:46:08 UTC**. Apple processing completed without missing
+compliance information, and native CI passed on the same source. At
+**07:04 UTC**, App Store Connect confirmed **Groupe (1)**: the existing internal
+group **Mehdi — test iPhone**, one tester. French testing notes are saved.
+Build 9 is delivered to that group; its installation and physical acceptance
+are not yet established. No branch has been merged.
+
+The earlier **build 1.0.0 (8)**, assigned after Apple's export approval on
+October 8, remains the last version reported installed on the tester's iPhone
+15 Pro Max. That binary predates these corrections.
+See [delivery status](../../TESTFLIGHT-DELIVERY.md).
 
 Simulator and fixture results do not establish physical BLE/QR enrollment,
 Wi-Fi commit/rollback, real camera capture, or actual e-ink refresh. Spoken

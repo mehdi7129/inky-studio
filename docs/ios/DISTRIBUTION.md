@@ -1,16 +1,21 @@
 # iPhone and TestFlight distribution
 
-Updated: **8 October 2026**. The current internal TestFlight beta is **1.0.0 (8)**.
-Apple approved its export compliance, and the build is assigned to **Mehdi — test iPhone**,
-the existing internal group with one tester. App Store Connect reports **Installed,
-1.0.0 (8)** on an **iPhone 15 Pro Max / iOS 27.0.1**, dated 8 October.
-This installation telemetry does not establish functional hardware qualification.
-See [delivery evidence](TESTFLIGHT-DELIVERY.md).
+Updated: **9 October 2026, 07:04 UTC**. The current internal TestFlight beta is
+**1.0.0 (9)**, assigned to **Mehdi — test iPhone**, the existing internal group
+with one tester. French testing notes are saved. Installation of build 9 is not
+yet established; build 8 is the last version reported installed on the tester's
+iPhone 15 Pro Max. See [delivery evidence](TESTFLIGHT-DELIVERY.md).
 
-Build 8 comes from `15b5e536e791b4e23215e9c1b60103d14e0c8e13` (Bento polish).
-The later stability/accessibility corrections in [PR #21](https://github.com/mehdi7129/inky-studio/pull/21)
-are not in that binary. They require a new candidate, which has not yet been
-uploaded. No public App Review submission has been made.
+Build 9 includes the stability/accessibility corrections in
+[PR #21](https://github.com/mehdi7129/inky-studio/pull/21), from clean source
+`181edb2f89034bb0c411b145c95fe303f112b460`. Its signed Release archive and
+distribution export succeeded, and all **76 package checks passed**. Upload
+succeeded on 9 October at **06:46:08 UTC**. Apple processing completed without
+missing-compliance information. Native CI is green on the same source:
+**109 unit tests and 17 UI tests pass**, with one expected simulated Face ID
+skip; iPhone Release also builds successfully. Group assignment was verified at
+**07:04 UTC**. No branch has been merged and no public App Review submission
+has been made.
 
 The native app has an independent version and does not change the Raspberry
 release version. Bundle ID: `fr.mehdiguiard.inkystudio`. The project currently
@@ -50,7 +55,7 @@ The app requires a local Inky Studio frame. Beta description: **« Gérez les ph
 
 Testing notes: confirm local network permission, first password login, Face ID opt-in, logout and biometric login, password fallback, HEIC import/crop/upload, next/previous refresh and background/reconnect. The app offers **Explorer la démo** without hardware or credentials, followed by **Préparer mon cadre** for real setup. This local demo does not simulate physical Bluetooth, Face ID, camera hardware or e-ink refresh; there is no remotely reachable demonstration server. See [the review walkthrough](DEMO-AND-ONBOARDING.md).
 
-The checked-in App Store export sets `testFlightInternalTestingOnly=false`; a normal distribution upload can be used for TestFlight and later App Store submission. Keep manual group assignment and manual public release. Normal export eligibility does not resolve export compliance, distribute the build to testers or submit the app for review. For the next candidate, verify its compliance association and assign the intended group after Apple processing. Qualify the real iPhone/frame setup before public submission.
+The checked-in App Store export sets `testFlightInternalTestingOnly=false`; a normal distribution upload can be used for TestFlight and later App Store submission. Keep manual group assignment and manual public release. Normal export eligibility does not resolve export compliance, distribute the build to testers or submit the app for review. Build 9 has completed Apple processing with its approved compliance code recognized, passed native CI and been assigned to the intended internal group. Qualify the real iPhone/frame setup before public submission.
 
 ## Privacy and signing
 
@@ -68,13 +73,21 @@ Archive/export success proves the package can be signed. It does not prove App S
 
 ## Delivered beta and publication roadmap
 
-The private TestFlight build **1.0.0 (8)** is assigned to Mehdi's internal group,
-with installation reported by App Store Connect. Physical iPhone QR adoption
-and Wi-Fi commit/rollback still need device qualification. See
+The private TestFlight build **1.0.0 (9)** is assigned to Mehdi's internal group.
+Its installation and physical acceptance remain to be checked on the iPhone.
+Physical QR adoption and Wi-Fi commit/rollback still need device qualification. See
 [delivery evidence](TESTFLIGHT-DELIVERY.md) and the
 [public-release, BLE travel and remote-access plan](APP-STORE-PLAN.md).
 The public app has not been submitted for review. Support and privacy pages are
 served at [inky-studio.netlify.app](https://inky-studio.netlify.app).
+
+## Historical delivery — build 8, 8 October 2026
+
+Build **1.0.0 (8)**, from `15b5e536e791b4e23215e9c1b60103d14e0c8e13`
+(Bento polish), was assigned after Apple approved export compliance. App Store
+Connect reports **Installed, 1.0.0 (8)** on an **iPhone 15 Pro Max / iOS 27.0.1**,
+dated 8 October. That telemetry does not establish functional hardware
+qualification, and this earlier binary does not contain the build 9 corrections.
 
 ## Historical checkpoints — 27 September to 1 October 2026
 
@@ -92,4 +105,4 @@ served at [inky-studio.netlify.app](https://inky-studio.netlify.app).
   not declare an exemption. See the [dated encryption history](ENCRYPTION-INVENTORY.md).
 
 These checkpoints describe the earlier delivery and compliance state. The
-current build 8 status and approved source metadata are recorded above.
+current build 9 delivery and approved source metadata are recorded above.
