@@ -297,6 +297,7 @@ struct PhotoImportView: View {
                 Image(systemName: "photo.badge.plus")
                     .font(.system(size: 52, weight: .light))
                     .foregroundStyle(secondary)
+                    .accessibilityHidden(true)
                 Text("Un nouveau souvenir sur le cadre")
                     .font(.title2.weight(.semibold))
                 Text(store.isDemo ? "Essayez une image d’exemple ou choisissez une photo. Elle restera dans la démo sur cet iPhone jusqu’à sa fermeture." : "Prenez une photo ou choisissez-en une dans Photos, puis ajustez son cadrage.")

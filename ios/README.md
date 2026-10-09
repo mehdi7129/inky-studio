@@ -2,7 +2,19 @@
 
 Native SwiftUI companion for Inky Studio v0.4.2+. Requires iOS 18 or newer. Photo transfer requires a Raspberry reachable on the same local network; the offline demo needs no frame. There is no cloud account. The local `InkyTLS` Swift package embeds pinned Mbed TLS 4.1.1 for secure Bluetooth provisioning. Password changes and Bluetooth require a compatible updated server; normal photo workflows remain compatible with v0.4.2.
 
-The available beta is build 3. Build 4 contains Bluetooth but awaits export compliance; source candidate build 5 also includes the demo and connection guide. Source/build success does not establish TestFlight availability. See [delivery status](../docs/ios/TESTFLIGHT-DELIVERY.md).
+The current internal TestFlight beta is **1.0.0 (9)**, assigned on
+**2026-10-09 at 07:04 UTC** to **Mehdi — test iPhone** with one tester. It includes
+this branch's stability/accessibility improvements. Its signed archive, IPA
+export and **76 package checks passed**; Apple processed the upload with the
+approved export-compliance code recognized. Native CI passed on the same source:
+**109 unit and 17 UI tests**, one expected simulated Face ID skip, zero failures,
+and a successful iPhone Release build.
+
+Installation of build 9 is not yet established. Build 8, distributed following
+Apple's export approval on October 8, is the last version reported installed on
+the tester's iPhone 15 Pro Max. No branch has been merged or public App Review
+submitted. See [delivery status](../docs/ios/TESTFLIGHT-DELIVERY.md) and
+[the latest review](../docs/ios/reviews/2026-10-08-stability/README.md).
 
 ## Run
 
@@ -66,7 +78,7 @@ python3 ios/scripts/smoke-api.py
 # xcrun simctl boot <SIMULATOR_UDID>
 # python3 ios/scripts/seed-simulator-photo.py <SIMULATOR_UDID>
 xcodebuild -project ios/InkyStudio.xcodeproj -scheme InkyStudio \
-  -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' \
+  -destination 'platform=iOS Simulator,id=<SIMULATOR_UDID>' \
   -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
 ```
 

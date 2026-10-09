@@ -3,6 +3,7 @@ import SwiftUI
 struct QueueView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var importing = false
     @State private var editing = false
     @State private var deleting: QueueEntry?
@@ -50,7 +51,9 @@ struct QueueView: View {
                 if !store.queue.isEmpty {
                     Section {
                         Text("Maintenez une photo pour ouvrir ses options, ou touchez Modifier la file pour changer l’ordre.").font(.caption).foregroundStyle(Bento.secondaryInk)
-                        Button(editing ? "Terminer" : "Modifier la file") { withAnimation { editing.toggle() } }
+                        Button(editing ? "Terminer" : "Modifier la file") {
+                            withAnimation(reduceMotion ? nil : .default) { editing.toggle() }
+                        }
                             .accessibilityIdentifier("queue.edit").disabled(!store.canMutate).frame(maxWidth: .infinity, minHeight: 44)
                     }.listRowBackground(Bento.surface)
                 }

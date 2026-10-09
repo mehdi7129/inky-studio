@@ -1,9 +1,66 @@
 # Private TestFlight delivery
 
-Date: **2026-09-27**. Distribution was requested by Mehdi for a physical iPhone
+Updated: **2026-10-09, 07:04 UTC**. Historical delivery started **2026-09-27**. Distribution was requested by Mehdi for a physical iPhone
 test before preparing a public App Store release.
 
-## Current delivery status
+## Current internal beta — build 9
+
+Build **1.0.0 (9)** includes the stability/accessibility changes in
+[PR #21](https://github.com/mehdi7129/inky-studio/pull/21). No dependent branch
+has been merged. Build 9 is now assigned to the existing internal group
+**Mehdi — test iPhone** with one tester. Its installation is not yet established;
+build 8 remains the last version reported installed.
+
+| Checkpoint | Verified result |
+|---|---|
+| Source | Clean checkout `181edb2f89034bb0c411b145c95fe303f112b460`; build number 9 supplied at archive time |
+| Signed Release archive / distribution IPA export | Both succeeded |
+| Archive and IPA verification | **76/76 checks passed**, including provenance, version, signature and approved encryption metadata |
+| IPA SHA-256 | `c7642ef10fca15494a41cf8581249dbcce6e25a85328a908f62f51bc49ff1070` |
+| Upload | Succeeded **2026-10-09 at 06:46:08 UTC**, command exit 0 |
+| Apple processing | Completed; **Prêt à soumettre** without missing-compliance information, observed 06:48 UTC |
+| Apple binary metadata | **Validé**, 1.0.0 (9), expected bundle ID, iPhone/arm64, minimum iOS 18, non-exempt encryption and uploaded symbols |
+| Testing notes | French notes saved; **Enregistré** confirmed and text retained after changing tabs |
+| TestFlight group | **Mehdi — test iPhone**, internal, one tester; build page shows **Groupe (1)** after successful assignment at **07:04 UTC** |
+| Validation | **109 unit tests and 17 UI tests pass**, one expected simulated Face ID skip, zero failures; iPhone Release build passes. Four general CI jobs, TLS 15/15, Bluetooth transport 13/13, HTTPS 52/52 and fixture 45 checks also pass |
+| Installation / physical acceptance | Not established for build 9 |
+| Public App Review | Not submitted |
+
+[Build 9 in App Store Connect](https://appstoreconnect.apple.com/teams/03da9ef5-608a-40ef-9367-b987b26ea06d/apps/6816637620/testflight/ios/e0b632ea-0232-4da3-b6e3-dae8875b24c0).
+[Native CI for source 181edb2](https://github.com/mehdi7129/inky-studio/actions/runs/37894502277).
+The **Prêt à soumettre** label alone does not establish tester delivery;
+assignment is independently confirmed by **Groupe (1)** on the build page.
+Neither state is public App Review approval. See the [stability review](reviews/2026-10-08-stability/README.md)
+for the separate Simulator and visual evidence.
+
+Local evidence is retained under ignored `build/ios/app-store-evidence/build9/`:
+`source-revision.json`, `archive.log`, `export.log`,
+`archive-and-ipa-verification.json`, `upload.log` and `upload-receipt.json`.
+The signed archive is `build/ios/archives/InkyStudio-1.0.0-9.xcarchive`;
+the exported IPA is `build/ios/appstore-export-build9/InkyStudio.ipa`.
+
+## Historical delivery — build 8, 2026-10-08
+
+- Apple approved export compliance on **2026-10-08**. The approved declaration
+  is now associated with **1.0.0 (8)** in App Store Connect.
+- Build 8 is assigned to **Mehdi — test iPhone**, the existing internal group
+  with one tester. App Store Connect reports **Installed, 1.0.0 (8)** on an
+  **iPhone 15 Pro Max / iOS 27.0.1**, dated 2026-10-08.
+- Build 8 comes from `15b5e536e791b4e23215e9c1b60103d14e0c8e13` (Bento polish).
+  Later stability/accessibility changes are in build 9 above; distributing
+  build 8 does not incorporate those changes.
+- The source now includes Apple's supplied `ITSEncryptionExportComplianceCode`
+  and declares non-exempt encryption. Reassess the declaration if the app's
+  cryptographic characteristics change.
+- This is internal TestFlight delivery and export approval. Public App Review
+  has not been submitted; physical iPhone QR adoption and Wi-Fi commit/rollback
+  still need device qualification. Installation telemetry is not a functional
+  hardware test.
+
+[Build 8 in App Store Connect](https://appstoreconnect.apple.com/teams/03da9ef5-608a-40ef-9367-b987b26ea06d/apps/6816637620/testflight/ios/2207deac-bf04-44ea-8a4f-fa6dc4d12bd5).
+The latest source validation is tracked in the [stability review](reviews/2026-10-08-stability/README.md).
+
+## Historical delivery status — 2026-09-27
 
 - Available internal beta: **1.0.0 (3)**, without Bluetooth.
 - Source candidate **1.0.0 (5)** adds the offline demo, first-connection guide
@@ -58,7 +115,7 @@ installation on the iPhone are separate from server-side delivery.
    expected/actual results and non-sensitive screenshots through TestFlight.
 
 Bluetooth Wi-Fi provisioning and remote family access were outside this build.
-See [APP-STORE-PLAN.md](APP-STORE-PLAN.md) and the current build 4 status below.
+See [APP-STORE-PLAN.md](APP-STORE-PLAN.md) and the historical build 4 status below.
 
 ## Evidence retained locally
 

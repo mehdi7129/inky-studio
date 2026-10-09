@@ -61,6 +61,8 @@ struct SettingsView: View {
                     Button { Task { await store.saveSettings(draft) } } label: {
                         if store.busy { ProgressView().tint(Bento.actionText) } else { Text("Enregistrer les réglages") }
                     }.buttonStyle(PrimaryButtonStyle()).disabled(!dirty || !store.canMutate).accessibilityIdentifier("settings.save")
+                        .accessibilityLabel("Enregistrer les réglages")
+                        .accessibilityValue(store.busy ? "Opération en cours" : "")
                     if !store.isDemo { VStack(alignment: .leading, spacing: 12) {
                         Label("Connexion", systemImage: "wifi").font(.headline)
                         Toggle(isOn: Binding(get: { store.biometricEnabled }, set: { enabled in
@@ -173,6 +175,8 @@ private struct BiometricSetupView: View {
                     Task { await store.enableBiometrics(password: password); if store.biometricEnabled { dismiss() } }
                 } label: { if store.busy { ProgressView().tint(Bento.actionText) } else { Text("Activer") } }
                     .buttonStyle(PrimaryButtonStyle()).disabled(password.isEmpty || store.busy)
+                    .accessibilityLabel("Activer \(store.biometricName)")
+                    .accessibilityValue(store.busy ? "Activation en cours" : "")
                 if let error = store.errorMessage { Text(error).font(.subheadline).foregroundStyle(Bento.danger) }
                 Spacer()
             }.padding(24).background(Bento.background)

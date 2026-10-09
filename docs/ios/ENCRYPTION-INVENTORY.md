@@ -1,5 +1,39 @@
 # Inventaire cryptographique et conformité iOS
 
+## Build 1.0.0 (9) distribué en interne — 9 octobre 2026
+
+Le build 9 provient du checkout propre
+`181edb2f89034bb0c411b145c95fe303f112b460`. L'archive Release signée et l'IPA
+exportée contiennent `ITSAppUsesNonExemptEncryption=true` et le code approuvé
+fourni par Apple. Les **76 contrôles de paquet passent** ; le SHA-256 de l'IPA
+est `c7642ef10fca15494a41cf8581249dbcce6e25a85328a908f62f51bc49ff1070`.
+
+L'upload a réussi à **06:46:08 UTC**. À **06:48 UTC**, App Store Connect affiche
+le build traité, **Prêt à soumettre**, sans informations de conformité
+manquantes : le code approuvé est reconnu. À **07:04 UTC**, l'affectation au
+groupe interne **Mehdi — test iPhone**, un testeur, est confirmée. L'installation
+du build 9 reste à vérifier ; aucune soumission publique n'a été faite. La CI native du même
+commit est verte : 109 tests unitaires et 17 tests UI réussis, un test Face ID
+simulé ignoré comme prévu, zéro échec et build iPhone Release réussi.
+Cette réception Apple et ces contrôles de paquet ne qualifient
+pas le Bluetooth ou le changement de Wi-Fi sur le matériel réel.
+Voir [la livraison du build 9](TESTFLIGHT-DELIVERY.md).
+
+## Approbation Apple — 8 octobre 2026
+
+Apple a approuvé les documents de chiffrement ; la déclaration approuvée est
+associée au build **1.0.0 (8)**, désormais distribué au groupe TestFlight interne.
+Le code fourni par App Store Connect est reporté dans `Info.plist` avec
+`ITSAppUsesNonExemptEncryption=true` pour les prochains builds conservant ces
+caractéristiques cryptographiques. Aucun algorithme ni paramètre TLS n'est
+modifié par ce changement de métadonnées. Toute évolution du chiffrement doit
+faire réexaminer la déclaration.
+
+Cette approbation porte sur la conformité export. Elle ne constitue ni une
+validation fonctionnelle du Bluetooth, ni une approbation publique App Review.
+Voir [l'état de livraison](TESTFLIGHT-DELIVERY.md). Les sections suivantes
+conservent les constats historiques, antérieurs à cette approbation.
+
 ## Préparation de 1.0.0 (6) — 1 octobre 2026
 
 Le candidat source 6 conserve Mbed TLS 4.1.1, TF-PSA-Crypto 1.1.1 et la

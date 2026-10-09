@@ -1,3 +1,4 @@
+import Accessibility
 import SwiftUI
 
 @main
@@ -20,6 +21,7 @@ struct RootView: View {
             if store.authenticated {
                 VStack(spacing: 0) {
                     if store.isDemo { demoBanner }
+                    connectionBanners
                     TabView(selection: $selection) {
                         DashboardView().tabItem { Label("Cadre", systemImage: "photo") }.tag(0).accessibilityIdentifier("tab.frame")
                         QueueView().tabItem { Label("File", systemImage: "square.stack") }.tag(1).accessibilityIdentifier("tab.queue")
@@ -27,28 +29,6 @@ struct RootView: View {
                         SettingsView().tabItem { Label("Réglages", systemImage: "gearshape.fill") }.tag(3).accessibilityIdentifier("tab.settings")
                     }
                     .id(store.sessionIdentity)
-                    .safeAreaInset(edge: .top, spacing: 0) {
-                        if !store.connected {
-                            HStack {
-                                Image(systemName: "wifi.slash")
-                                Text("Raspberry injoignable · données précédentes").font(.caption)
-                                Spacer()
-                                Button { Task { await store.refresh() } } label: {
-                                    Text("Réessayer").font(.caption.weight(.semibold))
-                                        .frame(minHeight: 44).contentShape(Rectangle())
-                                }
-                            }.padding(12).background(Color.orange.opacity(0.12))
-                        }
-                        if let message = store.errorMessage {
-                            HStack(alignment: .top) {
-                                Text(message).font(.caption).fixedSize(horizontal: false, vertical: true)
-                                Spacer(minLength: 4)
-                                Button { store.errorMessage = nil } label: {
-                                    Image(systemName: "xmark").frame(width: 44, height: 44).contentShape(Rectangle())
-                                }.accessibilityLabel("Fermer le message")
-                            }.padding(.leading, 16).padding(.vertical, 6).background(Color.red.opacity(0.07))
-                        }
-                    }
                     .overlay(alignment: .bottom) {
                         if let notice = store.notice {
                             Text(notice).font(.subheadline).padding(14).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
@@ -62,6 +42,40 @@ struct RootView: View {
         .onChange(of: phase) { _, value in store.sceneActive(value == .active) }
         .onChange(of: store.authenticated) { _, _ in selection = 0 }
         .onChange(of: store.sessionIdentity) { _, _ in selection = 0 }
+        .onChange(of: store.notice) { previous, current in
+            guard let message = current?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !message.isEmpty,
+                  message != previous?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+            AccessibilityNotification.Announcement(message).post()
+        }
+    }
+    // Keep banners in the parent stack so nested navigation bars cannot
+    // draw through them. Each message owns its vertical space.
+    private var connectionBanners: some View {
+        VStack(spacing: 0) {
+            if !store.connected {
+                HStack {
+                    Image(systemName: "wifi.slash")
+                    Text("Raspberry injoignable · données précédentes").font(.caption)
+                    Spacer()
+                    Button { Task { await store.refresh() } } label: {
+                        Text("Réessayer").font(.caption.weight(.semibold))
+                            .frame(minHeight: 44).contentShape(Rectangle())
+                    }
+                }.padding(12).background(Color.orange.opacity(0.12))
+                .accessibilityIdentifier("connection.offline")
+            }
+            if let message = store.errorMessage {
+                HStack(alignment: .top) {
+                    Text(message).font(.caption).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Button { store.errorMessage = nil } label: {
+                        Image(systemName: "xmark").frame(width: 44, height: 44).contentShape(Rectangle())
+                    }.accessibilityLabel("Fermer le message")
+                }.padding(.leading, 16).padding(.vertical, 6).background(Color.red.opacity(0.07))
+                .accessibilityIdentifier("connection.error")
+            }
+        }.fixedSize(horizontal: false, vertical: true)
     }
     private var demoBanner: some View {
         HStack(spacing: 12) {

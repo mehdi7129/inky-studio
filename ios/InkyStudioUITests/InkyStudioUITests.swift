@@ -15,9 +15,10 @@ final class InkyStudioUITests: XCTestCase {
         if resetCamera { app.resetAuthorizationStatus(for: .camera) }
         app.launchArguments = ["--uitesting", "--frame-address", fixtureURL.absoluteString]
         app.launch()
-        addTeardownBlock { @MainActor [weak self] () async throws in
+        let teardown: @MainActor @Sendable () -> Void = { [weak self] in
             self?.finish()
         }
+        addTeardownBlock(teardown)
     }
 
     private func finish() {
@@ -206,6 +207,81 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertFalse(element("frame.next").exists, "Authenticated actions must disappear after logout.")
     }
 
+    func testSettingsSaveKeepsAccessibleLabelWhileSaving() {
+        launchFixtureApp()
+        login()
+        selectTab("settings", fallback: "Réglages")
+        let manual = app.segmentedControls["settings.mode"].buttons["Manuel"]
+        XCTAssertTrue(manual.waitForExistence(timeout: 5))
+        manual.tap()
+        let save = app.buttons["settings.save"]
+        scrollTo(save)
+        XCTAssertTrue(save.isEnabled)
+        XCTAssertEqual(save.label, "Enregistrer les réglages")
+        configureFixture("__test/settings-delay", body: ["seconds": 5])
+        defer { configureFixture("__test/settings-delay", body: ["seconds": 0]) }
+        save.tap()
+
+        let saving = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@ AND value == %@ AND enabled == false",
+                                   "Enregistrer les réglages", "Opération en cours"), object: save)
+        XCTAssertEqual(XCTWaiter.wait(for: [saving], timeout: 3), .completed,
+                       "The disabled save button must retain its action label and expose progress through its value.")
+        XCTAssertTrue(app.staticTexts["Réglages enregistrés."].waitForExistence(timeout: 10))
+        XCTAssertEqual(save.label, "Enregistrer les réglages")
+        XCTAssertNotEqual(save.value as? String, "Opération en cours")
+        XCTAssertFalse(save.isEnabled, "A saved draft must no longer be dirty.")
+    }
+
+    func testForegroundOfflineKeepsDataAndRecoversWithoutLogin() {
+        launchFixtureApp()
+        login()
+        selectTab("queue", fallback: "File")
+        let firstPhoto = element("queue.row.a11050000002")
+        let secondPhoto = element("queue.row.5ad000000003")
+        XCTAssertTrue(firstPhoto.waitForExistence(timeout: 5))
+        XCTAssertTrue(secondPhoto.exists)
+        XCTAssertTrue(app.staticTexts["2 photos dans la file"].exists)
+
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5), "The app must enter the background before the outage.")
+        configureFixture("__test/availability", body: ["available": false])
+        defer { configureFixture("__test/availability", body: ["available": true]) }
+        app.activate()
+        let offline = app.staticTexts["Raspberry injoignable · données précédentes"]
+        XCTAssertTrue(offline.waitForExistence(timeout: 10), "Returning offline must show the cached-data banner.")
+        XCTAssertTrue(firstPhoto.exists)
+        XCTAssertTrue(secondPhoto.exists)
+        XCTAssertTrue(app.staticTexts["2 photos dans la file"].exists)
+        XCTAssertFalse(app.buttons["queue.edit"].isEnabled, "Cached data must remain read-only during the outage.")
+        XCTAssertFalse(app.secureTextFields["connection.password"].exists, "A transport failure must preserve the session.")
+        let offlineBanner = element("connection.offline")
+        let errorBanner = element("connection.error")
+        XCTAssertTrue(offlineBanner.exists)
+        XCTAssertTrue(errorBanner.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(offlineBanner.frame.maxY, errorBanner.frame.minY + 1,
+                                 "Connection and error messages must not overlap.")
+        XCTAssertLessThanOrEqual(errorBanner.frame.maxY, app.navigationBars.firstMatch.frame.minY + 1,
+                                 "The navigation title must stay below both messages.")
+        capture("Reprise hors ligne — données conservées")
+
+        let retry = app.buttons["Réessayer"]
+        XCTAssertTrue(retry.isHittable)
+        retry.tap()
+        XCTAssertTrue(offline.exists, "Retrying while the frame is unavailable must keep the recoverable state.")
+        configureFixture("__test/availability", body: ["available": true])
+        // The WebSocket reconnect and the 20-second polling fallback may recover
+        // first. Do not race either against a tap on a disappearing retry button.
+        XCTAssertTrue(offline.waitForNonExistence(timeout: 30), "Restoring the frame must clear the offline banner without another login.")
+        XCTAssertTrue(firstPhoto.exists)
+        XCTAssertTrue(secondPhoto.exists)
+        XCTAssertTrue(app.buttons["queue.edit"].isEnabled)
+        XCTAssertFalse(app.secureTextFields["connection.password"].exists, "Recovery must use the existing session without logging in again.")
+        selectTab("frame", fallback: "Cadre")
+        XCTAssertTrue(app.staticTexts["Raspberry connecté"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["frame.next"].isEnabled)
+    }
+
     func testNextPhotoConsumesQueueAndUpdatesFrame() {
         launchFixtureApp()
         login()
@@ -251,8 +327,12 @@ final class InkyStudioUITests: XCTestCase {
             let title = NSPredicate(format: "label BEGINSWITH %@", "Enregistrer le mot de passe")
             let sheet = app.sheets.matching(title).firstMatch
             let systemSheet = XCUIApplication(bundleIdentifier: "com.apple.springboard").sheets.matching(title).firstMatch
-            for (prompt, timeout) in [(sheet, 6.0), (systemSheet, 2.0)] {
-                guard prompt.waitForExistence(timeout: timeout) else { continue }
+            // The app-owned remote sheet can arrive while we are checking
+            // SpringBoard. Finish discovery first, then resolve both owners
+            // again so a late app sheet is not skipped.
+            _ = sheet.waitForExistence(timeout: 6) || systemSheet.waitForExistence(timeout: 2)
+            for prompt in [sheet, systemSheet] {
+                guard prompt.exists else { continue }
                 // The remote password UI can ignore a tap while it finishes
                 // presenting. Resolve the same dismiss button again, once.
                 for _ in 0..<2 {
@@ -390,15 +470,47 @@ final class InkyStudioUITests: XCTestCase {
         if #available(iOS 27, *) {
             // The floating native tab bar reports a valid AX frame but XCTest's
             // automatic hit point can be {-1,-1}. Use its observed frame and
-            // verify the actual selection; no model-specific coordinates.
+            // verify the displayed screen; no model-specific coordinates.
             let window = app.windows.firstMatch
             let rect = target.frame
             XCTAssertTrue(window.frame.contains(rect))
             XCTAssertGreaterThan(rect.width, 0)
             window.coordinate(withNormalizedOffset: .zero)
                 .withOffset(CGVector(dx: rect.midX - window.frame.minX, dy: rect.midY - window.frame.minY)).tap()
-        } else { target.tap() }
-        XCTAssertTrue(waitForSelected(target), "The tab must actually become selected.")
+            // iOS 27 can resolve `target` to the tab's SF Symbol child after
+            // selection. Its `selected` trait is not the tab's state. Require
+            // the unique, visible destination instead of trusting that child.
+            let title: String
+            switch identifier {
+            case "frame": title = "Inky Studio"
+            case "queue": title = "À suivre"
+            case "history": title = "Historique"
+            case "settings": title = "Réglages"
+            default: XCTFail("Unknown tab: \(identifier)"); return
+            }
+            let bars = app.navigationBars.matching(identifier: title)
+            XCTAssertTrue(bars.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertEqual(bars.count, 1, "The selected tab must have one destination title.")
+            // A static navigation title need not accept taps. Verify geometry
+            // and the screen's own visible content container instead.
+            let titleFrame = bars.element.frame
+            XCTAssertFalse(titleFrame.isEmpty)
+            XCTAssertTrue(window.frame.contains(titleFrame), "The destination title must be visible.")
+            let container: XCUIElement
+            switch identifier {
+            case "frame": container = app.scrollViews["frame.scroll"]
+            case "queue": container = app.collectionViews["queue.list"]
+            case "history": container = app.collectionViews["history.list"]
+            case "settings": container = app.scrollViews["settings.scroll"]
+            default: XCTFail("Unknown tab: \(identifier)"); return
+            }
+            XCTAssertTrue(container.waitForExistence(timeout: 5))
+            XCTAssertFalse(container.frame.intersection(window.frame).isEmpty,
+                           "The selected tab's own content must be onscreen.")
+        } else {
+            target.tap()
+            XCTAssertTrue(waitForSelected(target), "The tab must actually become selected.")
+        }
     }
 
     private func waitForSelected(_ element: XCUIElement) -> Bool {
@@ -421,15 +533,57 @@ final class InkyStudioUITests: XCTestCase {
     }
 
     private func resetFixture() {
-        let ready = expectation(description: "Local fixture reset")
-        var request = URLRequest(url: fixtureURL.appendingPathComponent("__test/reset"))
+        configureFixture("__test/reset")
+    }
+
+    private func configureFixture(_ endpoint: String, body: [String: Any] = [:]) {
+        var request = URLRequest(url: fixtureURL.appendingPathComponent(endpoint))
         request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        do { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
+        catch { XCTFail("Invalid fixture configuration: \(error)"); return }
         request.timeoutInterval = 5
-        URLSession.shared.dataTask(with: request) { _, response, error in
-            XCTAssertNil(error, "Start python3 ios/scripts/mock-server.py before running UI tests.")
-            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let ready = expectation(description: "Local fixture \(endpoint)")
+        let result = FixtureRequestResult(ready: ready)
+        let task = URLSession.shared.dataTask(with: request) { _, response, error in
+            result.complete(response: response, error: error)
+        }
+        task.resume()
+        let waitResult = XCTWaiter.wait(for: [ready], timeout: 7)
+        // Close before cancellation and assertions: a late callback must not
+        // fulfill an old expectation or record a failure in the next test.
+        let outcome = result.close()
+        task.cancel()
+        guard waitResult == .completed, let outcome else {
+            XCTFail("Local fixture \(endpoint) did not complete within 7 seconds (\(waitResult)).")
+            return
+        }
+        XCTAssertNil(outcome.error, "Start python3 ios/scripts/mock-server.py before running UI tests.")
+        XCTAssertEqual(outcome.statusCode, 200)
+    }
+}
+
+private final class FixtureRequestResult: @unchecked Sendable {
+    private let lock = NSLock()
+    private let ready: XCTestExpectation
+    private var pending = true
+    private var outcome: (statusCode: Int?, error: Error?)?
+
+    init(ready: XCTestExpectation) { self.ready = ready }
+
+    func complete(response: URLResponse?, error: Error?) {
+        lock.withLock {
+            guard pending else { return }
+            pending = false
+            outcome = ((response as? HTTPURLResponse)?.statusCode, error)
             ready.fulfill()
-        }.resume()
-        wait(for: [ready], timeout: 7)
+        }
+    }
+
+    func close() -> (statusCode: Int?, error: Error?)? {
+        lock.withLock {
+            pending = false
+            return outcome
+        }
     }
 }

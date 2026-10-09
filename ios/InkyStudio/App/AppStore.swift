@@ -427,10 +427,24 @@ final class AppStore: ObservableObject {
         refreshID = identifier
         historyRevision = UUID()
         loadingHistory = false
+        var retryAfterCancellation = false
         defer {
             if epoch == generation, refreshID == identifier {
                 refreshing = false
                 refreshID = nil
+                if retryAfterCancellation {
+                    let retryRequested = requestedRefresh
+                    requestedRefresh = false
+                    if retryRequested, authenticated, active {
+                        // The cancelled task cannot perform the pending request.
+                        // Start after cleanup and recheck the session when scheduled.
+                        Task { [weak self] in
+                            guard let self, self.generation == epoch,
+                                  self.authenticated, self.active else { return }
+                            await self.refresh()
+                        }
+                    }
+                }
             }
         }
         repeat {
@@ -459,9 +473,17 @@ final class AppStore: ObservableObject {
                 }
             } catch {
                 guard epoch == generation else { return }
+                // Cancellation says nothing about the frame's reachability.
+                guard !Task.isCancelled, !(error is CancellationError),
+                      (error as? URLError)?.code != .cancelled else {
+                    retryAfterCancellation = true
+                    return
+                }
                 connected = false
                 handle(error)
-                return
+                if epoch == generation { connectionError = true }
+                // Honor a foreground refresh or explicit retry that arrived
+                // while this request was still in flight, including on failure.
             }
         } while requestedRefresh && authenticated && epoch == generation
     }
@@ -683,9 +705,14 @@ final class AppStore: ObservableObject {
                 connectionError = true
                 connected = false
                 errorMessage = "Le Raspberry est injoignable. Vérifiez son adresse, le Wi-Fi et l’autorisation Réseau local dans Réglages iOS."
-            default: errorMessage = "La connexion a échoué. \(error.localizedDescription)"
+            default:
+                connectionError = false
+                errorMessage = "La connexion a échoué. \(error.localizedDescription)"
             }
-        } else { errorMessage = error.localizedDescription }
+        } else {
+            connectionError = false
+            errorMessage = error.localizedDescription
+        }
     }
 }
 

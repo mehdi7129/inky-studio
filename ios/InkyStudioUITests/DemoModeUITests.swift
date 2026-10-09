@@ -14,11 +14,12 @@ final class DemoModeUITests: XCTestCase {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
         app.launch()
-        addTeardownBlock { @MainActor [weak self] in
+        let teardown: @MainActor @Sendable () -> Void = { [weak self] in
             guard let self else { return }
             if (self.testRun?.failureCount ?? 0) > 0 { self.capture("Failure") }
             self.app.terminate()
         }
+        addTeardownBlock(teardown)
     }
 
     func testPublicDemoCropQueueHistorySettingsAndReset() {
@@ -99,7 +100,7 @@ final class DemoModeUITests: XCTestCase {
         app.buttons["connection.guide"].tap()
         XCTAssertTrue(app.buttons["guide.close"].waitForExistence(timeout: 5))
         capture("07 Premiers pas grand texte")
-        scrollTo(app.buttons["guide.connect"], in: app.scrollViews["guide.scroll"], maxGestures: 60, horizontalOffset: 0.5)
+        scrollTo(app.buttons["guide.connect"], in: app.scrollViews["guide.scroll"], maxGestures: 60)
         capture("08 Guide et aide grand texte")
         app.buttons["guide.connect"].tap()
         scrollTo(app.buttons["connection.demo"], in: app.scrollViews["connection.scroll"], up: true)
@@ -115,6 +116,29 @@ final class DemoModeUITests: XCTestCase {
         capture("10 Réglages grand texte")
         app.buttons["demo.exit"].tap()
         XCTAssertTrue(app.buttons["connection.demo"].waitForExistence(timeout: 5))
+    }
+
+    /// Audit semantic accessibility on real rendered screens. This does not
+    /// replace listening to VoiceOver or testing every scrolled/offscreen item.
+    func testPublicScreensHaveAccessibleDescriptionsAndTraits() throws {
+        launch()
+        XCTAssertTrue(app.buttons["connection.demo"].waitForExistence(timeout: 10))
+        try app.performAccessibilityAudit(for: [.sufficientElementDescription, .trait])
+        scrollTo(app.buttons["connection.demo"], in: app.scrollViews["connection.scroll"])
+        app.buttons["connection.demo"].tap()
+        XCTAssertTrue(app.buttons["demo.exit"].waitForExistence(timeout: 5))
+        for name in ["Cadre", "File", "Historique", "Réglages"] {
+            selectTab(name)
+            try app.performAccessibilityAudit(for: [.sufficientElementDescription, .trait])
+        }
+        selectTab("Cadre")
+        scrollTo(app.buttons["frame.add"], in: app.scrollViews["frame.scroll"])
+        app.buttons["frame.add"].tap()
+        scrollTo(app.buttons["photo.demoSample"], in: app.scrollViews["photo.scroll"])
+        try app.performAccessibilityAudit(for: [.sufficientElementDescription, .trait])
+        app.buttons["photo.demoSample"].tap()
+        XCTAssertTrue(app.buttons["upload-photo"].waitForExistence(timeout: 5))
+        try app.performAccessibilityAudit(for: [.sufficientElementDescription, .trait])
     }
 
     /// Follows the Simulator's current appearance so the same journey can be
@@ -139,7 +163,9 @@ final class DemoModeUITests: XCTestCase {
         edit.tap()
 
         selectTab("Historique")
-        let requeue = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.requeue.")).firstMatch
+        // The seeded photo 2 is in history but not already in the queue.
+        // Choosing it explicitly makes the expected count independent of row order.
+        let requeue = app.buttons["history.requeue.2"]
         XCTAssertTrue(requeue.waitForExistence(timeout: 5))
         scrollTo(requeue, in: app.collectionViews["history.list"])
         XCTAssertTrue(requeue.isEnabled)
@@ -178,13 +204,13 @@ final class DemoModeUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(crop.frame.minY, cropViewport.minY - 1)
         XCTAssertLessThanOrEqual(crop.frame.maxY, cropViewport.maxY + 1)
         capture("16a Aperçu du cadrage grand texte")
-        scrollTo(zoom, in: app.scrollViews["photo.scroll"], horizontalOffset: 0.95)
+        scrollTo(zoom, in: app.scrollViews["photo.scroll"])
         zoom.adjust(toNormalizedSliderPosition: 0.15)
         capture("16b Réglages du cadrage grand texte")
-        scrollTo(app.buttons["Réinitialiser"], in: app.scrollViews["photo.scroll"], horizontalOffset: 0.95)
+        scrollTo(app.buttons["Réinitialiser"], in: app.scrollViews["photo.scroll"])
         app.buttons["Réinitialiser"].tap()
         let upload = app.buttons["upload-photo"]
-        scrollTo(upload, in: app.scrollViews["photo.scroll"], horizontalOffset: 0.95)
+        scrollTo(upload, in: app.scrollViews["photo.scroll"])
         XCTAssertTrue(upload.isHittable)
         XCTAssertTrue(upload.isEnabled)
         capture("16c Ajouter à la file grand texte")
@@ -198,37 +224,104 @@ final class DemoModeUITests: XCTestCase {
     private func selectTab(_ label: String) {
         let tab = app.tabBars.buttons[label]
         XCTAssertTrue(tab.waitForExistence(timeout: 5))
-        tab.tap()
+        if #available(iOS 27, *) {
+            // The floating tab bar can resolve to an SF Symbol child with an
+            // invalid automatic hit point. Tap its observed window position,
+            // then require the unique, visible destination screen.
+            let window = app.windows.firstMatch
+            let rect = tab.frame
+            XCTAssertTrue(window.frame.contains(rect))
+            XCTAssertGreaterThan(rect.width, 0)
+            window.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: rect.midX - window.frame.minX, dy: rect.midY - window.frame.minY)).tap()
+            let title: String
+            switch label {
+            case "Cadre": title = "Inky Studio"
+            case "File": title = "À suivre"
+            case "Historique": title = "Historique"
+            case "Réglages": title = "Réglages"
+            default: XCTFail("Unknown tab: \(label)"); return
+            }
+            let bars = app.navigationBars.matching(identifier: title)
+            XCTAssertTrue(bars.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertEqual(bars.count, 1, "The selected tab must have one destination title.")
+            let navigation = bars.element
+            XCTAssertFalse(navigation.frame.isEmpty)
+            XCTAssertTrue(window.frame.contains(navigation.frame), "The destination title must be on screen.")
+            // A title-only navigation bar need not have a hittable point.
+            // Require an actual control belonging to this destination instead.
+            let control: XCUIElement
+            switch label {
+            case "Cadre":
+                control = app.buttons["frame.next"]
+                scrollTo(control, in: app.scrollViews["frame.scroll"])
+            case "File": control = navigation.buttons["Ajouter une photo"]
+            case "Historique": control = navigation.buttons["Vider l’historique"]
+            case "Réglages":
+                control = app.buttons["demo.reset"]
+                scrollTo(control, in: app.scrollViews["settings.scroll"])
+            default: XCTFail("Unknown tab: \(label)"); return
+            }
+            let visible = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == true AND hittable == true"), object: control)
+            XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed,
+                           "The selected tab must expose its own accessible control.")
+            XCTAssertTrue(readyToTap(control, in: window.frame))
+        } else {
+            tab.tap()
+        }
     }
     private func scrollTo(_ element: XCUIElement, in scrollView: XCUIElement,
-                          up: Bool = false, maxGestures: Int = 20,
-                          horizontalOffset: CGFloat = 0.5) {
+                          up: Bool = false, maxGestures: Int = 20) {
         // Each screen owns a stable container identifier. A modal can leave
         // other scroll views in the tree, so never choose a container heuristically.
         XCTAssertTrue(scrollView.waitForExistence(timeout: 5))
-        let isList = scrollView.elementType == .collectionView || scrollView.elementType == .table
         for _ in 0..<maxGestures {
+            XCTAssertTrue(scrollView.exists, "Scrolling must keep its original screen or sheet open.")
             let viewport = unobscuredViewport(of: scrollView)
+            XCTAssertGreaterThan(viewport.height, 0, "The scroll container must have a visible gesture area.")
             if readyToTap(element, in: viewport) { return }
             var towardsTop = up
             if element.exists && !element.frame.isEmpty {
                 if element.frame.minY < viewport.minY { towardsTop = true }
                 else if element.frame.maxY > viewport.maxY { towardsTop = false }
             }
-            // Scroll inside content rather than its outer margin. Only crop
-            // controls explicitly use the edge to avoid dragging the photo.
-            let gestureArea = isList ? viewport : scrollView.frame
-            let x = gestureArea.minX + gestureArea.width * (isList ? 0.5 : horizontalOffset)
+            // Stop close to the target instead of flinging past short controls.
+            let maximumDistance = viewport.height * 0.4
+            var requestedDistance = maximumDistance
+            if element.exists && !element.frame.isEmpty {
+                requestedDistance = towardsTop
+                    ? viewport.minY - element.frame.minY + 12
+                    : element.frame.maxY - viewport.maxY + 12
+            }
+            let boundedDistance = min(maximumDistance, max(44, requestedDistance))
+            var gestureTop = viewport.minY + 12
+            // Keep the start outside the system home-indicator gesture area.
+            let gestureBottom = viewport.maxY - 44
+            let crop = scrollView.descendants(matching: .any)["photo.crop"].firstMatch
+            // The full-width crop owns its drag gesture. Keep the whole scroll
+            // gesture below its visible area so scrolling cannot change the crop.
+            if crop.exists && !crop.frame.isEmpty && crop.frame.intersects(viewport) {
+                gestureTop = max(gestureTop, crop.frame.maxY + 12)
+            }
+            let availableDistance = gestureBottom - gestureTop
+            XCTAssertGreaterThan(availableDistance, 0, "Scrolling needs an area outside the crop canvas.")
+            let distance = min(boundedDistance, availableDistance)
+            let startY = towardsTop ? gestureTop : gestureBottom
+            let endY = startY + (towardsTop ? distance : -distance)
+            // Use the left content margin, clear of the right scroll indicator,
+            // with no press-and-hold that could activate a photo or control.
+            let x = viewport.minX + min(12, viewport.width * 0.05)
             // Freeze the observed points in window coordinates before the
             // gesture; XCTest must not resolve the scrolling element mid-drag.
             let window = app.windows.firstMatch
             let windowFrame = window.frame
             let origin = window.coordinate(withNormalizedOffset: .zero)
             let start = origin.withOffset(CGVector(dx: x - windowFrame.minX,
-                dy: gestureArea.minY + gestureArea.height * (towardsTop ? 0.45 : 0.70) - windowFrame.minY))
+                dy: startY - windowFrame.minY))
             let end = origin.withOffset(CGVector(dx: x - windowFrame.minX,
-                dy: gestureArea.minY + gestureArea.height * (towardsTop ? 0.70 : 0.45) - windowFrame.minY))
-            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+                dy: endY - windowFrame.minY))
+            start.press(forDuration: 0, thenDragTo: end, withVelocity: .default, thenHoldForDuration: 0)
         }
         XCTAssertTrue(element.exists, "Element absent: \(element)")
         XCTAssertTrue(readyToTap(element, in: unobscuredViewport(of: scrollView)), "Element inaccessible or covered by navigation: \(element)")
@@ -239,12 +332,16 @@ final class DemoModeUITests: XCTestCase {
         var top = bounds.minY
         var bottom = bounds.maxY
         let navigation = app.navigationBars.firstMatch
-        if navigation.exists && navigation.isHittable && navigation.frame.intersects(bounds) {
+        if navigation.exists && !navigation.frame.isEmpty && navigation.frame.intersects(bounds) {
             top = max(top, navigation.frame.maxY)
         }
-        let tabs = app.tabBars.firstMatch
-        if tabs.exists && tabs.isHittable && tabs.frame.intersects(bounds) {
-            bottom = min(bottom, tabs.frame.minY)
+        // Only root tabs can cover these containers. A presented sheet keeps
+        // its underlying tab bar in the accessibility hierarchy.
+        if ["frame.scroll", "queue.list", "history.list", "settings.scroll"].contains(scrollView.identifier) {
+            let tabs = app.tabBars.firstMatch
+            if tabs.exists && !tabs.frame.isEmpty && tabs.frame.intersects(bounds) {
+                bottom = min(bottom, tabs.frame.minY)
+            }
         }
         return CGRect(x: bounds.minX, y: top, width: bounds.width, height: max(0, bottom - top))
     }
