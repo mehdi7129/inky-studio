@@ -1,6 +1,7 @@
 # iPhone publication plan
 
-Status snapshot: **2026-10-09**. The path is **private TestFlight → real-device
+Status snapshot: **2026-10-10**; Apple fields below were observed on October 9.
+The path is **private TestFlight → real-device
 acceptance → public readiness → final candidate → App Review → manual release**.
 Public release remains a separate decision after Mehdi's hardware feedback.
 Build **1.0.0 (9)** is delivered to the internal TestFlight group. Apple approved
@@ -8,8 +9,9 @@ export compliance on **2026-10-08**; real iPhone/frame qualification remains ope
 InkyOS and remote family access remain separate workstreams.
 
 Mehdi reports on **2026-10-09** that the app works well and that no screen is
-currently connected. This is positive user feedback, without an exact installed
-build number or a pass for each hardware journey. Work can continue using the
+currently connected. On **2026-10-10**, InkyOS relayed operator confirmation that
+**build 9 is installed**; Studio did not directly observe the installation.
+Neither report establishes a pass for each hardware journey. Work can continue using the
 [tests without a frame](TEST-WITHOUT-FRAME.md). App Store Connect was inspected
 **read-only on 2026-10-09 around 09:10 UTC**, after the session became accessible
 again. The saved choices below were observed without modifying any Apple field.
@@ -21,7 +23,7 @@ They describe the current draft, not a public-release decision or legal opinion.
 |---|---|
 | App | Native SwiftUI iPhone companion, iOS 18+, French UI; rounded bento, system light/dark appearance, portrait only, camera import and a visible offline demo in delivered build 9 |
 | Identity | `fr.mehdiguiard.inkystudio`; App Store Connect app **6816637620** |
-| Available beta | **1.0.0 (9)**, clean source **181edb2**, uploaded and assigned to **Mehdi — test iPhone** with one internal tester on **2026-10-09**; French test notes saved. Exact currently installed build remains to record |
+| Available beta | **1.0.0 (9)**, clean source **181edb2**, uploaded and assigned to **Mehdi — test iPhone** with one internal tester on **2026-10-09**; French test notes saved. Installation confirmed by the operator via InkyOS on **2026-10-10**, not directly observed by Studio |
 | Bluetooth delivery | Included in the delivered beta; real QR adoption and Wi-Fi commit/rollback still require the frame. Historical build 4 compliance is no longer the current delivery gate |
 | Validation | Build 9: **76/76 archive/IPA checks**, **109 unit tests + 17 UI tests**, one expected simulated Face ID skip, no failures; iPhone Release and general CI pass. TLS 15/15, Bluetooth transport 13/13, HTTPS 52/52 and fixture 45 checks pass. These do not establish physical iPhone QR adoption, Wi-Fi transition or screen refresh |
 | Encryption | Apple export approval recorded **2026-10-08**; the live app-information page shows **two approved documents**. Build 9 includes the approved code and non-exempt encryption declaration; Apple processed it without a missing-compliance gate. This is not public App Review approval |
@@ -58,9 +60,9 @@ observations are recorded in [TESTFLIGHT-DELIVERY.md](TESTFLIGHT-DELIVERY.md).
 No extra upload or old build 4 compliance action is needed merely to continue
 these tests.
 
-- Record the version/build shown in TestFlight, iPhone model and iOS version
-  before attaching a result to build 9. Mehdi's positive feedback today does not
-  supply that exact version or a detailed acceptance log.
+- Build 9 installation is now reported confirmed. For each further test, still
+  record the installed version/build, iPhone model and iOS version; that report
+  does not provide a detailed acceptance log.
 - Complete the [short no-frame checklist](TEST-WITHOUT-FRAME.md): demo, navigation,
   appearance, large text, import/crop, reset and real iPhone camera/VoiceOver where
   available. Engineering can continue regression, documentation and listing
@@ -359,7 +361,7 @@ the personal frame or an existing SD as disposable image-test hardware.
 
 ## Remaining decisions
 
-- Identify the currently installed build, collect the remaining no-frame results,
+- Collect the remaining no-frame results for the reported installed build 9,
   then physical iPhone/Bluetooth/Wi-Fi results when hardware returns.
 - Review arrangement, compatibility scope and optional English UI/metadata.
 - Preserve the observed free France-only distribution and non-trader declaration;

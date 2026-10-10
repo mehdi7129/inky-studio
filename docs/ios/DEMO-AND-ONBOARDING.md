@@ -5,9 +5,11 @@ Current delivery: **TestFlight 1.0.0 (9)**, assigned to the internal group on
 are included. Apple export compliance was approved on **2026-10-08**; the former
 build 4 gate is historical. See [delivery evidence](TESTFLIGHT-DELIVERY.md).
 
-Mehdi reports that the app works well without a currently connected screen. This
-feedback does not identify the installed build or qualify all demo/hardware
-journeys. The [French no-frame checklist](TEST-WITHOUT-FRAME.md) separates tests
+Mehdi reported that the app works well without a connected screen. On
+**2026-10-10**, InkyOS relayed the operator's confirmation that **build 9 is
+installed**, not directly observed by Studio. These reports do not qualify all
+demo/hardware journeys. See [delivery provenance](TESTFLIGHT-DELIVERY.md).
+The [French no-frame checklist](TEST-WITHOUT-FRAME.md) separates tests
 that can continue now from those that require a Raspberry and screen.
 
 ## Product behavior

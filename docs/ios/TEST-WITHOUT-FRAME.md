@@ -1,9 +1,10 @@
 # Tester Inky Studio sans cadre
 
-État au **9 octobre 2026** : le build **1.0.0 (9)** est distribué au groupe
-TestFlight interne. Mehdi indique que l'app fonctionne bien, sans écran connecté
-actuellement. Ce retour positif ne précise pas le build installé et ne valide
-pas automatiquement tous les parcours ci-dessous.
+État au **10 octobre 2026** : le build **1.0.0 (9)** est distribué au groupe
+TestFlight interne. InkyOS rapporte ce jour la confirmation opérateur de son
+installation ; Studio n'a pas observé directement celle-ci. Le retour positif
+sur l'app et cette installation ne valident pas automatiquement tous les
+parcours ci-dessous. Voir [la provenance du suivi](TESTFLIGHT-DELIVERY.md).
 
 ## À noter avant le test
 

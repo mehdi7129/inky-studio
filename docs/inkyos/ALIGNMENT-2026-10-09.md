@@ -4,6 +4,39 @@ Relevé du **9 octobre 2026**, destiné à la session InkyOS. Ce document distin
 le banc LAN possible aujourd'hui de la cible de premier allumage sans LAN.
 Il ne donne pas à l'image le statut de release qualifiée.
 
+## Complément du 10 octobre — retour SD et installation iPhone
+
+La session InkyOS a publié le
+[diagnostic réseau](https://github.com/mehdi7129/inkyOS/blob/7462944261d5a548a67f2e723c7c0d5e67ff85be/docs/BOOT-NETWORK-DIAGNOSIS.md)
+au commit documentaire `7462944261d5a548a67f2e723c7c0d5e67ff85be`.
+Studio a relu ce rapport ; l'acquisition SD n'a pas été reproduite ici.
+
+- Installation de **TestFlight build 9** confirmée par l'opérateur, relayée
+  par InkyOS ; pas d'observation directe de l'installation par Studio.
+- Le retour SD en lecture seule contient un état `enrolled` valide et un cache
+  Wi-Fi `imported` complet. Capsule, signature et bindings sont cohérents.
+  Cela confirme un import au moins une fois, pas une connexion réseau.
+- Configuration opérateur absente, `WirelessEnabled=false` enregistré, aucun
+  profil de connexion persistant et journaux persistants vides. Aucune
+  connexion/SSH n'est validée. L'état sauvegardé ne permet pas d'identifier la
+  cause du dernier échec ni d'exclure toute association Wi-Fi antérieure.
+- Après la coupure, les données volatiles sont perdues et les fichiers
+  persistants peuvent précéder le dernier boot ; aucun replay/réparation du
+  journal ext4 n'a été effectué par InkyOS pendant cette lecture.
+- App/helper non activés ; photo, affichage et QR/BLE attendent le réseau.
+
+Prochaine étape OS : diagnostic de boot durable à schéma fermé (phase, erreurs
+connues import/connexion/pays, booléens utiles), sans SSID, mot de passe, clé,
+identité ou sortie brute. Il ne doit autoriser ni réseau ni application.
+Cette instrumentation reste à intégrer : reconstruire runtime, manifeste,
+profil et capsule de manière cohérente. Un patch isolé sur la SD invaliderait
+les bindings. Les courses rfkill/pays reproduites sur fixtures restent des
+hypothèses, pas la cause matérielle confirmée. Studio ne modifie ni protocole,
+payload ou services dans cette mise à jour documentaire.
+
+Le relevé du 9 octobre ci-dessous reste historique ; ce complément précise
+l'installation et l'état du banc sans qualifier les parcours matériels.
+
 ## Couple à conserver pour l'essai
 
 | Élément | Référence et portée |
@@ -15,8 +48,9 @@ Il ne donne pas à l'image le statut de release qualifiée.
 | Source de ce relevé | Branche de documentation issue de `966711f` ; elle n'ajoute aucun code applicatif depuis la source iOS ci-dessus |
 | OS / SD | La session InkyOS annonce base système `0f2d222`, documentation d'alignement poussée à `688140d`, capsule Wi-Fi signée installée/relue, retour natif 35 + 10 PASS, app/helper masqués et SSH bloqué par `name_resolution_failed`. Cette SD TEST exige une admission et un état applicatif vierge par boot ; la reprise produit après reboot n'est pas qualifiée. Résultats rapportés par InkyOS, pas reproduits par Studio |
 
-Le retour positif de l'utilisateur sur l'app ne précise pas son build installé et ne
-qualifie pas le cadre absent. Relever **1.0.0 (9)** dans TestFlight avant le banc.
+Au relevé du 9 octobre, le retour positif ne précisait pas le build installé.
+La confirmation opérateur du 10 octobre ci-dessus établit le build 9 rapporté
+installé ; elle ne qualifie pas le cadre. Relever la version à chaque nouvel essai.
 Les détails d'archive et de CI sont dans [la livraison iOS](../ios/TESTFLIGHT-DELIVERY.md).
 
 ## Payload ARM64 exact

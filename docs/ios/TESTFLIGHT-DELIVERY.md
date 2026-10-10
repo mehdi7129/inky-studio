@@ -1,6 +1,7 @@
 # Private TestFlight delivery
 
-Updated: **2026-10-09, 07:04 UTC**. Historical delivery started **2026-09-27**. Distribution was requested by Mehdi for a physical iPhone
+Updated: **2026-10-10** (operator installation report; Apple distribution observed
+on **2026-10-09**). Historical delivery started **2026-09-27**. Distribution was requested by Mehdi for a physical iPhone
 test before preparing a public App Store release.
 
 ## Current internal beta — build 9
@@ -8,8 +9,11 @@ test before preparing a public App Store release.
 Build **1.0.0 (9)** includes the stability/accessibility changes in
 [PR #21](https://github.com/mehdi7129/inky-studio/pull/21). No dependent branch
 has been merged. Build 9 is now assigned to the existing internal group
-**Mehdi — test iPhone** with one tester. Its installation is not yet established;
-build 8 remains the last version reported installed.
+**Mehdi — test iPhone** with one tester. On **2026-10-10**, the InkyOS session
+relayed the operator's confirmation that **build 9 is installed**. Studio did
+not directly observe the installation. This supersedes build 8 as the latest
+reported installed version; real-frame acceptance remains unqualified. See the
+[dated peer report](https://github.com/mehdi7129/inkyOS/blob/7462944261d5a548a67f2e723c7c0d5e67ff85be/docs/OS-APP-ALIGNMENT.md).
 
 | Checkpoint | Verified result |
 |---|---|
@@ -23,7 +27,8 @@ build 8 remains the last version reported installed.
 | Testing notes | French notes saved; **Enregistré** confirmed and text retained after changing tabs |
 | TestFlight group | **Mehdi — test iPhone**, internal, one tester; build page shows **Groupe (1)** after successful assignment at **07:04 UTC** |
 | Validation | **109 unit tests and 17 UI tests pass**, one expected simulated Face ID skip, zero failures; iPhone Release build passes. Four general CI jobs, TLS 15/15, Bluetooth transport 13/13, HTTPS 52/52 and fixture 45 checks also pass |
-| Installation / physical acceptance | Not established for build 9 |
+| Installation | Build 9 confirmed installed by the operator, relayed by InkyOS on 2026-10-10; not directly observed by Studio |
+| Physical acceptance | Raspberry network/SSH, display, photo delivery and QR/BLE remain unqualified |
 | Public App Review | Not submitted |
 
 [Build 9 in App Store Connect](https://appstoreconnect.apple.com/teams/03da9ef5-608a-40ef-9367-b987b26ea06d/apps/6816637620/testflight/ios/e0b632ea-0232-4da3-b6e3-dae8875b24c0).
