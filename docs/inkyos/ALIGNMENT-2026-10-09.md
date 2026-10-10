@@ -25,17 +25,65 @@ Studio a relu ce rapport ; l'acquisition SD n'a pas été reproduite ici.
   journal ext4 n'a été effectué par InkyOS pendant cette lecture.
 - App/helper non activés ; photo, affichage et QR/BLE attendent le réseau.
 
-Prochaine étape OS : diagnostic de boot durable à schéma fermé (phase, erreurs
-connues import/connexion/pays, booléens utiles), sans SSID, mot de passe, clé,
-identité ou sortie brute. Il ne doit autoriser ni réseau ni application.
-Cette instrumentation reste à intégrer : reconstruire runtime, manifeste,
-profil et capsule de manière cohérente. Un patch isolé sur la SD invaliderait
-les bindings. Les courses rfkill/pays reproduites sur fixtures restent des
-hypothèses, pas la cause matérielle confirmée. Studio ne modifie ni protocole,
-payload ou services dans cette mise à jour documentaire.
+Le diagnostic de boot durable demandé après ce retour SD est maintenant
+intégré à l'image de diagnostic décrite ci-dessous. Les courses rfkill/pays
+reproduites sur fixtures restent des hypothèses, pas la cause matérielle
+confirmée. Studio ne modifie ni protocole, payload ou services dans cette
+mise à jour documentaire.
 
 Le relevé du 9 octobre ci-dessous reste historique ; ce complément précise
 l'installation et l'état du banc sans qualifier les parcours matériels.
+
+## Complément du 10 octobre — image de diagnostic construite
+
+InkyOS a publié les preuves au commit
+[`f3eb35589834251769bc4a63495dcdedf8f32dcf`](https://github.com/mehdi7129/inkyOS/commit/f3eb35589834251769bc4a63495dcdedf8f32dcf).
+Studio a relu les rapports expurgés et vérifié la
+[CI réussie sur ce commit](https://github.com/mehdi7129/inkyOS/actions/runs/38083401924).
+Les builds, bancs VM et hashes d'images sont rapportés par InkyOS ; Studio
+n'a ni reconstruit ni inspecté l'image privée.
+
+| Référence | SHA-256 / portée |
+|---|---|
+| Parent TEST LAN reconstruit | `dcc451dc927eeb5ba202ca480005351a7516c13bc057f6946e4023efea91a595` |
+| Manifeste runtime de l'image de diagnostic | `bedfc3c6b9854bde2081b3b00ebfe5cc4d48c4cd4c1cbb7db9942a72dbd5277b` |
+| Payload Studio | Source `c31b13a`, manifeste `c4183e7` détaillés ci-dessous, inchangés |
+| App iPhone | Build 9, source `181edb2`, inchangée |
+
+Le [rapport du parent reconstruit](https://github.com/mehdi7129/inkyOS/blob/f3eb35589834251769bc4a63495dcdedf8f32dcf/docs/validation/2026-10-10-rebuilt-test-lan-parent.json)
+conserve les mêmes entrées système et applicatives épinglées. Les anciennes
+images étant indisponibles, la comparaison porte sur leurs inventaires
+enregistrés, pas sur une nouvelle lecture des anciennes images. Un premier
+essai natif a échoué sans détail ; la reprise a revérifié le parent vierge
+avant personnalisation et les exports finaux passent les contrôles d'intégrité.
+
+Les [preuves logicielles du diagnostic](https://github.com/mehdi7129/inkyOS/blob/f3eb35589834251769bc4a63495dcdedf8f32dcf/docs/validation/2026-10-10-persistent-boot-diagnostics.json)
+rapportent **1 031 tests par plateforme**, sans échec ni erreur : 4 ignorés sur
+macOS, 1 sur Linux ARM64. Les 23 scripts passent la vérification de syntaxe
+sur chaque plateforme ; le banc inerte systemd de stockage des rapports passe.
+Le diagnostic reste à schéma fermé, sans SSID, mot de passe, clé, identité de
+cadre ni sortie brute ; il n'accorde aucune autorisation réseau ou applicative. Un
+ancien rapport peut survivre à une écriture échouée : sa présence seule ne
+prouve pas le résultat du dernier boot.
+
+Le [rapport de l'image privée](https://github.com/mehdi7129/inkyOS/blob/f3eb35589834251769bc4a63495dcdedf8f32dcf/docs/validation/2026-10-10-diagnostic-access-image.json)
+rapporte les contrôles **17 parent / 62 système / 26 application / 18 accès**
+réussis, ainsi que fsck ext4/FAT, unités systemd, sudoers et différences de
+fichiers autorisées. Il conserve la provenance de construction
+`db034269a14c7585df9cf4962807819fa048d7ae` avec arbre modifié et concordance
+des hashes des sources avec les tests logiciels ; le commit `f3eb355` est la
+publication des preuves, pas une assertion de build depuis un arbre propre.
+Le vérificateur contrôle la cohérence de l'export, sans démarrer l'image ni
+authentifier indépendamment des manifestes locaux non signés.
+
+**État au relevé : préflight de flash réussi, SD non écrite, image non démarrée.**
+Le runtime et les profils d'accès sont liés au nouveau manifeste ; le nouvel
+enrôlement et la nouvelle capsule restent à produire dans le cycle ci-dessous.
+Le prochain cycle, piloté par InkyOS, exige un flash vérifié, un premier boot
+d'enrôlement suivi d'un arrêt, puis une **nouvelle capsule signée** avant l'essai
+réseau. Ne pas réutiliser l'ancienne capsule ni remplacer un script isolé sur
+la SD. L'application reste masquée. Réseau, SSH, affichage, photo et QR/BLE
+restent non qualifiés ; le parcours de premier allumage sans LAN reste à intégrer.
 
 ## Couple à conserver pour l'essai
 
@@ -111,6 +159,10 @@ payload ARM64 par le SHA de compilation iOS. Une version intégrée demandera un
 fusion revue, des tests combinés et un nouveau manifeste.
 
 ## Ce qui peut être essayé ce soir
+
+Pour la nouvelle image de diagnostic, terminer d'abord le cycle OS de flash,
+enrôlement et nouvelle capsule décrit ci-dessus. Les étapes suivantes ne
+commencent qu'une fois ces prérequis validés par InkyOS.
 
 1. InkyOS identifie le boot réel, l'IP/SSH, le panneau exact, l'état système,
    le pays radio, l'heure et le payload. Les services restent masqués pendant
