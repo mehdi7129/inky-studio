@@ -4,7 +4,8 @@ Relevé du **9 octobre 2026**, destiné à la session InkyOS. Ce document distin
 le banc LAN possible aujourd'hui de la cible de premier allumage sans LAN.
 Il ne donne pas à l'image le statut de release qualifiée.
 Dernier complément : **11 octobre**, échec d'activation Wi-Fi observé dans les
-reçus persistants ; image au diagnostic enrichi construite, non déployée sur la SD.
+anciens reçus ; nouvelle SD au diagnostic enrichi et capsule vérifiées,
+prochain essai réseau en attente.
 
 ## Complément du 10 octobre — retour SD et installation iPhone
 
@@ -185,13 +186,40 @@ Son hash privé est vérifié ; **18 contrôles de configuration, 17 du parent,
 le backend `c31b13a` et son manifeste `c4183e7` ; le build iOS 9 est inchangé.
 Cette image ajoute le diagnostic, sans correction de connexion revendiquée.
 
-**Image non flashée par cette préparation, aucun boot cible testé.** L'ancienne
-identité du cadre n'est pas réutilisée. Un nouvel enrôlement avec arrêt, puis
-une capsule signée liée au nouveau contexte restent requis avant l'essai réseau.
-Le lecteur hors ligne est préparé séparément et doit être épinglé au média de
-retour ; ne pas réutiliser implicitement le manifeste runtime ou les bindings
-de la première image diagnostique. Wi-Fi/SSH, activation de l'app, photo,
-affichage et adoption iPhone restent non qualifiés.
+Au relevé `846bea5`, l'image n'était pas flashée et aucun boot cible n'était
+testé. Le cycle suivant devait produire un nouvel enrôlement et une nouvelle
+capsule, sans réutiliser l'ancienne identité du cadre. Le retour est décrit
+ci-dessous ; les manifestes et bindings des deux images restent distincts.
+
+### Retour natif de la SD au diagnostic NetworkManager enrichi
+
+Le [retour complet](https://github.com/mehdi7129/inkyOS/blob/caa3ad5d1d31160aca3f71713e3146ad53bcb39c/docs/validation/2026-10-11-nm-diagnostic-enrollment-return.json)
+est publié au commit `caa3ad5d1d31160aca3f71713e3146ad53bcb39c`, dont la
+[CI passe](https://github.com/mehdi7129/inkyOS/actions/runs/38095394102).
+Studio a relu cette preuve ; aucune opération sur la SD n'est reproduite ici.
+
+- **35 contrôles natifs et 10 d'infrastructure réussis**. Le nettoyage est
+  vérifié indépendamment et le nouveau contexte SSH privé exporté avec ses
+  permissions et bindings vérifiés. Ce PASS établit la cohérence des fichiers
+  d'enrôlement avec l'export attendu, pas une attestation du Pi ou du runtime.
+- Acquisition directe d'un dérivé `e2image` depuis la SD ouverte en lecture
+  seule, hashes du flux émission/réception concordants et relecture VM vérifiée.
+  **Aucun clone intégral ni seconde lecture indépendante de la SD** ; le
+  marqueur ext4 clean ne prouve ni l'intégrité globale ni un arrêt physique.
+  Aucun replay ou code cible exécuté. Les clés ne sont pas ouvertes par le
+  vérificateur, mais le dérivé privé peut contenir clés et autres données.
+  Le démontage peut vider des écritures macOS en attente ; la protection
+  contre toute écriture depuis l'insertion n'est pas établie.
+- **Nouvelle capsule liée au contexte**, signature vérifiée, installée et
+  relue sur la SD, puis carte éjectée. Le prochain boot réseau reste à effectuer :
+  l'installation ne prouve pas l'import runtime ni la connexion.
+
+Source OS `07271cf`, backend `c31b13a`, manifeste applicatif `c4183e7` et build
+iOS 9 inchangés. Aucun Wi-Fi/SSH, Bluetooth, activation de l'app, photo,
+affichage ou appairage iPhone qualifié. InkyOS pilote le prochain démarrage
+et la collecte du diagnostic, avant toute reprise du banc applicatif. Le lecteur
+hors ligne doit rester épinglé au média de retour et valider le nouveau champ
+`connection.activation` du runtime correspondant.
 
 ## Couple à conserver pour l'essai
 
