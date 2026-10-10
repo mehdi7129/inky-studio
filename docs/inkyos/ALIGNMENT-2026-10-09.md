@@ -3,6 +3,8 @@
 Relevé du **9 octobre 2026**, destiné à la session InkyOS. Ce document distingue
 le banc LAN possible aujourd'hui de la cible de premier allumage sans LAN.
 Il ne donne pas à l'image le statut de release qualifiée.
+Dernier complément : **11 octobre**, échec d'activation Wi-Fi observé dans les
+reçus persistants ; diagnostic logiciel enrichi, non déployé sur la SD.
 
 ## Complément du 10 octobre — retour SD et installation iPhone
 
@@ -109,13 +111,56 @@ par InkyOS et n'ont pas été reproduites ici.
   indépendante de l'arrêt n'en est déduite. Ces diagnostics n'autorisent
   aucune connexion ou activation.
 - **Nouvelle capsule signée**, liée au nouveau contexte, installée sur la SD
-  et relue ; carte éjectée. Son import au runtime n'est pas encore prouvé.
-  **Le prochain boot réseau attend l'action de l'opérateur.**
+  et relue ; carte éjectée. À ce relevé du 10 octobre, son import au runtime
+  n'était pas encore prouvé et le boot réseau attendait l'opérateur.
+  Le retour suivant est décrit dans le complément du 11 octobre.
 
 Backend `c31b13a`, manifeste applicatif `c4183e7` et build iOS 9 inchangés.
 Aucune connexion Wi-Fi/SSH, activation applicative, photo, affichage ou adoption
 iPhone n'est confirmée par ce retour. La suite reste le banc réseau puis
 préflight/activation piloté par InkyOS, avant les essais de l'app ci-dessous.
+
+## Complément du 11 octobre — échec d'activation réseau observé
+
+Le [retour réseau ciblé](https://github.com/mehdi7129/inkyOS/blob/07271cf849e24d3a09307898d6fd166253f27a89/docs/validation/2026-10-11-network-activation-return.json)
+est publié au commit `07271cf849e24d3a09307898d6fd166253f27a89`, dont la
+[CI passe](https://github.com/mehdi7129/inkyOS/actions/runs/38090421106).
+Studio a relu cette preuve ; l'inspection SD est rapportée par InkyOS.
+Le PASS porte sur la lecture de deux reçus valides et complets ; le résultat
+de connexion est **`CONNECTION_FAILED`**.
+
+- Le reçu d'import indique un nouvel import signé réussi ; garde WLAN 10/10,
+  profil et contrôles préalables réussis. Les observations pays FR passent
+  pour firmware, kernel et canaux ; la commande d'allumage radio est acquittée.
+- L'activation NetworkManager échoue, puis l'arrêt radio est demandé, acquitté
+  et vérifié. Aucun démarrage SSH n'est demandé ; aucune activation de l'app.
+  Les contrôles post-connexion à `false` n'ont pas été atteints et ne sont pas
+  des échecs indépendants.
+- Les deux reçus correspondent au même boot, différent de celui de
+  l'enrôlement précédent, sans attestation indépendante du dernier boot.
+  Le code de sortie et la raison NetworkManager manquent dans cette variante :
+  **cause exacte inconnue, rejet du mot de passe non démontré**.
+- Lecture `debugfs` ciblée en read-only, sans montage ext4, replay, lecture de
+  clés/capsule ni réseau. Ni acquisition intégrale ni contrôles d'enrôlement
+  35 + 10 répétés. Le journal ext4 à récupérer peut masquer des mises à jour ;
+  les reçus peuvent précéder le dernier boot. La lecture n'établit pas une
+  protection contre toute écriture depuis l'insertion, et le démontage peut
+  vider des écritures macOS déjà en attente.
+
+Les [tests du diagnostic supplémentaire](https://github.com/mehdi7129/inkyOS/blob/07271cf849e24d3a09307898d6fd166253f27a89/docs/validation/2026-10-11-activation-diagnostics-tests.json)
+rapportent **1 039 tests par plateforme**, zéro échec/erreur, 4 ignorés macOS
+et 1 Linux ARM64 ; 23 scripts passent la vérification de syntaxe.
+Le nouveau code conserve le code de sortie connu et, sur échec seulement,
+un snapshot numérique fermé état/raison, dans un budget borné protégeant le
+nettoyage. Aucun texte brut, secret ou nouvel essai d'activation n'est ajouté.
+Ce snapshot futur ne prouvera pas à lui seul la cause de l'échec initial.
+
+**Aucune nouvelle image construite ou déployée pour cette extension.** Les
+lecteurs de la future image devront accepter et valider indépendamment le
+champ `connection.activation` ; l'ancienne SD garde son schéma actuel.
+InkyOS prépare d'abord une lecture privée ciblée des journaux éventuellement
+persistants. Backend `c31b13a`, manifeste `c4183e7` et build iOS 9 inchangés.
+Wi-Fi/SSH, photo, affichage et adoption iPhone restent non qualifiés.
 
 ## Couple à conserver pour l'essai
 
@@ -190,11 +235,11 @@ protections d'arrêt/diagnostics matériels de `c31b13a`. Ne pas remplacer le
 payload ARM64 par le SHA de compilation iOS. Une version intégrée demandera une
 fusion revue, des tests combinés et un nouveau manifeste.
 
-## Ce qui peut être essayé ce soir
+## Protocole après résolution du réseau
 
-Le retour de la nouvelle image contient maintenant l'enrôlement vérifié et la
-capsule signée installée. Le prochain démarrage doit encore établir le réseau
-et les prérequis du banc sous le contrôle d'InkyOS avant l'activation de l'app.
+Le retour du 11 octobre établit un échec d'activation réseau dans le reçu
+observé, après import de la capsule. InkyOS doit diagnostiquer cet échec,
+obtenir une connexion et valider les prérequis avant l'activation de l'app.
 
 1. InkyOS identifie le boot réel, l'IP/SSH, le panneau exact, l'état système,
    le pays radio, l'heure et le payload. Les services restent masqués pendant
@@ -210,7 +255,7 @@ et les prérequis du banc sous le contrôle d'InkyOS avant l'activation de l'app
    éprouvé.** Sur cette SD TEST, le contrôle réseau est lié au profil signé et
    ce secours n'est pas encore établi. Le futur banc dédié testera mauvais mot
    de passe/rollback, puis réseau WPA2 personnel 2,4 GHz et confirmation HTTPS.
-6. Pour ce soir, terminer par le drain et l'arrêt effectif `inactive/dead`.
+6. Terminer cet essai par le drain et l'arrêt effectif `inactive/dead`.
    Reboot/coupure et reprise produit avec ownership conservé relèvent d'un banc
    distinct : la règle d'admission de cette SD TEST ne les qualifie pas.
 
