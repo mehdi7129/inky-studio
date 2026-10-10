@@ -76,14 +76,46 @@ publication des preuves, pas une assertion de build depuis un arbre propre.
 Le vérificateur contrôle la cohérence de l'export, sans démarrer l'image ni
 authentifier indépendamment des manifestes locaux non signés.
 
-**État au relevé : préflight de flash réussi, SD non écrite, image non démarrée.**
-Le runtime et les profils d'accès sont liés au nouveau manifeste ; le nouvel
-enrôlement et la nouvelle capsule restent à produire dans le cycle ci-dessous.
-Le prochain cycle, piloté par InkyOS, exige un flash vérifié, un premier boot
-d'enrôlement suivi d'un arrêt, puis une **nouvelle capsule signée** avant l'essai
+**État au relevé de construction : préflight de flash réussi, SD non écrite,
+image non démarrée.** Le retour SD ultérieur est décrit dans le complément
+suivant. Le runtime et les profils d'accès sont liés au nouveau manifeste ;
+le cycle prévu par InkyOS exigeait un flash vérifié, un premier boot
+d'enrôlement suivi d'un arrêt, puis une nouvelle capsule signée avant l'essai
 réseau. Ne pas réutiliser l'ancienne capsule ni remplacer un script isolé sur
-la SD. L'application reste masquée. Réseau, SSH, affichage, photo et QR/BLE
-restent non qualifiés ; le parcours de premier allumage sans LAN reste à intégrer.
+la SD. Le parcours de premier allumage sans LAN reste à intégrer.
+
+## Complément du 10 octobre — retour d'enrôlement et capsule installée
+
+Le [nouveau retour SD](https://github.com/mehdi7129/inkyOS/blob/56aa8d43521804525a062ce37ce6e24585da5990/docs/validation/2026-10-10-diagnostic-sd-enrollment-return.json)
+est publié au commit `56aa8d43521804525a062ce37ce6e24585da5990`, dont la
+[CI passe](https://github.com/mehdi7129/inkyOS/actions/runs/38086886342).
+Studio a relu cette preuve ; les opérations sur la carte sont rapportées
+par InkyOS et n'ont pas été reproduites ici.
+
+- **Enrôlement : 35 contrôles de fichiers et 10 d'infrastructure réussis**,
+  contexte SSH privé exporté. L'acquisition intégrale est conservée ; la
+  vérification utilise un dérivé `e2image`, qui omet les blocs libres et
+  certaines métadonnées inutilisées, sans replay du journal ni exécution
+  du code cible. Ce PASS établit la cohérence des fichiers avec l'export
+  attendu, pas une attestation indépendante du matériel ou de son exécution.
+- Le reçu de flash infère écriture, flush et relecture depuis l'endroit précis
+  de l'échec d'éjection ; aucune nouvelle relecture indépendante n'a été faite
+  à cette étape. L'éjection a été récupérée sans réécriture. L'acquisition
+  ultérieure a été relue et rehashée localement, sans seconde lecture de la SD ;
+  macOS avait initialement monté FAT, donc l'acquisition n'est pas protégée
+  contre toute écriture dès l'insertion.
+- **Deux diagnostics persistants valides** : garde WLAN, 10 contrôles réussis ;
+  boot, marqueur initial incomplet. Aucune cause de panne ni observation
+  indépendante de l'arrêt n'en est déduite. Ces diagnostics n'autorisent
+  aucune connexion ou activation.
+- **Nouvelle capsule signée**, liée au nouveau contexte, installée sur la SD
+  et relue ; carte éjectée. Son import au runtime n'est pas encore prouvé.
+  **Le prochain boot réseau attend l'action de l'opérateur.**
+
+Backend `c31b13a`, manifeste applicatif `c4183e7` et build iOS 9 inchangés.
+Aucune connexion Wi-Fi/SSH, activation applicative, photo, affichage ou adoption
+iPhone n'est confirmée par ce retour. La suite reste le banc réseau puis
+préflight/activation piloté par InkyOS, avant les essais de l'app ci-dessous.
 
 ## Couple à conserver pour l'essai
 
@@ -160,9 +192,9 @@ fusion revue, des tests combinés et un nouveau manifeste.
 
 ## Ce qui peut être essayé ce soir
 
-Pour la nouvelle image de diagnostic, terminer d'abord le cycle OS de flash,
-enrôlement et nouvelle capsule décrit ci-dessus. Les étapes suivantes ne
-commencent qu'une fois ces prérequis validés par InkyOS.
+Le retour de la nouvelle image contient maintenant l'enrôlement vérifié et la
+capsule signée installée. Le prochain démarrage doit encore établir le réseau
+et les prérequis du banc sous le contrôle d'InkyOS avant l'activation de l'app.
 
 1. InkyOS identifie le boot réel, l'IP/SSH, le panneau exact, l'état système,
    le pays radio, l'heure et le payload. Les services restent masqués pendant
