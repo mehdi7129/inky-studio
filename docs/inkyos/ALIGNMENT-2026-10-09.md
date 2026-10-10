@@ -4,7 +4,7 @@ Relevé du **9 octobre 2026**, destiné à la session InkyOS. Ce document distin
 le banc LAN possible aujourd'hui de la cible de premier allumage sans LAN.
 Il ne donne pas à l'image le statut de release qualifiée.
 Dernier complément : **11 octobre**, échec d'activation Wi-Fi observé dans les
-reçus persistants ; diagnostic logiciel enrichi, non déployé sur la SD.
+reçus persistants ; image au diagnostic enrichi construite, non déployée sur la SD.
 
 ## Complément du 10 octobre — retour SD et installation iPhone
 
@@ -155,12 +155,43 @@ un snapshot numérique fermé état/raison, dans un budget borné protégeant le
 nettoyage. Aucun texte brut, secret ou nouvel essai d'activation n'est ajouté.
 Ce snapshot futur ne prouvera pas à lui seul la cause de l'échec initial.
 
-**Aucune nouvelle image construite ou déployée pour cette extension.** Les
-lecteurs de la future image devront accepter et valider indépendamment le
+Au relevé `07271cf`, aucune nouvelle image n'était encore construite ou
+déployée pour cette extension. La préparation suivante est documentée ci-dessous.
+Les lecteurs de la future image doivent accepter et valider indépendamment le
 champ `connection.activation` ; l'ancienne SD garde son schéma actuel.
-InkyOS prépare d'abord une lecture privée ciblée des journaux éventuellement
-persistants. Backend `c31b13a`, manifeste `c4183e7` et build iOS 9 inchangés.
-Wi-Fi/SSH, photo, affichage et adoption iPhone restent non qualifiés.
+
+### Journaux existants et nouvelle image de diagnostic
+
+Les deux preuves suivantes sont publiées au commit InkyOS
+`846bea52ecea12302dfdbd919952acb2e86cc296`, dont la
+[CI passe](https://github.com/mehdi7129/inkyOS/actions/runs/38091438323).
+Studio a relu ces preuves publiques ; l'inspection et la construction privées
+restent rapportées par InkyOS.
+
+L'[inventaire ciblé des journaux](https://github.com/mehdi7129/inkyOS/blob/846bea52ecea12302dfdbd919952acb2e86cc296/docs/validation/2026-10-11-system-log-inventory.json)
+passe en lecture seule : **zéro fichier sélectionné, zéro octet copié**.
+La recherche couvre les journaux système autorisés et trois fichiers texte,
+sans journaux utilisateur ou fichiers auxiliaires. Elle ne démontre pas une
+absence générale de traces, ne récupère pas les journaux volatils et n'apporte
+aucune raison supplémentaire de l'échec. Le journal ext4 n'est pas rejoué ;
+les mêmes limites d'écritures en attente et de lecture depuis l'insertion
+s'appliquent. Aucun nouveau boot ou essai réseau n'a lieu pendant cet inventaire.
+
+La [nouvelle image privée](https://github.com/mehdi7129/inkyOS/blob/846bea52ecea12302dfdbd919952acb2e86cc296/docs/validation/2026-10-11-nm-diagnostic-access-image.json)
+est construite depuis les sources publiques vérifiées de `07271cf`, avec
+arbre modifié uniquement par des changements documentaires concurrents.
+Son hash privé est vérifié ; **18 contrôles de configuration, 17 du parent,
+62 système et 26 applicatifs passent**. Le parent reste `dcc451dc…a595`,
+le backend `c31b13a` et son manifeste `c4183e7` ; le build iOS 9 est inchangé.
+Cette image ajoute le diagnostic, sans correction de connexion revendiquée.
+
+**Image non flashée par cette préparation, aucun boot cible testé.** L'ancienne
+identité du cadre n'est pas réutilisée. Un nouvel enrôlement avec arrêt, puis
+une capsule signée liée au nouveau contexte restent requis avant l'essai réseau.
+Le lecteur hors ligne est préparé séparément et doit être épinglé au média de
+retour ; ne pas réutiliser implicitement le manifeste runtime ou les bindings
+de la première image diagnostique. Wi-Fi/SSH, activation de l'app, photo,
+affichage et adoption iPhone restent non qualifiés.
 
 ## Couple à conserver pour l'essai
 
