@@ -5,6 +5,7 @@ Le projet d'image système a son dépôt distinct :
 Le dossier local est `~/Desktop/inkyOS`.
 
 - [Sources officielles du matériel et du système](HARDWARE-SOURCES.md).
+- [Alignement des 9–10 octobre : payload, build 9, image de diagnostic et essai LAN](ALIGNMENT-2026-10-09.md).
 - [Dossier de transmission InkyOS](https://github.com/mehdi7129/inkyOS/blob/main/docs/HANDOFF.md).
 - [Contrat de premier démarrage — draft de coordination](FIRST-BOOT-CONTRACT.md).
 - [Socle d'état factory — API interne désactivée dans le runtime](FACTORY-STATE.md).
