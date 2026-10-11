@@ -6,7 +6,8 @@ Il ne donne pas à l'image le statut de release qualifiée.
 Dernier retour daté du **11 octobre** : interface indisponible après l'échec
 d'activation et avant le nettoyage radio. Cause exacte et qualification réseau
 encore ouvertes ; correctif de synchronisation intégré dans une nouvelle image
-vérifiée, pas encore flashée sur la SD.
+désormais flashée, nouvel enrôlement et capsule vérifiés. Le prochain essai
+réseau avec ce correctif reste à effectuer.
 
 ## Complément du 10 octobre — retour SD et installation iPhone
 
@@ -283,7 +284,7 @@ validation du correctif sur matériel, SSH, BLE ou appairage n'est établie.
 Au relevé `2e435c9`, InkyOS préparait la reconstruction avec ce correctif ;
 aucun nouveau flash n'était rapporté. L'app et le protocole Studio restent inchangés.
 
-### Image avec attente radio intégrée — pas encore flashée
+### Construction de l'image avec attente radio intégrée
 
 La [preuve de construction](https://github.com/mehdi7129/inkyOS/blob/84cbdc708284b6275a6fa560c35fd1d170e1546c/docs/validation/2026-10-11-radio-readiness-access-image.json)
 est publiée au commit `84cbdc708284b6275a6fa560c35fd1d170e1546c`, dont la
@@ -300,16 +301,42 @@ rapportées par InkyOS, pas reproduites ici.
 - Parent `dcc451dc…a595`, backend `c31b13a` et manifeste `c4183e7` inchangés.
   Aucune identité de cadre existante ni clé opérateur privée copiée ; clé
   publique opérateur réutilisée, aucun identifiant Wi-Fi embarqué.
-- **Aucun flash ni boot cible effectué par cette préparation** ; l'app n'est
-  pas activée. La SD conserve `07271cf`. Le cycle suivant demande un flash
-  vérifié, un nouvel enrôlement avec arrêt et son retour 35 + 10 contrôles,
-  puis un nouveau contexte et une capsule signée liée à ce contexte avant
-  l'essai réseau. Les anciens bindings ne sont pas réutilisés.
+- Au relevé `84cbdc7`, aucun flash ni boot cible n'était effectué par cette
+  préparation et la SD conservait `07271cf`. Le cycle demandé comprenait flash,
+  nouvel enrôlement avec arrêt, retour 35 + 10 contrôles, nouveau contexte puis
+  capsule signée, sans réutiliser les anciens bindings. Son résultat suit.
 
 La construction ne confirme ni la cause du précédent échec, ni l'efficacité
 du correctif sur le Pi. Wi-Fi/SSH, photo/affichage et QR/BLE restent à qualifier.
 La PR Studio reste ouverte et non fusionnée ; aucune modification de l'app
 ou du protocole n'est apportée par cette synchronisation.
+
+### Retour d'enrôlement de la SD avec attente radio
+
+La [preuve de flash](https://github.com/mehdi7129/inkyOS/blob/b1860209b1bf5eb2a740e81dc5d49ff1c41afb60/docs/validation/2026-10-11-radio-readiness-sd-flash.json)
+rapporte écriture, flush et relecture hashée du préfixe de la longueur de
+l'image ; les octets restants de la carte ne sont pas effacés. L'éjection
+initialement refusée par macOS est récupérée séparément, après vérification
+du même média, sans réécriture. Le [retour natif suivant](https://github.com/mehdi7129/inkyOS/blob/b1860209b1bf5eb2a740e81dc5d49ff1c41afb60/docs/validation/2026-10-11-radio-readiness-enrollment-return.json)
+est publié au commit `b1860209b1bf5eb2a740e81dc5d49ff1c41afb60`, dont la
+[CI passe](https://github.com/mehdi7129/inkyOS/actions/runs/38135413005).
+Studio relit les preuves publiques ; ces opérations sont rapportées par InkyOS.
+
+- **SD source `2e435c9`, correctif `52ddfc1` présent** ; backend `c31b13a`
+  inchangé. Le précédent état SD `07271cf` est historique.
+- **35 contrôles natifs et 10 d'infrastructure réussis**, nettoyage vérifié
+  indépendamment. Nouveau contexte privé exporté avec permissions et bindings
+  vérifiés ; ancien contexte non réutilisé.
+- Dérivé `e2image` acquis directement en lecture seule, hashes du flux et
+  relecture VM concordants, sans clone intégral ni seconde lecture indépendante
+  de la SD. Aucun replay ou code cible exécuté. Le marqueur ext4 clean et le
+  PASS ne qualifient ni intégrité globale, exécution runtime ou arrêt physique.
+  La dérivée reste privée et peut contenir des clés ; la protection contre
+  toute écriture depuis l'insertion n'est pas établie.
+- **Nouvelle capsule signée, installée et relue, puis SD éjectée**. Le prochain
+  boot réseau n'a pas été effectué au relevé : import runtime, Wi-Fi/SSH,
+  Bluetooth, app et écran restent non qualifiés. L'efficacité du correctif
+  sur le Pi reste à observer dans cet essai, piloté par InkyOS.
 
 ## Couple à conserver pour l'essai
 
