@@ -11,7 +11,10 @@ final class AppStore: ObservableObject {
     @Published var connected = false
     @Published var refreshing = false
     @Published var busy = false
-    @Published var displayBusy = false
+    @Published private var displayRequestInFlight = false
+    @Published private var displayAwaitingConfirmation = false
+    @Published private var displayStatusUnconfirmed = false
+    @Published private(set) var displayDiagnostics: DisplayDiagnostics?
     @Published var biometricEnabled = false
     @Published var passwordChangeSupported = false
     @Published var bluetoothSupported = false
@@ -44,6 +47,8 @@ final class AppStore: ObservableObject {
     private var monitoringID: UUID?
     private var refreshID: UUID?
     private var historyRevision = UUID()
+    private var displayStatusRevision = UUID()
+    private var hasConfirmedDisplayDiagnostics = false
     private var pendingClient: InkyAPI?
     private var active = true
     private var requestedRefresh = false
@@ -79,6 +84,13 @@ final class AppStore: ObservableObject {
     var panelWidth: Int { state?.display.width ?? 800 }
     var panelHeight: Int { state?.display.height ?? 480 }
     var canMutate: Bool { authenticated && connected && !busy && !updating }
+    var displayBusy: Bool { displayRequestInFlight || displayAwaitingConfirmation || displayDiagnostics?.isBusy == true }
+    var canDisplay: Bool { canMutate && !displayBusy && !displayStatusUnconfirmed && (displayDiagnostics?.isReady ?? true) }
+    var canUploadPhoto: Bool { canMutate && state != nil && (displayDiagnostics?.allowsUpload ?? true) }
+    var displayMessage: String? {
+        displayDiagnostics?.message ?? (displayStatusUnconfirmed
+            ? "L’état de l’écran n’a pas pu être confirmé. Actualisez avant de changer de photo." : nil)
+    }
 
     /// The demo never changes the real address, preferences or credentials.
     /// Enter only from the signed-out screen, with no login in flight.
@@ -403,7 +415,12 @@ final class AppStore: ObservableObject {
         loadingHistory = false
         hasMoreHistory = false
         busy = false
-        displayBusy = false
+        displayRequestInFlight = false
+        displayAwaitingConfirmation = false
+        displayStatusUnconfirmed = false
+        displayDiagnostics = nil
+        displayStatusRevision = UUID()
+        hasConfirmedDisplayDiagnostics = false
         state = nil
         queue = []
         history = []
@@ -450,15 +467,50 @@ final class AppStore: ObservableObject {
         repeat {
             requestedRefresh = false
             do {
-                async let s = api.state()
+                let displayRevision = displayStatusRevision
+                async let s = readDisplayState(api)
+                async let d = readDisplayDiagnostics(api)
                 async let q = api.queue()
                 async let h = historySnapshot(api: api, count: max(history.count, 100))
                 async let f = api.settings()
                 async let v = api.health()
-                let result = try await (s, q, h, f, v)
+                let result = try await (s, q, h, f, v, d)
                 guard epoch == generation else { return }
+                try Task.checkCancellation()
+                switch result.5 {
+                case .success(let value):
+                    // An event or ambiguous command result supersedes an older poll.
+                    if displayRevision == displayStatusRevision {
+                        if let value {
+                            hasConfirmedDisplayDiagnostics = true
+                            displayDiagnostics = value
+                            displayAwaitingConfirmation = false
+                            displayStatusUnconfirmed = false
+                        } else if hasConfirmedDisplayDiagnostics {
+                            // A disappearing endpoint is not proof that a known
+                            // busy/error state ended. Legacy fallback is initial only.
+                            displayStatusUnconfirmed = true
+                        } else {
+                            displayDiagnostics = nil
+                            displayAwaitingConfirmation = false
+                            displayStatusUnconfirmed = false
+                        }
+                    }
+                case .failure(let error):
+                    if (error as? APIError)?.isUnauthorized == true { throw error }
+                    // A diagnostics read failure must not turn known busy into ready.
+                    if displayRevision == displayStatusRevision { displayStatusUnconfirmed = true }
+                }
+                switch result.0 {
+                case .success(let value): state = value
+                case .failure(let error):
+                    // The HTTP service is reachable even when the panel refuses work.
+                    // Keep the last confirmed photo; never invent dimensions or success.
+                    // A newer display_error event supersedes this poll's old status.
+                    guard case APIError.http(statusCode: 503, message: _) = error,
+                          displayDiagnostics?.explainsUnavailableState == true else { throw error }
+                }
                 if isDemo { imageCache.removeAllObjects() }
-                state = result.0
                 queue = result.1
                 history = result.2.entries
                 historyRevision = UUID()
@@ -486,6 +538,16 @@ final class AppStore: ObservableObject {
                 // while this request was still in flight, including on failure.
             }
         } while requestedRefresh && authenticated && epoch == generation
+    }
+
+    private func readDisplayState(_ api: any FramePhotoClient) async -> Result<DisplayState, Error> {
+        do { return .success(try await api.state()) }
+        catch { return .failure(error) }
+    }
+
+    private func readDisplayDiagnostics(_ api: any FramePhotoClient) async -> Result<DisplayDiagnostics?, Error> {
+        do { return .success(try await api.displayDiagnostics()) }
+        catch { return .failure(error) }
     }
 
     private func historySnapshot(api: any FramePhotoClient, count: Int) async throws -> (entries: [HistoryEntry], hasMore: Bool) {
@@ -540,7 +602,10 @@ final class AppStore: ObservableObject {
                     } else if event.type == "system_update" {
                         if case let .string(message)? = event.payload["message"] { self.updateMessage = message }
                         if case .string("error")? = event.payload["stage"] { self.updating = false }
-                    } else { await self.refresh() }
+                    } else {
+                        if event.type == "display_error" { self.receiveDisplayFailure(event.payload) }
+                        await self.refresh()
+                    }
                 }
             } catch {
                 guard let self, !Task.isCancelled, self.generation == epoch,
@@ -572,6 +637,18 @@ final class AppStore: ObservableObject {
         api?.stopEvents()
     }
 
+    func receiveDisplayFailure(_ payload: [String: JSONValue]) {
+        guard authenticated, !isDemo,
+              let code = payload["code"]?.stringValue,
+              let detail = payload["detail"]?.stringValue else { return }
+        displayStatusRevision = UUID()
+        hasConfirmedDisplayDiagnostics = true
+        displayDiagnostics = DisplayDiagnostics(state: "error", error: .init(code: code, detail: detail))
+        displayAwaitingConfirmation = false
+        displayStatusUnconfirmed = false
+        notice = nil
+    }
+
     func image(for photo: Photo) async -> UIImage? {
         if let image = imageCache.object(forKey: photo.id as NSString) { return image }
         guard !passwordRotating, let api = photoClient else { return nil }
@@ -588,10 +665,10 @@ final class AppStore: ObservableObject {
     }
 
     func display(previous: Bool) async {
-        guard canMutate, !displayBusy, let api = photoClient else { return }
+        guard canDisplay, let api = photoClient else { return }
         let epoch = generation
-        displayBusy = true
-        defer { if epoch == generation { displayBusy = false } }
+        displayRequestInFlight = true
+        defer { if epoch == generation { displayRequestInFlight = false } }
         do {
             if previous { try await api.previous() } else { try await api.next() }
             guard epoch == generation else { return }
@@ -599,6 +676,10 @@ final class AppStore: ObservableObject {
         } catch {
             guard epoch == generation else { return }
             handle(error)
+            if error is URLError {
+                displayStatusRevision = UUID()
+                displayAwaitingConfirmation = displayDiagnostics != nil
+            }
             if (error as? URLError)?.code == .timedOut {
                 errorMessage = "Le cadre prend plus de temps que prévu. Son état va être actualisé ; la commande n’a pas été renvoyée."
             }
@@ -607,7 +688,9 @@ final class AppStore: ObservableObject {
     }
 
     func upload(_ data: Data, filename: String) async throws {
-        guard canMutate, let api = photoClient else { throw APIError.invalidResponse }
+        guard canUploadPhoto, let api = photoClient else {
+            throw APIError.http(statusCode: 503, message: displayMessage ?? "Reconnectez le cadre avant d’envoyer une photo.")
+        }
         let epoch = generation
         busy = true
         defer { if epoch == generation { busy = false } }

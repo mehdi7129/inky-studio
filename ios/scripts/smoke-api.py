@@ -68,6 +68,7 @@ def main() -> None:
     try:
         assert request("/api/auth/status") == {"authenticated": False, "auth_required": True, "password_change_supported": True}
         assert request("/api/state", expected=401)["detail"] == "Authentification requise"
+        request("/api/display/status", expected=401)
         assert request("/api/auth/login", "POST", {"password": "wrong"}, expected=401)["detail"] == "Mot de passe incorrect"
         assert request("/api/auth/login", "POST", {"password": "test-password"})["authenticated"]
         cookie = next(cookie for cookie in jar if cookie.name == "inky_session")
@@ -77,6 +78,9 @@ def main() -> None:
         assert (state["display"]["width"], state["display"]["height"]) == (800, 480)
         assert state["current"]["photo"]["id"] == "c0a570000001" and state["queue_count"] == 2
         assert request("/api/display") == state["display"]
+        diagnostics = request("/api/display/status")
+        assert set(diagnostics) == {"mode", "profile", "state", "is_mock", "error", "driver", "busy_monitor", "observations"}
+        assert diagnostics["state"] == "mock" and diagnostics["is_mock"] and diagnostics["error"] is None
         queue = request("/api/queue")
         assert [entry["photo"]["id"] for entry in queue] == ["a11050000002", "5ad000000003"]
         assert len(request("/api/history?limit=1&offset=1")) == 1
@@ -93,6 +97,28 @@ def main() -> None:
         assert b"101 Switching Protocols" in headers
         assert event(connection) == {"type": "hello", "payload": {}}
         checks += 2
+        history_before_error = request("/api/history")
+        request("/__test/display-status", "POST", {"state": "unknown"}, expected=400)
+        fault = request("/__test/display-status", "POST", {"state": "error"})
+        assert fault["state"] == "error" and fault["error"]["code"] == "display_unavailable"
+        assert event(connection) == {"type": "display_error", "payload": fault["error"]}
+        checks += 1
+        assert request("/api/display/status") == fault
+        assert request("/api/health")["status"] == "ok" and request("/api/auth/status")["authenticated"]
+        request("/api/state", expected=503)
+        request("/api/display", expected=503)
+        request("/api/display/next", "POST", expected=503)
+        request("/api/display/previous", "POST", expected=503)
+        assert request("/api/queue") == queue and request("/api/history") == history_before_error
+        assert request("/__test/display-status", "POST", {"state": "ready"})["error"] is None
+        assert event(connection) == {"type": "hello", "payload": {}}
+        checks += 1
+        assert request("/api/display/status")["state"] == "ready"
+        assert request("/api/state")["current"] == state["current"]
+        assert request("/api/auth/status")["authenticated"]
+        request("/__test/display-status", "POST", {"state": "mock"})
+        assert event(connection) == {"type": "hello", "payload": {}}
+        checks += 1
         settings = request("/api/settings", "POST", {"change_mode": "manual", "saturation": 1.2})
         assert settings["change_mode"] == "manual" and settings["saturation"] == 1.2
         assert event(connection) == {"type": "settings_changed", "payload": settings}

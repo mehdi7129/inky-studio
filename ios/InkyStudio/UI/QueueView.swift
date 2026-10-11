@@ -62,7 +62,7 @@ struct QueueView: View {
                 .contentMargins(.bottom, 24, for: .scrollContent)
                 .environment(\.editMode, .constant(editing ? .active : .inactive))
                 .navigationTitle("À suivre").toolbar {
-                    ToolbarItem(placement: .topBarTrailing) { Button { importing = true } label: { Image(systemName: "plus.circle.fill").foregroundStyle(Bento.blue) }.accessibilityLabel("Ajouter une photo").disabled(!store.canMutate) }
+                    ToolbarItem(placement: .topBarTrailing) { Button { importing = true } label: { Image(systemName: "plus.circle.fill").foregroundStyle(Bento.blue) }.accessibilityLabel("Ajouter une photo").disabled(!store.canUploadPhoto) }
                 }
                 .disabled(store.busy).refreshable { await store.refresh() }
                 .confirmationDialog("Retirer cette photo de la file ?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {

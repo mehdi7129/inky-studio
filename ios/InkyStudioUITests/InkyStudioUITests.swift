@@ -7,13 +7,14 @@ final class InkyStudioUITests: XCTestCase {
     private var app: XCUIApplication!
     private let fixtureURL = URL(string: "http://127.0.0.1:8765")!
 
-    private func launchFixtureApp(resetCamera: Bool = false) {
+    private func launchFixtureApp(resetCamera: Bool = false, appearance: String? = nil) {
         continueAfterFailure = false
         resetFixture()
         app = XCUIApplication()
         // Resetting a protected resource terminates an already-running app.
         if resetCamera { app.resetAuthorizationStatus(for: .camera) }
         app.launchArguments = ["--uitesting", "--frame-address", fixtureURL.absoluteString]
+        if let appearance { app.launchArguments += ["-AppleInterfaceStyle", appearance] }
         app.launch()
         let teardown: @MainActor @Sendable () -> Void = { [weak self] in
             self?.finish()
@@ -293,6 +294,47 @@ final class InkyStudioUITests: XCTestCase {
         selectTab("queue", fallback: "File")
         XCTAssertTrue(element("queue.row.a11050000002").waitForNonExistence(timeout: 5))
         XCTAssertTrue(element("queue.row.5ad000000003").exists)
+    }
+
+    func testDisplayFailureKeepsConnectionAndRecoversLight() {
+        verifyDisplayFailureAndRecovery(appearance: "Light")
+    }
+
+    func testDisplayFailureKeepsConnectionAndRecoversDark() {
+        verifyDisplayFailureAndRecovery(appearance: "Dark")
+    }
+
+    private func verifyDisplayFailureAndRecovery(appearance: String) {
+        launchFixtureApp(appearance: appearance)
+        login()
+        let next = app.buttons["frame.next"]
+        let previous = app.buttons["frame.previous"]
+        XCTAssertTrue(next.waitForExistence(timeout: 5))
+        XCTAssertTrue(next.isEnabled)
+        XCTAssertTrue(previous.isEnabled)
+
+        configureFixture("__test/display-status", body: ["state": "error"])
+        defer { configureFixture("__test/display-status", body: ["state": "mock"]) }
+        let status = element("frame.displayStatus")
+        XCTAssertTrue(status.waitForExistence(timeout: 10), "A display fault must have its own diagnostic card.")
+        let disabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == false"), object: next)
+        XCTAssertEqual(XCTWaiter.wait(for: [disabled], timeout: 5), .completed)
+        XCTAssertFalse(previous.isEnabled)
+        XCTAssertTrue(app.staticTexts["Raspberry connecté"].exists, "A panel fault must not be presented as a lost network connection.")
+        XCTAssertFalse(element("connection.offline").exists)
+        XCTAssertFalse(app.secureTextFields["connection.password"].exists)
+        XCTAssertTrue(app.staticTexts["L’écran est indisponible. Vos photos sont conservées. Vérifiez le cadre."].exists)
+        scrollTo(status)
+        capture("Écran indisponible — \(appearance)")
+
+        configureFixture("__test/display-status", body: ["state": "ready"])
+        XCTAssertTrue(status.waitForNonExistence(timeout: 10), "Fresh ready diagnostics must clear the hardware error.")
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: next)
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed)
+        XCTAssertTrue(previous.isEnabled)
+        XCTAssertTrue(app.staticTexts["Raspberry connecté"].exists)
+        XCTAssertFalse(app.secureTextFields["connection.password"].exists)
+        capture("Écran rétabli — \(appearance)")
     }
 
     func testUnavailableFrameShowsRecoverableError() {

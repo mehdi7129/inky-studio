@@ -81,6 +81,37 @@ final class APITests: XCTestCase {
         api.clearSession()
     }
 
+    func testDisplayDiagnosticsDecodeHardwareFailureWithoutExposingDriverDetails() async throws {
+        let stub = APIStub { request in
+            XCTAssertEqual(request.url?.path, "/api/display/status")
+            XCTAssertEqual(request.httpMethod, "GET")
+            return .json(#"{"mode":"hardware","state":"error","is_mock":false,"profile":null,"error":{"code":"display_busy_timeout","detail":"L’affichage a échoué. La photo est conservée."},"driver":{"module":"inky.inky_ac073tc1a"},"busy_monitor":"ac073_2.3.0","observations":[]}"#)
+        }
+        let api = client(stub)
+        defer { api.clearSession() }
+        let diagnostics = try await api.displayDiagnostics()
+        XCTAssertEqual(diagnostics?.state, "error")
+        XCTAssertEqual(diagnostics?.error?.code, "display_busy_timeout")
+        XCTAssertEqual(diagnostics?.message, "L’affichage a échoué. La photo est conservée.")
+        XCTAssertFalse(diagnostics?.isReady ?? true)
+    }
+
+    func testOnlyNotFoundMakesDisplayDiagnosticsOptional() async throws {
+        for status in [404, 401, 503] {
+            let stub = APIStub { _ in .json(#"{"detail":"Diagnostic indisponible"}"#, status: status) }
+            let api = client(stub)
+            defer { api.clearSession() }
+            do {
+                let diagnostics = try await api.displayDiagnostics()
+                XCTAssertEqual(status, 404)
+                XCTAssertNil(diagnostics)
+            } catch let error as APIError {
+                XCTAssertNotEqual(status, 404)
+                XCTAssertEqual(error.isUnauthorized, status == 401)
+            }
+        }
+    }
+
     func testPasswordRotationReplacesCookieAndEncodesSecretsInBodyOnly() async throws {
         let stub = APIStub { request in
             if request.url?.path == "/api/auth/login" {
