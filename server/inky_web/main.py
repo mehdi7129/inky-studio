@@ -19,7 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from inky_web import __version__, auth
 from inky_web.api import router as api_router
-from inky_web.db import data_dir, init_db
+from inky_web.db import data_dir, init_db, resolve_data_dir
 from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
 from inky_web.inky.errors import DisplayUnavailableError
@@ -62,8 +62,50 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+async def _select_startup_runtime() -> None:
+    """Return only for legacy startup; factory preparation never enables it."""
+    from inky_web.provisioning.factory_runtime import (
+        FactoryRuntimeError,
+        initialize_factory,
+        select_runtime,
+    )
+
+    config = select_runtime(resolve_data_dir())
+    if config is None:
+        return
+    # IPC begin or a local durable write may outlive a cancelled ASGI startup.
+    # Keep the admitted worker owned and drain it before propagating cancellation.
+    worker = asyncio.create_task(asyncio.to_thread(initialize_factory, config))
+    cancelled = False
+    while not worker.done():
+        try:
+            await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            cancelled = True
+        except Exception:
+            break
+    if cancelled:
+        try:
+            worker.result()
+        except BaseException:
+            pass
+        raise asyncio.CancelledError()
+    try:
+        worker.result()
+    except FactoryRuntimeError:
+        raise
+    except Exception:
+        raise FactoryRuntimeError("factory_runtime_uncertain") from None
+    # initialize_factory is deliberately NoReturn. An accidental return must
+    # never turn a prepared factory ledger into a running legacy application.
+    raise FactoryRuntimeError("factory_runtime_uncertain")
+
+
 @asynccontextmanager
-async def lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None):
+async def lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
+                   _legacy_selected: bool = False):
+    if not _legacy_selected:
+        await _select_startup_runtime()
     init_db()
     app.state.sessions = auth.SessionStore()
     app.state.auth_service = auth.CredentialService(
@@ -197,7 +239,13 @@ if CLIENT_DIST.is_dir():
 
 
 def run() -> None:
-    asyncio.run(serve(with_https=os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled()))
+    from inky_web.provisioning.factory_runtime import FactoryRuntimeError
+
+    try:
+        asyncio.run(serve(with_https=os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled()))
+    except FactoryRuntimeError as exc:
+        logging.getLogger(__name__).error("Frame startup stopped: %s", exc.code)
+        raise SystemExit(exc.exit_status) from None
 
 
 async def serve_with_https() -> None:
@@ -257,10 +305,13 @@ async def serve(*, with_https: bool = False) -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, shutdown)
     try:
+        await _select_startup_runtime()
+        if stop_requested.is_set():
+            return
         if with_https:
             app.state.frame_identity = await asyncio.to_thread(load_or_create_identity, data_dir() / "provisioning")
             cert, key = await asyncio.to_thread(app.state.frame_identity.materialize_tls_files)
-        async with lifespan(app, stop_requested):
+        async with lifespan(app, stop_requested, _legacy_selected=True):
             if stop_requested.is_set():
                 return
             # Never cancel an admitted physical operation on a wall-clock timeout.

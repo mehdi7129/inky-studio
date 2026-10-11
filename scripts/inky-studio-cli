@@ -30,6 +30,8 @@ case "${cmd}" in
     echo "Started."
     ;;
   welcome)
+    # Refuse factory commands before changing even the service lifecycle.
+    INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${PYTHON}" -m inky_web.provisioning.factory_runtime --check-legacy
     # Need to stop briefly to take the SPI bus
     sudo systemctl stop "${SERVICE_NAME}"
     trap 'sudo systemctl start "${SERVICE_NAME}"' EXIT
@@ -38,6 +40,7 @@ case "${cmd}" in
     trap - EXIT
     ;;
   reset-password)
+    INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${PYTHON}" -m inky_web.provisioning.factory_runtime --check-legacy
     # Stop the sole writer; keep the old file intact until replacement is durable.
     # Restart also revokes every process-local session, even after a failed reset.
     sudo systemctl stop "${SERVICE_NAME}"
