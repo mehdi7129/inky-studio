@@ -1,6 +1,6 @@
 """Opt-in initialization adapter for the separately owned InkyOS root service.
 
-No application startup path imports this module. The kernel's connected-peer
+The disabled-by-default factory guard is its only startup caller. The kernel's connected-peer
 credentials, not a socket filename or a readable receipt, establish the local
 server's identity. Every operation uses a new connection and is attempted once.
 """

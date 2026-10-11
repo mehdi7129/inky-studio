@@ -24,6 +24,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from inky_web.auth import load_or_create_credentials
 from inky_web.db import data_dir as default_data_dir
+from inky_web.db import resolve_data_dir
 from inky_web.inky.display import DisplayController
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,9 @@ def render_welcome_image(
 
 def show_welcome(display: DisplayController | None = None) -> None:
     """Push the welcome screen to the Inky. Creates a fresh display if none provided."""
+    from inky_web.provisioning.factory_runtime import guard_legacy_command
+
+    guard_legacy_command(resolve_data_dir())
     owns_display = display is None
     if display is None:
         display = DisplayController()
@@ -175,8 +179,14 @@ def _show_welcome(display: DisplayController) -> None:
 
 
 def main() -> int:
+    from inky_web.provisioning.factory_runtime import FactoryRuntimeError
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    show_welcome()
+    try:
+        show_welcome()
+    except FactoryRuntimeError as exc:
+        print(f"Écran d’accueil indisponible pour ce cadre : {exc.code}")
+        return exc.exit_status
     return 0
 
 

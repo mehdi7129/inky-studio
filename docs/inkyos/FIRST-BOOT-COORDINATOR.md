@@ -1,9 +1,12 @@
-# Local first-boot coordination — injected prototype
+# Local first-boot coordination
 
 `provisioning/first_boot.py` coordinates actual prepared identity files and the
-factory ownership database through a **trusted injected OS adapter**. It is not
-imported by the application runtime. No socket, root authorization, clock setter,
-password generation, QR display, GATT service or iOS setup flow is enabled.
+factory ownership database through a **trusted injected OS adapter**. The
+[disabled-by-default startup guard](FACTORY-RUNTIME-GUARD.md) now supplies the
+[IPC-A client](INITIALIZATION-IPC-V1.md) only after explicit OS configuration.
+It stops before the legacy runtime, even on success. No root authorization,
+clock setter, password generation, QR display, GATT service or iOS setup flow
+is enabled by default.
 
 ## Internal boundary and sequence
 
@@ -25,9 +28,9 @@ model, not a newly defined wire protocol:
 
 Only `newly_consumed` from an actual begin invocation authorizes creating the
 ownership database. A readable grant file or prior inspect result cannot do so.
-The future implementation must expose inspect and begin through an authenticated
-root boundary; the app cannot read the root-only receipt directly. Current tests
-use a fake adapter, and therefore do not qualify this privilege boundary.
+IPC-A exposes inspect and begin through a root-peer-authenticated boundary; the
+app cannot read the root-only receipt directly. Coordinator tests use a fake
+adapter and therefore do not qualify the real Linux privilege boundary.
 
 Under a process-shared private workflow lock, the coordinator:
 
@@ -83,7 +86,7 @@ concurrent threads. Existing factory and certificate tests add subprocess crashe
 at their persistence boundaries. These do not replace independent-process testing
 of the whole coordinator, a real root adapter or physical SD power loss.
 
-The next integration needs the privileged adapter, durable credential startup,
+The next activation needs the independently qualified root service, durable credential startup,
 owner-authorized clock operation/result binding, separate bootstrap command
 allowlist/channel, strict normal reconnect, country gate and the complete iPhone
 flow. `FactoryStatus.factory` means the ledger is ready for an authorized initial

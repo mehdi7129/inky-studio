@@ -363,9 +363,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Local application password management")
     parser.add_argument("command", choices=["password", "reset-password"])
     args = parser.parse_args()
-    # Unlike db.data_dir(), resolve the path without creating any directories.
-    raw = os.environ.get("INKY_STUDIO_DATA_DIR")
-    directory = Path(raw).expanduser() if raw else Path(__file__).resolve().parent.parent / "data"
+    from inky_web.db import resolve_data_dir
+    from inky_web.provisioning.factory_runtime import FactoryRuntimeError, guard_legacy_command
+
+    directory = resolve_data_dir()
+    try:
+        guard_legacy_command(directory)
+    except FactoryRuntimeError as exc:
+        print(f"Commande indisponible pour ce cadre : {exc.code}")
+        return exc.exit_status
     try:
         if args.command == "reset-password" and (
             os.environ.get("INKY_STUDIO_BLUETOOTH") == "1"

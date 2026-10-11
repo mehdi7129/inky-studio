@@ -1,6 +1,6 @@
 """Opt-in durable identity preparation and journaled certificate publication.
 
-Nothing imports this module from the runtime. It grants no factory authority,
+Only explicit factory startup uses this module. It grants no factory authority,
 sets no clock, and never migrates a legacy installation. An OS orchestrator must
 authorize preparation and retain an independent consumed receipt: losing all
 application files must never authorize another call to create().

@@ -2,11 +2,13 @@
 
 This implementation is the first application-side subset of
 [FIRST-BOOT-CONTRACT.md](FIRST-BOOT-CONTRACT.md). It is not an executable InkyOS
-first boot. No runtime, CLI, environment flag, HTTP route, BLE operation or iOS
-screen enables it yet. Existing installations continue to use the legacy store.
+first boot. An [explicit OS startup guard](FACTORY-RUNTIME-GUARD.md) can now
+prepare this state through IPC-A, then stops before starting any runtime.
+No HTTP route, BLE operation or iOS screen enables it. Existing installations
+continue to use the legacy store with the opt-in absent.
 The separate [prepared identity](BOOTSTRAP-IDENTITY.md) and
 [injected coordinator](FIRST-BOOT-COORDINATOR.md) now test real key/binding and
-receipt sequencing locally; the OS adapter and runtime remain disabled.
+receipt sequencing locally; the complete factory runtime remains unavailable.
 
 ## Internal API
 

@@ -172,7 +172,7 @@ def test_failed_welcome_restarts_service(tmp_path):
     root = Path(__file__).resolve().parents[2]
     python = tmp_path / "server/.venv/bin/python"
     python.parent.mkdir(parents=True)
-    python.write_text("#!/bin/sh\nexit 7\n")
+    python.write_text('#!/bin/sh\nif [ "$2" = "inky_web.provisioning.factory_runtime" ]; then exit 0; fi\nexit 7\n')
     python.chmod(0o755)
     sudo = tmp_path / "sudo"
     sudo.write_text('#!/bin/sh\nprintf "%s\\n" "$*"\n')
@@ -214,7 +214,7 @@ def _password_cli(tmp_path, command, *, fail_python=False):
     python = tmp_path / "install/server/.venv/bin/python"
     python.parent.mkdir(parents=True, exist_ok=True)
     if fail_python:
-        python.write_text("#!/bin/sh\nexit 7\n")
+        python.write_text('#!/bin/sh\nif [ "$2" = "inky_web.provisioning.factory_runtime" ]; then exit 0; fi\nexit 7\n')
         python.chmod(0o755)
     else:
         python.write_text('#!/bin/sh\nexec "$TEST_REAL_PYTHON" "$@"\n')
@@ -286,3 +286,19 @@ def test_failed_reset_cli_keeps_credentials_and_restarts_service(tmp_path):
     assert (tmp_path / "service.log").read_text().splitlines() == [
         "systemctl stop inky-studio.service", "systemctl start inky-studio.service",
     ]
+
+
+@pytest.mark.parametrize("command", ["welcome", "reset-password", "password"])
+def test_factory_cli_preflight_refuses_before_service_or_credential_effects(tmp_path, monkeypatch, command):
+    initial = auth.reset_credentials(tmp_path / "data")
+    before = initial.path.read_bytes()
+    # Requiring factory with no installed marker is a configuration refusal.
+    # Exercise the real module through the stable launcher, not a fake guard.
+    monkeypatch.setenv("INKY_STUDIO_FACTORY_REQUIRED", "1")
+    result = _password_cli(tmp_path, command)
+    assert result.returncode == 78
+    assert "factory_runtime_refused" in result.stdout + result.stderr
+    assert initial.bootstrap_password not in result.stdout + result.stderr
+    assert initial.path.read_bytes() == before
+    assert not (tmp_path / "service.log").exists()
+    assert not (tmp_path / "data/provisioning").exists()
