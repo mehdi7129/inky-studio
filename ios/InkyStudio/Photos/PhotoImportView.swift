@@ -463,7 +463,7 @@ struct PhotoImportView: View {
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(model.isUploading || !validPanel || viewportSize.width <= 0)
+            .disabled(model.isUploading || !validPanel || viewportSize.width <= 0 || !store.canUploadPhoto)
             .accessibilityIdentifier("upload-photo")
             Text(store.isDemo ? "Uniquement sur cet iPhone · aucun envoi au cadre." : "Affichage avec Suivante ou selon votre programmation.")
                 .font(.footnote).foregroundStyle(secondary)

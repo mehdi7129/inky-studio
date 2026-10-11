@@ -64,6 +64,10 @@ final class DemoFrameClient: FramePhotoClient {
         return DisplayState(display: DisplayInfo(model: "Cadre de démonstration", width: 800, height: 480, colors: 7, isMock: true),
                             current: current, queueCount: entries.count, nextChangeAt: nil)
     }
+    func displayDiagnostics() async throws -> DisplayDiagnostics? {
+        try checkOpen()
+        return DisplayDiagnostics(state: "mock", error: nil)
+    }
     func queue() async throws -> [QueueEntry] { try checkOpen(); return entries }
     func history(limit: Int, offset: Int) async throws -> [HistoryEntry] {
         try checkOpen()

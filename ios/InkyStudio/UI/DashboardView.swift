@@ -22,8 +22,12 @@ struct DashboardView: View {
                         EmptyCard(symbol: "photo.on.rectangle", title: "Votre cadre vous attend", message: "Ajoutez une photo à la file, puis affichez-la avec Suivante.")
                         displayControls
                     }
-                    if store.displayBusy {
-                        HStack(spacing: 12) { ProgressView(); Text("Actualisation du cadre… Cela peut prendre une minute.").font(.subheadline) }.bentoCard()
+                    if let message = store.displayMessage {
+                        Label(message, systemImage: "exclamationmark.circle")
+                            .font(.subheadline).foregroundStyle(Bento.amber).bentoCard()
+                            .accessibilityIdentifier("frame.displayStatus")
+                    } else if store.displayBusy {
+                        HStack(spacing: 12) { ProgressView(); Text("Actualisation du cadre… Patientez sans le débrancher.").font(.subheadline) }.bentoCard()
                     }
                     summaryLayout {
                         VStack(alignment: .leading, spacing: 10) {
@@ -38,7 +42,7 @@ struct DashboardView: View {
                         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).bentoCard()
                     }
                     Button { importing = true } label: { Label("Ajouter une photo", systemImage: "plus") }
-                        .buttonStyle(PrimaryButtonStyle()).disabled(!store.canMutate || store.state == nil).accessibilityIdentifier("frame.add")
+                        .buttonStyle(PrimaryButtonStyle()).disabled(!store.canUploadPhoto).accessibilityIdentifier("frame.add")
                     if store.isDemo {
                         Text("Essayez les commandes et ajoutez une image. L’affichage est simulé ; rien n’est envoyé à un Raspberry.")
                             .font(.caption).foregroundStyle(Bento.secondaryInk)
@@ -57,7 +61,7 @@ struct DashboardView: View {
         controlsLayout {
             Button { Task { await store.display(previous: true) } } label: { Label("Précédente", systemImage: "chevron.left") }.accessibilityIdentifier("frame.previous")
             Button { Task { await store.display(previous: false) } } label: { Label("Suivante", systemImage: "chevron.right") }.accessibilityIdentifier("frame.next")
-        }.buttonStyle(OutlineButtonStyle()).disabled(!store.canMutate || store.displayBusy)
+        }.buttonStyle(OutlineButtonStyle()).disabled(!store.canDisplay)
     }
     private var summaryLayout: AnyLayout {
         dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
@@ -67,6 +71,7 @@ struct DashboardView: View {
     }
     private var nextChange: String {
         if store.isDemo { return "À votre rythme" }
+        guard store.state != nil else { return "Indisponible" }
         guard let timestamp = store.state?.nextChangeAt else { return "Manuel" }
         return Date(timeIntervalSince1970: timestamp).formatted(.dateTime.day().month(.abbreviated).hour().minute())
     }

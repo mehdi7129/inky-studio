@@ -4,6 +4,159 @@ import XCTest
 
 @MainActor
 final class AppStoreTests: XCTestCase {
+    func testLegacyFrameWithoutDisplayDiagnosticsKeepsPhotoControls() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("frame.local")
+        XCTAssertNil(fixture.store.displayDiagnostics)
+        XCTAssertTrue(fixture.store.canDisplay)
+        XCTAssertTrue(fixture.store.canUploadPhoto)
+    }
+
+    func testRemoteDisplayBusyBlocksCommandsUntilFreshReadyStatus() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        fixture.stub.setDisplayStatus("busy")
+        await fixture.login("frame.local")
+        let store = fixture.store
+        XCTAssertTrue(store.connected)
+        XCTAssertTrue(store.displayBusy)
+        XCTAssertFalse(store.canDisplay)
+        await store.display(previous: false)
+        XCTAssertFalse(fixture.stub.requests.contains { $0.url?.path == "/api/display/next" })
+        fixture.stub.setDisplayStatus("ready")
+        await store.refresh()
+        XCTAssertFalse(store.displayBusy)
+        XCTAssertTrue(store.canDisplay)
+    }
+
+    func testKnownHardwareDiagnosticsCannotBecomeLegacyAfterEndpointDisappears() async throws {
+        for previous in ["busy", "error"] {
+            let fixture = StoreFixture()
+            defer { fixture.dispose() }
+            fixture.stub.setDisplayStatus(previous, detail: previous == "error" ? "Écran indisponible" : nil)
+            await fixture.login("frame.local")
+            let store = fixture.store
+            fixture.stub.setResponse(path: "/api/display/status", status: 404, body: ["detail": "Not found"])
+            await store.refresh()
+            XCTAssertTrue(store.connected)
+            XCTAssertEqual(store.displayDiagnostics?.state, previous)
+            XCTAssertFalse(store.canDisplay, "A later 404 must not release the \(previous) state.")
+            XCTAssertNotNil(store.displayMessage)
+            if previous == "busy" { XCTAssertTrue(store.displayBusy) }
+            await store.display(previous: false)
+            XCTAssertFalse(fixture.stub.requests.contains { $0.url?.path == "/api/display/next" })
+            fixture.stub.setDisplayStatus("ready")
+            await store.refresh()
+            XCTAssertTrue(store.canDisplay)
+            XCTAssertNil(store.displayMessage)
+        }
+    }
+
+    func testHardwareFailureKeepsFrameConnectedAndLastConfirmedPhotoState() async throws {
+        let fixture = StoreFixture(totals: ["frame.local": 1])
+        defer { fixture.dispose() }
+        fixture.stub.setDisplayStatus("ready")
+        await fixture.login("frame.local")
+        let store = fixture.store
+        store.state?.current = try XCTUnwrap(store.history.first)
+        let previousState = store.state
+        fixture.stub.setDisplayStatus("error", detail: "L’affichage a échoué. La photo est conservée.")
+        fixture.stub.setResponse(path: "/api/state", status: 503, body: ["detail": "Écran indisponible"])
+        await store.refresh()
+        XCTAssertTrue(store.connected)
+        XCTAssertTrue(store.authenticated)
+        XCTAssertEqual(store.state, previousState)
+        XCTAssertEqual(store.state?.current?.photo.id, "photo-0")
+        XCTAssertEqual(store.history.count, 1)
+        XCTAssertFalse(store.canDisplay)
+        XCTAssertFalse(store.canUploadPhoto)
+        XCTAssertEqual(store.displayMessage, "L’affichage a échoué. La photo est conservée.")
+        XCTAssertNil(store.errorMessage, "A panel failure is not a Wi-Fi disconnection.")
+    }
+
+    func testFirstLoginWithFailedPanelDoesNotInventPhotoStateOrReportOffline() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        fixture.stub.setDisplayStatus("error", detail: "Écran indisponible. Vérifiez le matériel.")
+        fixture.stub.setResponse(path: "/api/state", status: 503, body: ["detail": "Écran indisponible"])
+        await fixture.login("frame.local")
+        let store = fixture.store
+        XCTAssertTrue(store.authenticated)
+        XCTAssertTrue(store.connected)
+        XCTAssertNil(store.state)
+        XCTAssertNotNil(store.settings, "Reachable settings remain available while the screen is unavailable.")
+        XCTAssertFalse(store.canDisplay)
+        XCTAssertFalse(store.canUploadPhoto)
+        XCTAssertEqual(store.displayMessage, "Écran indisponible. Vérifiez le matériel.")
+    }
+
+    func testDiagnosticsFailureCannotKeepOldReadyControlsEnabled() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        fixture.stub.setDisplayStatus("ready")
+        await fixture.login("frame.local")
+        fixture.stub.failNext(path: "/api/display/status", code: .networkConnectionLost)
+        await fixture.store.refresh()
+        XCTAssertTrue(fixture.store.connected)
+        XCTAssertFalse(fixture.store.canDisplay)
+        XCTAssertNotNil(fixture.store.displayMessage)
+        await fixture.store.refresh()
+        XCTAssertTrue(fixture.store.canDisplay)
+        XCTAssertNil(fixture.store.displayMessage)
+    }
+
+    func testDisplayTimeoutRetainsUnconfirmedBusyUntilHardwareStatusReturns() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        fixture.stub.setDisplayStatus("ready")
+        await fixture.login("frame.local")
+        let store = fixture.store
+        fixture.stub.failNext(path: "/api/display/next", code: .timedOut)
+        fixture.stub.failNext(path: "/api/display/status", code: .networkConnectionLost)
+        await store.display(previous: false)
+        XCTAssertTrue(store.connected)
+        XCTAssertTrue(store.displayBusy, "A local timeout cannot confirm the end of a physical refresh.")
+        XCTAssertFalse(store.canDisplay)
+        await store.display(previous: false)
+        XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == "/api/display/next" }.count, 1)
+        fixture.stub.setResponse(path: "/api/display/status", status: 404, body: ["detail": "Not found"])
+        await store.refresh()
+        XCTAssertTrue(store.displayBusy, "A disappearing endpoint cannot confirm the timed-out command.")
+        XCTAssertFalse(store.canDisplay)
+        fixture.stub.setDisplayStatus("busy")
+        await store.refresh()
+        XCTAssertTrue(store.displayBusy)
+        fixture.stub.setDisplayStatus("ready")
+        await store.refresh()
+        XCTAssertFalse(store.displayBusy)
+        XCTAssertTrue(store.canDisplay)
+    }
+
+    func testDisplayFailureEventCannotBeOverwrittenByOlderReadyPoll() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        fixture.stub.setDisplayStatus("ready")
+        await fixture.login("frame.local")
+        let store = fixture.store
+        let gate = fixture.stub.hold(host: "frame.local", path: "/api/display/status")
+        fixture.stub.setResponse(path: "/api/state", status: 503, body: ["detail": "Écran indisponible"])
+        let refresh = Task { await store.refresh() }
+        await fulfillment(of: [gate.started], timeout: 3)
+        store.receiveDisplayFailure(["code": .string("display_refresh_failed"), "detail": .string("Écran indisponible")])
+        gate.release()
+        await refresh.value
+        XCTAssertTrue(store.connected)
+        XCTAssertFalse(store.canDisplay)
+        XCTAssertEqual(store.displayMessage, "Écran indisponible")
+        XCTAssertNil(store.errorMessage, "The newer hardware event explains the 503; the frame is still reachable.")
+        fixture.stub.removeResponse(path: "/api/state")
+        fixture.stub.setDisplayStatus("ready")
+        await store.refresh()
+        XCTAssertTrue(store.canDisplay)
+        XCTAssertNil(store.displayMessage)
+    }
+
     func testCancelledRefreshPreservesConnectionAndLoadedState() async throws {
         let fixture = StoreFixture(totals: ["frame.local": 1])
         defer { fixture.dispose() }
@@ -290,7 +443,9 @@ final class AppStoreTests: XCTestCase {
         await fixture.login("old-frame.local")
         store.availableUpdate = UpdateStatus(current: "0.4.2", latest: "0.4.3", updateAvailable: true)
         store.busy = true
-        store.displayBusy = true
+        fixture.stub.setDisplayStatus("busy", host: "old-frame.local")
+        await store.refresh()
+        XCTAssertTrue(store.displayBusy)
         store.loadingHistory = true
         let gate = fixture.stub.hold(host: "old-frame.local", path: "/api/auth/logout")
         let logout = Task { await store.logout(forget: true) }
@@ -504,8 +659,29 @@ private final class StoreStub: @unchecked Sendable {
     private let totals: [String: Int]
     private var gates: [String: StoreGate] = [:]
     private var calls: [URLRequest] = []
+    private var responses: [String: (Data, Int)] = [:]
+    private var failures: [String: URLError.Code] = [:]
     var requests: [URLRequest] { lock.withLock { calls } }
     init(totals: [String: Int]) { self.totals = totals }
+
+    func setResponse(path: String, status: Int = 200, body: Any, host: String = "frame.local") {
+        let data = try! JSONSerialization.data(withJSONObject: body)
+        lock.withLock { responses["\(host)|\(path)"] = (data, status) }
+    }
+
+    func setDisplayStatus(_ state: String, detail: String? = nil, host: String = "frame.local") {
+        var body: [String: Any] = ["state": state]
+        if let detail { body["error"] = ["code": "display_refresh_failed", "detail": detail] }
+        setResponse(path: "/api/display/status", body: body, host: host)
+    }
+
+    func removeResponse(path: String, host: String = "frame.local") {
+        _ = lock.withLock { responses.removeValue(forKey: "\(host)|\(path)") }
+    }
+
+    func failNext(path: String, code: URLError.Code, host: String = "frame.local") {
+        lock.withLock { failures["\(host)|\(path)"] = code }
+    }
 
     func hold(host: String, path: String, method: String = "GET") -> StoreGate {
         let gate = StoreGate()
@@ -524,11 +700,24 @@ private final class StoreStub: @unchecked Sendable {
 
     func dispose() { StoreURLProtocol.remove(id: id) }
 
-    func respond(_ request: URLRequest, completion: @escaping (Data, Int) -> Void) {
+    func respond(_ request: URLRequest, completion: @escaping (Result<(Data, Int), Error>) -> Void) {
         let host = request.url!.host!
         let path = request.url!.path
         let key = "\(host)|\(request.httpMethod ?? "GET")|\(path)"
         let gate = lock.withLock { calls.append(request); return gates.removeValue(forKey: key) }
+        if let failure = lock.withLock({ failures.removeValue(forKey: "\(host)|\(path)") }) {
+            completion(.failure(URLError(failure)))
+            return
+        }
+        if let response = lock.withLock({ responses["\(host)|\(path)"] }) {
+            if let gate { gate.hold { status in completion(.success((response.0, status ?? response.1))) } }
+            else { completion(.success(response)) }
+            return
+        }
+        if path == "/api/display/status" {
+            completion(.success((Data(#"{"detail":"Not found"}"#.utf8), 404)))
+            return
+        }
         let body: Any
         switch path {
         case "/api/auth/status", "/api/auth/logout": body = ["authenticated": false, "auth_required": true, "password_change_supported": host != "legacy-frame.local"]
@@ -552,8 +741,8 @@ private final class StoreStub: @unchecked Sendable {
         default: body = []
         }
         let data = try! JSONSerialization.data(withJSONObject: body)
-        if let gate { gate.hold { status in completion(data, status ?? 200) } }
-        else { completion(data, 200) }
+        if let gate { gate.hold { status in completion(.success((data, status ?? 200))) } }
+        else { completion(.success((data, 200))) }
     }
 }
 
@@ -573,8 +762,12 @@ private final class StoreURLProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable))
             return
         }
-        stub.respond(request) { [weak self] data, status in
+        stub.respond(request) { [weak self] result in
             guard let self, !self.responseLock.withLock({ self.stopped }) else { return }
+            guard case let .success((data, status)) = result else {
+                if case let .failure(error) = result { self.client?.urlProtocol(self, didFailWithError: error) }
+                return
+            }
             let response = HTTPURLResponse(url: self.request.url!, statusCode: status, httpVersion: "HTTP/1.1",
                                            headerFields: ["Content-Type": "application/json"])!
             self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

@@ -6,6 +6,7 @@ import Foundation
 protocol FramePhotoClient: AnyObject, Sendable {
     func health() async throws -> HealthResponse
     func state() async throws -> DisplayState
+    func displayDiagnostics() async throws -> DisplayDiagnostics?
     func queue() async throws -> [QueueEntry]
     func history(limit: Int, offset: Int) async throws -> [HistoryEntry]
     func settings() async throws -> FrameSettings
