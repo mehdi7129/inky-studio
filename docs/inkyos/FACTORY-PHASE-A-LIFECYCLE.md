@@ -16,7 +16,9 @@ iOS n'est remplacé par ce candidat. Le style Bento reste inchangé.
 
 `serve_factory_phase_a()` est une API async injectée, sans nouveau flag, rôle,
 endpoint, opération wire ou marqueur de readiness. Le caller fournit l'événement
-d'arrêt et les factories d'écran et de runtime. La composition future utilise
+d'arrêt, les factories d'écran et de runtime, ainsi que les deux
+[hooks directs d'admission et de peer connecté](FACTORY-ADMISSION-HOOKS.md).
+La composition future utilise
 `BootstrapRuntime` et `serve_prepared_factory` existants sur l'event loop console.
 Il ne faut pas exécuter le runtime dans un second `asyncio.run()` d'un worker.
 
@@ -88,8 +90,9 @@ La composition devra fournir et qualifier :
 Les tests injectés qualifient le code et ses frontières d'ownership, avec des
 identités/services OS synthétiques. Ils ne prouvent pas le graphe Linux installé,
 le scan iPhone, l'enregistrement BlueZ réel ou l'affichage physique du QR.
-Le ledger et ses commits sont réels ; la barrière de test SQLite est placée avant
-le claim, sans prétendre bloquer une transaction interne. Les délais de refresh
+Le ledger et ses commits sont réels. Les tests initiaux placent leur barrière
+avant le claim ; les tests des hooks ajoutent une barrière sur la même connexion
+après INSERT et avant COMMIT. Les délais de refresh
 SPI et d'enregistrement radio sont simulés par les adapters injectés.
 
 ## Références

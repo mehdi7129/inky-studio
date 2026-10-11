@@ -125,11 +125,13 @@ class FirstBootCoordinator:
 
     def __init__(self, private_dir: Path, adapter: InitializationAdapter,
                  verify_credentials: Callable[[], str], *,
+                 admission_check: Callable[[], None] | None = None,
                  clock: Callable[[], float] = time.time,
                  monotonic: Callable[[], float] = time.monotonic):
         self.directory = Path(private_dir)
         self.adapter = adapter
         self.verify_credentials = verify_credentials
+        self.admission_check = admission_check
         self.clock, self.monotonic = clock, monotonic
 
     def _current_epoch(self) -> str:
@@ -169,12 +171,25 @@ class FirstBootCoordinator:
                 intent, binding = prepared.initialization_intent, prepared.binding
                 canonical_uuid(intent)
                 prepared.verify_current_or_unpublished()
+                # Identity preparation may outlive a graph check. Composition
+                # must revalidate before submitting a one-use begin operation;
+                # legacy callers preserve their original validation order.
+                if self.admission_check is not None:
+                    if self.admission_check() is not None:
+                        raise ValueError
+                    self._current_epoch()
                 begin_attempted = True  # Set BEFORE invoking the external boundary.
                 grant, granted_intent, receipt = _receipt_response(
                     self.adapter.begin_initialization(intent), inspect=False)
                 if granted_intent != intent or (state == "consumed" and (
                         grant != "already_consumed" or receipt != inspected_receipt)):
                     raise FirstBootUncertain()
+                # Begin may already be consumed; revalidate the direct local
+                # prerequisite before creating/reopening the durable store.
+                if self.admission_check is not None:
+                    if self.admission_check() is not None:
+                        raise ValueError
+                    self._current_epoch()
                 _preflight_existing(directory, (".ownership.lock", "ownership.sqlite3"))
                 operation = (OwnershipStore.create_factory if grant == "newly_consumed"
                              else OwnershipStore.reopen_factory)

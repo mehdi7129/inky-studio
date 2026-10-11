@@ -10,6 +10,7 @@ import json
 import os
 import sqlite3
 import threading
+from contextlib import contextmanager
 from contextvars import copy_context
 from types import SimpleNamespace
 from uuid import uuid4
@@ -115,9 +116,9 @@ async def harness(configured, admission, monkeypatch):
     display = Display(events)
     real_prepare = phase.prepare_factory
 
-    def prepare(config):
+    def prepare(config, **hooks):
         assert not admission.available()
-        result = real_prepare(config)
+        result = real_prepare(config, **hooks)
         assert type(result) is FirstBootResult
         prepared.append(result)
         return result
@@ -136,11 +137,26 @@ async def harness(configured, admission, monkeypatch):
         runtimes.append(runtime)
         return runtime
 
+    validity, checks, peers = [True], [], []
+
+    def check():
+        assert not admission.available()
+        checks.append(threading.get_ident())
+        if not validity[0]:
+            raise RuntimeError("private-os-admission-secret")
+
+    @contextmanager
+    def peer_guard(connection):
+        assert connection.fileno() >= 0 and not admission.available()
+        peers.append(connection)
+        yield
+
     monkeypatch.setattr(phase, "prepare_factory", prepare)
     return SimpleNamespace(stop=stop, events=events, prepared=prepared, runtimes=runtimes,
                            callbacks=callbacks, display=display, prepare=prepare,
                            display_factory=display_factory, runtime_factory=runtime_factory,
-                           data=configured.data, configured=configured, admission=admission)
+                           data=configured.data, configured=configured, admission=admission,
+                           validity=validity, checks=checks, peers=peers, check=check, peer_guard=peer_guard)
 
 
 def run(harness, *, display_factory=None, runtime_factory=None):
@@ -148,6 +164,7 @@ def run(harness, *, display_factory=None, runtime_factory=None):
         harness.data, stop_requested=harness.stop,
         display_factory=display_factory or harness.display_factory,
         runtime_factory=runtime_factory or harness.runtime_factory,
+        admission_check=harness.check, initialization_peer_guard=harness.peer_guard,
     )
 
 
@@ -204,6 +221,7 @@ async def test_legacy_refuses_without_importing_os_or_selecting(tmp_path, monkey
         tmp_path / "absent", stop_requested=asyncio.Event(),
         display_factory=lambda: pytest.fail("Legacy opened display"),
         runtime_factory=lambda *_: pytest.fail("Legacy opened radio"),
+        admission_check=lambda: None, initialization_peer_guard=lambda *_: pytest.fail("Legacy opened IPC"),
     ), "factory_runtime_refused")
 
 
@@ -261,8 +279,8 @@ async def test_invalid_prerequisites_have_zero_effects(harness, monkeypatch, fai
 
 @pytest.mark.parametrize("failure", ["marker", "epoch", "environment"])
 async def test_post_prepare_revalidation_closes_store_before_any_display(harness, monkeypatch, failure):
-    def prepare(config):
-        result = harness.prepare(config)
+    def prepare(config, **hooks):
+        result = harness.prepare(config, **hooks)
         if failure == "marker":
             harness.configured.marker.unlink()
         elif failure == "epoch":
@@ -283,7 +301,7 @@ async def test_post_prepare_revalidation_closes_store_before_any_display(harness
 async def test_failures_are_fixed_and_all_created_resources_close(harness, monkeypatch, stage):
     if stage == "prepare":
         monkeypatch.setattr(phase, "prepare_factory",
-                            lambda *_: (_ for _ in ()).throw(OSError("private-prepare-secret")))
+                            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("private-prepare-secret")))
         await terminal(run(harness), "factory_runtime_refused")
         assert not harness.events
     else:
@@ -299,7 +317,7 @@ async def test_failures_are_fixed_and_all_created_resources_close(harness, monke
 
 async def test_foreign_prepare_result_does_not_gain_cleanup_or_runtime_execution(harness, monkeypatch):
     foreign = SimpleNamespace(ownership=SimpleNamespace(close=lambda: pytest.fail("Foreign cleanup executed")))
-    monkeypatch.setattr(phase, "prepare_factory", lambda *_: foreign)
+    monkeypatch.setattr(phase, "prepare_factory", lambda *_args, **_kwargs: foreign)
     await terminal(run(harness), "factory_runtime_refused")
     assert not harness.events and not harness.runtimes
     assert_closed(harness)
@@ -312,13 +330,13 @@ async def test_stop_during_prepare_drains_worker_and_never_opens_display(
 ):
     entered, release = threading.Event(), threading.Event()
 
-    def prepare(config):
+    def prepare(config, **hooks):
         entered.set()
         assert release.wait(5)
         assert not harness.admission.child_available()
         if worker_error:
             raise OSError("private-worker-after-cancel")
-        return harness.prepare(config)
+        return harness.prepare(config, **hooks)
 
     monkeypatch.setattr(phase, "prepare_factory", prepare)
     task = asyncio.create_task(run(harness))
@@ -346,10 +364,10 @@ async def test_stop_during_prepare_drains_worker_and_never_opens_display(
 async def test_owned_shared_guard_outlives_external_guard_during_prepare(harness, monkeypatch, cancel):
     entered, release = threading.Event(), threading.Event()
 
-    def prepare(config):
+    def prepare(config, **hooks):
         entered.set()
         assert release.wait(5)
-        return harness.prepare(config)
+        return harness.prepare(config, **hooks)
 
     monkeypatch.setattr(phase, "prepare_factory", prepare)
     with factory_writer.main_writer_guard():
@@ -499,9 +517,9 @@ async def test_real_ipc_refusal_has_zero_identity_display_or_retry(harness, serv
     constructions = []
 
     def client(*args, **kwargs):
-        assert not args and not kwargs
+        assert not args and kwargs == {"peer_guard": harness.peer_guard}
         constructions.append(True)
-        return ipc.InitializationIPCClient(server.path)
+        return ipc.InitializationIPCClient(server.path, **kwargs)
 
     monkeypatch.setattr(factory_runtime, "InitializationIPCClient", client)
     await terminal(run(harness), "factory_runtime_refused")
@@ -523,7 +541,7 @@ async def test_real_begin_failure_is_uncertain_without_retry_or_radio(harness, s
 
     server = serve(handler)
     monkeypatch.setattr(factory_runtime, "InitializationIPCClient",
-                        lambda: ipc.InitializationIPCClient(server.path))
+                        lambda **hooks: ipc.InitializationIPCClient(server.path, **hooks))
     await terminal(run(harness), "factory_runtime_uncertain")
     assert [request["op"] for request in server.requests] == ["initialization.inspect", "initialization.begin"]
     assert len(root_peer) == 2 and not harness.prepared and not harness.events
@@ -538,8 +556,8 @@ async def test_store_cleanup_error_after_cancel_is_observed_before_lease_closes(
     previous = loop.get_exception_handler()
     loop.set_exception_handler(lambda _loop, context: errors.append(context))
 
-    def prepare(config):
-        result = harness.prepare(config)
+    def prepare(config, **hooks):
+        result = harness.prepare(config, **hooks)
         original = result.ownership.close
 
         def close():
@@ -573,8 +591,8 @@ async def test_store_cleanup_error_after_cancel_is_observed_before_lease_closes(
 
 @pytest.mark.parametrize("early_stop", [False, True])
 async def test_final_validation_rejects_epoch_change_in_last_store_drain(harness, monkeypatch, early_stop):
-    def prepare(config):
-        result = harness.prepare(config)
+    def prepare(config, **hooks):
+        result = harness.prepare(config, **hooks)
         original = result.ownership.close
 
         def close():
@@ -617,7 +635,7 @@ async def test_stop_during_real_begin_exchange_waits_for_eof_then_closes_store(
 
     server = serve(handler)
     monkeypatch.setattr(factory_runtime, "InitializationIPCClient",
-                        lambda: ipc.InitializationIPCClient(server.path))
+                        lambda **hooks: ipc.InitializationIPCClient(server.path, **hooks))
     task = asyncio.create_task(run(harness))
     assert await asyncio.to_thread(entered.wait, 5)
     try:
@@ -701,7 +719,18 @@ def production_runtime(harness, monkeypatch, *, blocked=None):
         task = asyncio.create_task(run(harness, display_factory=lambda: Controller(mode="mock"),
                                        runtime_factory=factory))
         await asyncio.wait_for(ready.wait(), 5)
-        return task, runtimes[-1]
+        runtime = runtimes[-1]
+
+        async def admitted():
+            # Registration is observable before the runtime's post-registration
+            # checks finish. Send a claim only after actual admission opens.
+            while not runtime.available:
+                if task.done():
+                    await task
+                await asyncio.sleep(0.001)
+
+        await asyncio.wait_for(admitted(), 5)
+        return task, runtime
 
     return SimpleNamespace(start=start, factory=factory, controller=Controller, payloads=payloads,
                            runtimes=runtimes, radios=radios, ready=ready, entered=entered, release=release,

@@ -46,6 +46,8 @@ def test_installed_wheel_keeps_frontend_outside_site_packages(tmp_path):
             "inky_web/provisioning/factory_environment.py",
             "inky_web/provisioning/factory_writer.py",
             "inky_web/provisioning/factory_runtime.py",
+            "inky_web/provisioning/factory_phase_a.py",
+            "inky_web/provisioning/connected_peer.py",
         } <= names
         assert not any(name.endswith((".pth", ".egg-link", ".pyc"))
                        or "__editable__" in name or name.endswith("direct_url.json") for name in names)
