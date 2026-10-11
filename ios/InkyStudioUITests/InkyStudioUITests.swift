@@ -1,4 +1,5 @@
 import XCTest
+import CoreGraphics
 
 /// End-to-end coverage against ios/scripts/mock-server.py, never a real frame.
 /// The fixture must be running on the host's loopback port 8765 before xcodebuild.
@@ -6,26 +7,20 @@ import XCTest
 final class InkyStudioUITests: XCTestCase {
     private var app: XCUIApplication!
     private let fixtureURL = URL(string: "http://127.0.0.1:8765")!
-    private var originalAppearance: XCUIDevice.Appearance?
+    private enum RenderingAppearance: String { case light = "Light", dark = "Dark" }
 
-    private func launchFixtureApp(resetCamera: Bool = false, appearance: XCUIDevice.Appearance? = nil) {
+    private func launchFixtureApp(resetCamera: Bool = false, appearance: RenderingAppearance? = nil) {
         continueAfterFailure = false
         resetFixture()
         app = XCUIApplication()
         // Resetting a protected resource terminates an already-running app.
         if resetCamera { app.resetAuthorizationStatus(for: .camera) }
         app.launchArguments = ["--uitesting", "--frame-address", fixtureURL.absoluteString]
+        if let appearance { app.launchArguments += ["--ui-test-appearance", appearance.rawValue] }
         let teardown: @MainActor @Sendable () -> Void = { [weak self] in
             self?.finish()
         }
         addTeardownBlock(teardown)
-        if let appearance {
-            // The ordinary app follows the system; -AppleInterfaceStyle is only
-            // interpreted by the separate Bluetooth UI fixture.
-            originalAppearance = XCUIDevice.shared.appearance
-            XCUIDevice.shared.appearance = appearance
-            XCTAssertEqual(XCUIDevice.shared.appearance, appearance, "The simulator must use the requested appearance.")
-        }
         app.launch()
     }
 
@@ -38,10 +33,6 @@ final class InkyStudioUITests: XCTestCase {
         }
         app?.terminate()
         app = nil
-        if let originalAppearance {
-            XCUIDevice.shared.appearance = originalAppearance
-            self.originalAppearance = nil
-        }
     }
 
     /// Requires Xcode 27 and the fixture's opt-in --biometric-device mode.
@@ -307,16 +298,16 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(element("queue.row.5ad000000003").exists)
     }
 
-    func testDisplayFailureKeepsConnectionAndRecoversLight() {
-        verifyDisplayFailureAndRecovery(appearance: .light)
+    func testDisplayFailureRenderingAndRecoveryLight() {
+        verifyDisplayFailureRenderingAndRecovery(appearance: .light)
     }
 
-    func testDisplayFailureKeepsConnectionAndRecoversDark() {
-        verifyDisplayFailureAndRecovery(appearance: .dark)
+    func testDisplayFailureRenderingAndRecoveryDark() {
+        verifyDisplayFailureRenderingAndRecovery(appearance: .dark)
     }
 
-    private func verifyDisplayFailureAndRecovery(appearance: XCUIDevice.Appearance) {
-        let appearanceName = appearance == .dark ? "Dark" : "Light"
+    // These cases qualify rendered palettes, not propagation of system settings.
+    private func verifyDisplayFailureRenderingAndRecovery(appearance: RenderingAppearance) {
         launchFixtureApp(appearance: appearance)
         login()
         let next = app.buttons["frame.next"]
@@ -337,8 +328,7 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertFalse(app.secureTextFields["connection.password"].exists)
         XCTAssertTrue(app.staticTexts["L’écran est indisponible. Vos photos sont conservées. Vérifiez le cadre."].exists)
         scrollTo(status)
-        XCTAssertEqual(XCUIDevice.shared.appearance, appearance)
-        capture("Écran indisponible — \(appearanceName)")
+        capture("Écran indisponible — \(appearance.rawValue)", appearance: appearance)
 
         configureFixture("__test/display-status", body: ["state": "ready"])
         XCTAssertTrue(status.waitForNonExistence(timeout: 10), "Fresh ready diagnostics must clear the hardware error.")
@@ -347,8 +337,7 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(previous.isEnabled)
         XCTAssertTrue(app.staticTexts["Raspberry connecté"].exists)
         XCTAssertFalse(app.secureTextFields["connection.password"].exists)
-        XCTAssertEqual(XCUIDevice.shared.appearance, appearance)
-        capture("Écran rétabli — \(appearanceName)")
+        capture("Écran rétabli — \(appearance.rawValue)", appearance: appearance)
     }
 
     func testUnavailableFrameShowsRecoverableError() {
@@ -581,8 +570,32 @@ final class InkyStudioUITests: XCTestCase {
         }
     }
 
-    private func capture(_ title: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+    private func capture(_ title: String, appearance: RenderingAppearance? = nil) {
+        let screenshot = app.screenshot()
+        if let appearance {
+            guard let image = screenshot.image.cgImage else { XCTFail("The rendered screenshot must have pixels."); return }
+            // Sample the empty left margin of the Bento screen at mid-height,
+            // outside cards, photos, navigation bars and the status bar.
+            let sample = CGRect(x: CGFloat(image.width) * 0.01, y: CGFloat(image.height) * 0.5, width: 4, height: 4).integral
+            guard let patch = image.cropping(to: sample),
+                  let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { XCTFail("Cannot sample the rendered palette."); return }
+            var pixel = [UInt8](repeating: 0, count: 4)
+            let drawn = pixel.withUnsafeMutableBytes { bytes -> Bool in
+                guard let context = CGContext(data: bytes.baseAddress, width: 1, height: 1,
+                                              bitsPerComponent: 8, bytesPerRow: 4, space: colorSpace,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue) else { return false }
+                context.draw(patch, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+                return true
+            }
+            guard drawn else { XCTFail("Cannot read the rendered palette."); return }
+            let brightness = (0.2126 * Double(pixel[0]) + 0.7152 * Double(pixel[1]) + 0.0722 * Double(pixel[2])) / 255
+            if appearance == .dark {
+                XCTAssertLessThan(brightness, 0.25, "A Dark capture must actually render a dark Bento background: \(pixel).")
+            } else {
+                XCTAssertGreaterThan(brightness, 0.75, "A Light capture must actually render a light Bento background: \(pixel).")
+            }
+        }
+        let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = title
         attachment.lifetime = .keepAlways
         add(attachment)

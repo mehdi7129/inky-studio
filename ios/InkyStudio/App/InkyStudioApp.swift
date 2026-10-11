@@ -7,8 +7,27 @@ struct InkyStudioApp: App {
     var body: some Scene {
         WindowGroup {
             RootView().environmentObject(store).tint(Bento.ink)
+                #if DEBUG
+                .preferredColorScheme(uiTestColorScheme)
+                #endif
         }
     }
+
+    #if DEBUG
+    // Deterministic palette coverage in UI tests only. Normal launches keep
+    // following the system; Release does not include this override.
+    private var uiTestColorScheme: ColorScheme? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("--uitesting"),
+              let index = arguments.firstIndex(of: "--ui-test-appearance"),
+              arguments.indices.contains(index + 1) else { return nil }
+        switch arguments[index + 1] {
+        case "Light": return .light
+        case "Dark": return .dark
+        default: return nil
+        }
+    }
+    #endif
 }
 
 struct RootView: View {
