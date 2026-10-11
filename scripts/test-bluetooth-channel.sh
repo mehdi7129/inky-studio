@@ -15,7 +15,7 @@ fi
 WORK=$(mktemp -d /tmp/inky-bluetooth-channel.XXXXXX)
 trap 'rm -rf -- "${WORK}"' EXIT
 mkdir -p "${WORK}/Sources/InkyStudio" "${WORK}/Tests/InkyStudioTests"
-for source in FrameIdentity PinnedFrameTrust BluetoothTransport SecureBluetoothChannel; do
+for source in FrameIdentity PinnedFrameTrust BootstrapWire BluetoothTransport SecureBluetoothChannel; do
   cp "${ROOT}/ios/InkyStudio/Provisioning/${source}.swift" "${WORK}/Sources/InkyStudio/"
 done
 cp "${ROOT}/ios/InkyStudioTests/BluetoothChannelTests.swift" \

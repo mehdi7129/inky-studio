@@ -27,6 +27,23 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
     }
 }
 
+enum BluetoothGATTProfile: Equatable, Sendable {
+    case normalV1, bootstrap
+    var serviceUUID: CBUUID { CBUUID(string: uuid(1)) }
+    var identityUUID: CBUUID { CBUUID(string: uuid(2)) }
+    var streamUUID: CBUUID { CBUUID(string: uuid(3)) }
+    var certificate0UUID: CBUUID { CBUUID(string: uuid(4)) }
+    var certificate1UUID: CBUUID { CBUUID(string: uuid(5)) }
+    private func uuid(_ role: Int) -> String {
+        let prefix = self == .bootstrap ? "713b001" : "713b000"
+        return "\(prefix)\(role)-8890-4cc9-a2bf-26f32c43db22"
+    }
+}
+
+@MainActor protocol BootstrapBluetoothExchanging: BluetoothExchanging {
+    var profile: BluetoothGATTProfile { get }
+}
+
 /// One ordered write/read exchange. Neither advertisements nor identity bytes establish trust.
 @MainActor protocol BluetoothExchanging: AnyObject {
     var maxFrameLength: Int { get }
@@ -35,14 +52,16 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
     func cancel()
 }
 
-@MainActor final class BluetoothTransport: NSObject, ObservableObject, BluetoothExchanging,
+@MainActor final class BluetoothTransport: NSObject, ObservableObject, BluetoothExchanging, BootstrapBluetoothExchanging,
     @preconcurrency CBCentralManagerDelegate {
     enum State: Equatable { case idle, unavailable, scanning, connecting, connected }
     static let serviceUUID = CBUUID(string: "713b0001-8890-4cc9-a2bf-26f32c43db22")
-    private static let identityUUID = CBUUID(string: "713b0002-8890-4cc9-a2bf-26f32c43db22")
-    private static let streamUUID = CBUUID(string: "713b0003-8890-4cc9-a2bf-26f32c43db22")
-    private static let certificate0UUID = CBUUID(string: "713b0004-8890-4cc9-a2bf-26f32c43db22")
-    private static let certificate1UUID = CBUUID(string: "713b0005-8890-4cc9-a2bf-26f32c43db22")
+    let profile: BluetoothGATTProfile
+    init(profile: BluetoothGATTProfile = .normalV1) {
+        self.profile = profile
+        super.init()
+    }
+
 
     @Published private(set) var discoveredFrames: [BluetoothFrame] = []
     @Published private(set) var isScanning = false
@@ -72,6 +91,7 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
     private var certificate0: CBCharacteristic?
     private var certificate1: CBCharacteristic?
     private var identityAssembly = BluetoothIdentityAssembly()
+    private var bootstrapAssembly = BootstrapIdentityAssembly()
     private var targetID: UUID?
     private var phase: Phase?
     private var continuation: CheckedContinuation<Data, Error>?
@@ -163,7 +183,7 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
                 phase = .connecting
                 manager.connect(found, options: nil)
             } else if wantsScan, continuation == nil, peripheral == nil {
-                manager.scanForPeripherals(withServices: [Self.serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+                manager.scanForPeripherals(withServices: [profile.serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
                 isScanning = true
                 state = .scanning
             }
@@ -202,7 +222,7 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
         initialMaxFrameLength = maximum
         diagnose("connected")
         phase = .services
-        peripheral.discoverServices([Self.serviceUUID])
+        peripheral.discoverServices([profile.serviceUUID])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -217,22 +237,22 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
 
     fileprivate func discoveredServices(_ peripheral: CBPeripheral, error: Error?, generation: UUID) {
         guard accepts(peripheral, generation), phase == .services else { return }
-        guard error == nil, let service = peripheral.services?.first(where: { $0.uuid == Self.serviceUUID }) else {
+        guard error == nil, let service = peripheral.services?.first(where: { $0.uuid == profile.serviceUUID }) else {
             fail(.unsupportedFrame); return
         }
         phase = .characteristics
-        peripheral.discoverCharacteristics([Self.identityUUID, Self.streamUUID, Self.certificate0UUID, Self.certificate1UUID], for: service)
+        peripheral.discoverCharacteristics([profile.identityUUID, profile.streamUUID, profile.certificate0UUID, profile.certificate1UUID], for: service)
     }
 
     fileprivate func discoveredCharacteristics(_ peripheral: CBPeripheral, service: CBService,
                                                 error: Error?, generation: UUID) {
-        guard accepts(peripheral, generation), phase == .characteristics, service.uuid == Self.serviceUUID else { return }
+        guard accepts(peripheral, generation), phase == .characteristics, service.uuid == profile.serviceUUID else { return }
         guard error == nil,
-              let identity = service.characteristics?.first(where: { $0.uuid == Self.identityUUID }), identity.properties.contains(.read),
-              let stream = service.characteristics?.first(where: { $0.uuid == Self.streamUUID }),
+              let identity = service.characteristics?.first(where: { $0.uuid == profile.identityUUID }), identity.properties.contains(.read),
+              let stream = service.characteristics?.first(where: { $0.uuid == profile.streamUUID }),
               stream.properties.contains(.read), stream.properties.contains(.write),
-              let certificate0 = service.characteristics?.first(where: { $0.uuid == Self.certificate0UUID }), certificate0.properties.contains(.read),
-              let certificate1 = service.characteristics?.first(where: { $0.uuid == Self.certificate1UUID }), certificate1.properties.contains(.read)
+              let certificate0 = service.characteristics?.first(where: { $0.uuid == profile.certificate0UUID }), certificate0.properties.contains(.read),
+              let certificate1 = service.characteristics?.first(where: { $0.uuid == profile.certificate1UUID }), certificate1.properties.contains(.read)
         else { fail(.unsupportedFrame); return }
         self.identity = identity
         self.stream = stream
@@ -255,17 +275,21 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
         do {
             switch phase {
             case .identity:
-                try identityAssembly.readMetadata(data)
+                if profile == .bootstrap { try bootstrapAssembly.readMetadata(data) }
+                else { try identityAssembly.readMetadata(data) }
                 guard let certificate0 else { throw BluetoothTransportError.unsupportedFrame }
                 phase = .certificate0
                 peripheral.readValue(for: certificate0)
             case .certificate0:
-                try identityAssembly.readFirstCertificatePart(data)
+                if profile == .bootstrap { try bootstrapAssembly.readFirstCertificatePart(data) }
+                else { try identityAssembly.readFirstCertificatePart(data) }
                 guard let certificate1 else { throw BluetoothTransportError.unsupportedFrame }
                 phase = .certificate1
                 peripheral.readValue(for: certificate1)
             case .certificate1:
-                let assembled = try identityAssembly.finish(secondCertificatePart: data)
+                let assembled = try profile == .bootstrap
+                    ? bootstrapAssembly.finish(secondCertificatePart: data)
+                    : identityAssembly.finish(secondCertificatePart: data)
                 state = .connected
                 complete(assembled)
             case .reading:
@@ -353,6 +377,7 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
         certificate0 = nil
         certificate1 = nil
         identityAssembly = BluetoothIdentityAssembly()
+        bootstrapAssembly = BootstrapIdentityAssembly()
         stream = nil
         phase = nil
         targetID = nil
@@ -408,5 +433,29 @@ struct BluetoothIdentityAssembly {
         }
         return try JSONSerialization.data(withJSONObject: ["v": 1, "id": metadata.id.uuidString.lowercased(),
             "cert": (first + secondCertificatePart).base64EncodedString()])
+    }
+}
+
+/// Separate metadata grammar and assembled envelope; never routes v1 public data.
+struct BootstrapIdentityAssembly {
+    private var metadata: BootstrapPublicIdentity?
+    private var first: Data?
+    mutating func readMetadata(_ data: Data) throws {
+        guard metadata == nil else { throw BluetoothTransportError.invalidFrame }
+        metadata = try BootstrapPublicIdentity.parse(data)
+    }
+    mutating func readFirstCertificatePart(_ data: Data) throws {
+        guard let metadata, first == nil, data.count == min(480, metadata.certificateLength) else {
+            throw BluetoothTransportError.invalidFrame
+        }
+        first = data
+    }
+    func finish(secondCertificatePart: Data) throws -> Data {
+        guard let metadata, let first,
+              secondCertificatePart.count == max(0, metadata.certificateLength - 480) else {
+            throw BluetoothTransportError.invalidFrame
+        }
+        return try JSONSerialization.data(withJSONObject: ["v": 2, "p": "bootstrap",
+            "id": metadata.frameID.uuidString.lowercased(), "cert": (first + secondCertificatePart).base64EncodedString()])
     }
 }

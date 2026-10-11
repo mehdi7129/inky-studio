@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from .bootstrap_identity import PREPARED_IDENTITY_FILENAME
-from .first_boot import FirstBootCoordinator, FirstBootRefused, FirstBootUncertain
+from .first_boot import FirstBootCoordinator, FirstBootRefused, FirstBootResult, FirstBootUncertain
 from .initialization_ipc import InitializationIPCClient
 from .ownership import credential_epoch
 
@@ -240,8 +240,13 @@ def _verified_epoch(config: FactoryRuntimeConfig) -> str:
     return credential_epoch(credentials.salt, credentials.digest)
 
 
-def initialize_factory(config: FactoryRuntimeConfig) -> NoReturn:
-    """Preflight persisted credentials, coordinate once, then always stop closed."""
+def prepare_factory(config: FactoryRuntimeConfig) -> FirstBootResult:
+    """Prepare durable state only; this is not OS admission or radio readiness.
+
+    The future installed wrapper must qualify and retain its writer lease before
+    calling this function. No installed entry point uses the returned result to
+    activate the candidate runtime yet.
+    """
     try:
         if type(config) is not FactoryRuntimeConfig or type(config.app_uid) is not int:
             raise ValueError
@@ -253,13 +258,18 @@ def initialize_factory(config: FactoryRuntimeConfig) -> NoReturn:
     except Exception:
         raise FactoryRuntimeError() from None
     try:
-        coordinator.initialize()
+        return coordinator.initialize()
     except FirstBootRefused:
         raise FactoryRuntimeError() from None
     except FirstBootUncertain:
         raise FactoryRuntimeError("factory_runtime_uncertain") from None
     except Exception:
         raise FactoryRuntimeError("factory_runtime_uncertain") from None
+
+
+def initialize_factory(config: FactoryRuntimeConfig) -> NoReturn:
+    """Preflight persisted credentials, coordinate once, then always stop closed."""
+    prepare_factory(config)
     raise FactoryRuntimeError("factory_runtime_pending")
 
 

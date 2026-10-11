@@ -415,8 +415,9 @@ class OwnershipStore:
                             expected_epoch: str | None = None) -> SecretToken:
         """Local initial-adoption action, only for the explicitly ready factory.
 
-        No runtime calls this method yet. A future orchestrator must reserve the
-        physical display and verify identity/credential storage before invoking it.
+        The isolated bootstrap candidate reserves the physical display and
+        verifies identity/credential storage before invoking this method. The
+        installed entry points remain closed pending qualified OS admission.
         Losing Wi-Fi, owners or password authorization never makes it available
         after the first successful claim.
         """

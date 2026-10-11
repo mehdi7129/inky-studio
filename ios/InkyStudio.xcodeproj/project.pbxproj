@@ -57,6 +57,17 @@
 		F42B2C151B9E2437D32F442D /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EA7C41FE711F5C10D48C074 /* QRScannerView.swift */; };
 		F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */; };
 		F5694A3C7477B58FC87E90EF /* BiometricVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FF7DADE10BCADD5C93B141 /* BiometricVault.swift */; };
+		37BA968131B11ECA0630264E /* BootstrapWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F22B79B808806B1418BB949 /* BootstrapWire.swift */; };
+		A1C6524832943CA966203D7F /* BootstrapBluetoothChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1730FA75C86205D2E0079322 /* BootstrapBluetoothChannel.swift */; };
+		28BD415DB5F96E910EA24E4A /* BootstrapOwnershipVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACFC9E11B82FCF7F38DE62A2 /* BootstrapOwnershipVault.swift */; };
+		8E672D0A7DF0C8F947AB85DA /* BootstrapSetupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA57DA037F1FCE00821F888 /* BootstrapSetupCoordinator.swift */; };
+		C55D770748396AED3C5FD1C8 /* BootstrapSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 929BE2F82A98CDDC4C985B6C /* BootstrapSetupView.swift */; };
+		3CD3ACC27A3A266ACF8A1B6F /* BootstrapWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DC9CAD7E3A784820157D9B0 /* BootstrapWireTests.swift */; };
+		C82F85BE2A0C55277188762F /* BootstrapSetupCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82114646FECEF60C38105FF2 /* BootstrapSetupCoordinatorTests.swift */; };
+		EFE783EA9BF4C99E0F4B0E0C /* BootstrapOwnershipVaultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF8883E0763D8C22037BE89E /* BootstrapOwnershipVaultTests.swift */; };
+		EBFBCC84646D7C0756A02615 /* BootstrapChannelInteropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790D148680F326A67EDB19D8 /* BootstrapChannelInteropTests.swift */; };
+		49827F31A9403380BBF1D250 /* vectors.json in Resources */ = {isa = PBXBuildFile; fileRef = A8B36ACA2AA698ADE98D69D6 /* vectors.json */; };
+		471FFE31FD46AFAD863A5073 /* BootstrapSetupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB6FC0410CDCE46AEE3281F0 /* BootstrapSetupUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -131,6 +142,17 @@
 		EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCaptureTests.swift; sourceTree = "<group>"; };
 		F25D621270EA7DC64346B744 /* DemoModeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoModeUITests.swift; sourceTree = "<group>"; };
 		F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapFrameTrustTests.swift; sourceTree = "<group>"; };
+		6F22B79B808806B1418BB949 /* BootstrapWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapWire.swift; sourceTree = "<group>"; };
+		1730FA75C86205D2E0079322 /* BootstrapBluetoothChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapBluetoothChannel.swift; sourceTree = "<group>"; };
+		ACFC9E11B82FCF7F38DE62A2 /* BootstrapOwnershipVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapOwnershipVault.swift; sourceTree = "<group>"; };
+		DCA57DA037F1FCE00821F888 /* BootstrapSetupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapSetupCoordinator.swift; sourceTree = "<group>"; };
+		929BE2F82A98CDDC4C985B6C /* BootstrapSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapSetupView.swift; sourceTree = "<group>"; };
+		3DC9CAD7E3A784820157D9B0 /* BootstrapWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapWireTests.swift; sourceTree = "<group>"; };
+		82114646FECEF60C38105FF2 /* BootstrapSetupCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapSetupCoordinatorTests.swift; sourceTree = "<group>"; };
+		FF8883E0763D8C22037BE89E /* BootstrapOwnershipVaultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapOwnershipVaultTests.swift; sourceTree = "<group>"; };
+		790D148680F326A67EDB19D8 /* BootstrapChannelInteropTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapChannelInteropTests.swift; sourceTree = "<group>"; };
+		A8B36ACA2AA698ADE98D69D6 /* vectors.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = vectors.json; path = "../docs/inkyos/bootstrap-wire-proposal/vectors.json"; sourceTree = SOURCE_ROOT; };
+		FB6FC0410CDCE46AEE3281F0 /* BootstrapSetupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapSetupUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -203,6 +225,11 @@
 		5C0109F5C6F43B84414CE7F3 /* InkyStudioTests */ = {
 			isa = PBXGroup;
 			children = (
+				790D148680F326A67EDB19D8 /* BootstrapChannelInteropTests.swift */,
+				FF8883E0763D8C22037BE89E /* BootstrapOwnershipVaultTests.swift */,
+				82114646FECEF60C38105FF2 /* BootstrapSetupCoordinatorTests.swift */,
+				3DC9CAD7E3A784820157D9B0 /* BootstrapWireTests.swift */,
+				A8B36ACA2AA698ADE98D69D6 /* vectors.json */,
 				6F0845EFD539104F9AFDB591 /* APITests.swift */,
 				3A80B1FAF2DB2CA2E44D4488 /* AppStoreTests.swift */,
 				4270798D8720AD8EA20CEDFB /* BluetoothChannelInteropTests.swift */,
@@ -278,6 +305,7 @@
 		F34C578588F9FA8DE635B0BE /* InkyStudioUITests */ = {
 			isa = PBXGroup;
 			children = (
+				FB6FC0410CDCE46AEE3281F0 /* BootstrapSetupUITests.swift */,
 				7CFBE17AACB997A4E14D675B /* BluetoothSetupUITests.swift */,
 				F25D621270EA7DC64346B744 /* DemoModeUITests.swift */,
 				715F2C31B5B7575A987628A5 /* InkyStudioUITests.swift */,
@@ -288,6 +316,11 @@
 		FA2290AB216827D5F4BB8309 /* Provisioning */ = {
 			isa = PBXGroup;
 			children = (
+				929BE2F82A98CDDC4C985B6C /* BootstrapSetupView.swift */,
+				DCA57DA037F1FCE00821F888 /* BootstrapSetupCoordinator.swift */,
+				ACFC9E11B82FCF7F38DE62A2 /* BootstrapOwnershipVault.swift */,
+				1730FA75C86205D2E0079322 /* BootstrapBluetoothChannel.swift */,
+				6F22B79B808806B1418BB949 /* BootstrapWire.swift */,
 				50B7D743D63D8E3038F96161 /* BluetoothSetupCoordinator.swift */,
 				49B1DDA6CD675954525687AE /* BluetoothSetupView.swift */,
 				D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */,
@@ -326,6 +359,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = E1A6C75693CFBEDB72341ABA /* Build configuration list for PBXNativeTarget "InkyStudioTests" */;
 			buildPhases = (
+				B5D8FFC3FA3F314335098AE8 /* Resources */,
 				5CB5232C2D4458F798D9FED5 /* Sources */,
 			);
 			buildRules = (
@@ -416,6 +450,12 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B5D8FFC3FA3F314335098AE8 /* Resources */ = {
+            isa = PBXResourcesBuildPhase;
+            buildActionMask = 2147483647;
+            files = (49827F31A9403380BBF1D250 /* vectors.json in Resources */,);
+            runOnlyForDeploymentPostprocessing = 0;
+        };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -423,6 +463,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				471FFE31FD46AFAD863A5073 /* BootstrapSetupUITests.swift in Sources */,
 				5FAB3E4A3344A8589C1056F6 /* BluetoothSetupUITests.swift in Sources */,
 				61E6BC6F11F1B3870BC94D56 /* DemoModeUITests.swift in Sources */,
 				17CD43BAAB9443573CCC5A30 /* InkyStudioUITests.swift in Sources */,
@@ -433,6 +474,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EBFBCC84646D7C0756A02615 /* BootstrapChannelInteropTests.swift in Sources */,
+				EFE783EA9BF4C99E0F4B0E0C /* BootstrapOwnershipVaultTests.swift in Sources */,
+				C82F85BE2A0C55277188762F /* BootstrapSetupCoordinatorTests.swift in Sources */,
+				3CD3ACC27A3A266ACF8A1B6F /* BootstrapWireTests.swift in Sources */,
 				0989724E668DF98501F3C34A /* APITests.swift in Sources */,
 				87F09C526C4734656AAFBC69 /* AppStoreTests.swift in Sources */,
 				88DF6751DB3134A77E600EC7 /* BluetoothChannelInteropTests.swift in Sources */,
@@ -453,6 +498,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C55D770748396AED3C5FD1C8 /* BootstrapSetupView.swift in Sources */,
+				8E672D0A7DF0C8F947AB85DA /* BootstrapSetupCoordinator.swift in Sources */,
+				28BD415DB5F96E910EA24E4A /* BootstrapOwnershipVault.swift in Sources */,
+				A1C6524832943CA966203D7F /* BootstrapBluetoothChannel.swift in Sources */,
+				37BA968131B11ECA0630264E /* BootstrapWire.swift in Sources */,
 				DE5974B2422D93AFCF97C154 /* APIError.swift in Sources */,
 				5E0735A767035D2E7F09E1B6 /* AppStore.swift in Sources */,
 				E2419ACE2BDCF78FE510845A /* Bento.swift in Sources */,

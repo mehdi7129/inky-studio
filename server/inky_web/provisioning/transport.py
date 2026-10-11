@@ -15,11 +15,32 @@ import ssl
 import struct
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 SERVICE_UUID = "713b0001-8890-4cc9-a2bf-26f32c43db22"
 IDENTITY_UUID = "713b0002-8890-4cc9-a2bf-26f32c43db22"
 STREAM_UUID = "713b0003-8890-4cc9-a2bf-26f32c43db22"
 CERTIFICATE_UUIDS = ("713b0004-8890-4cc9-a2bf-26f32c43db22", "713b0005-8890-4cc9-a2bf-26f32c43db22")
+
+
+@dataclass(frozen=True)
+class GATTProfile:
+    name: str
+    service: str
+    identity: str
+    stream: str
+    certificates: tuple[str, str]
+    root: str
+
+
+NORMAL_PROFILE = GATTProfile("normal-v1", SERVICE_UUID, IDENTITY_UUID, STREAM_UUID,
+                             CERTIFICATE_UUIDS, "/org/inky/provisioning")
+BOOTSTRAP_PROFILE = GATTProfile(
+    "bootstrap", "713b0011-8890-4cc9-a2bf-26f32c43db22",
+    "713b0012-8890-4cc9-a2bf-26f32c43db22", "713b0013-8890-4cc9-a2bf-26f32c43db22",
+    ("713b0014-8890-4cc9-a2bf-26f32c43db22", "713b0015-8890-4cc9-a2bf-26f32c43db22"),
+    "/org/inky/bootstrap",
+)
 MAX_BUFFER = 65536
 MAX_MESSAGE = 16384
 MAX_JSON_DEPTH = 32
@@ -120,11 +141,7 @@ class TLSPeer:
                 try:
                     # UTF-8 is the wire encoding. Python's default JSON decoder
                     # otherwise accepts UTF-16/32, duplicate names and NaN/Inf.
-                    message = json.loads(self.plaintext[4:].decode("utf-8"),
-                                         object_pairs_hook=_unique_object,
-                                         parse_constant=_reject_constant,
-                                         parse_float=_finite_float)
-                    _check_depth(message)
+                    message = self._decode_message(bytes(self.plaintext[4:]))
                 except (ValueError, UnicodeError, RecursionError):
                     raise TransportError("Commande invalide") from None
                 self.plaintext.clear()
@@ -146,6 +163,13 @@ class TLSPeer:
         The existing v1 transport has no ALPN requirement. A distinct bootstrap
         peer overrides this hook; normal clients never select it implicitly.
         """
+
+    def _decode_message(self, payload: bytes) -> dict:
+        """Normal v1 grammar; a separate profile may retain numeric lexemes."""
+        message = json.loads(payload.decode("utf-8"), object_pairs_hook=_unique_object,
+                             parse_constant=_reject_constant, parse_float=_finite_float)
+        _check_depth(message)
+        return message
 
     async def _dispatch(self, message: dict) -> None:
         try:
@@ -203,14 +227,38 @@ class GATTSession:
 class GATTTransport:
     """Device paths are supplied by BlueZ, never by the remote payload."""
 
-    def __init__(self, context: ssl.SSLContext, handler: Callable[[dict], Awaitable[dict]]):
+    def __init__(self, context: ssl.SSLContext, handler: Callable[[dict], Awaitable[dict]], *,
+                 profile: GATTProfile = NORMAL_PROFILE, peer_factory=None):
+        if profile not in (NORMAL_PROFILE, BOOTSTRAP_PROFILE):
+            raise ValueError("Unknown GATT profile")
+        if profile == BOOTSTRAP_PROFILE:
+            from .bootstrap_tls import BootstrapTLSContext, BootstrapTLSPeer
+
+            if not isinstance(context, BootstrapTLSContext):
+                raise TypeError("A dedicated bootstrap TLS context is required")
+            peer_factory = peer_factory or BootstrapTLSPeer
+        else:
+            if not isinstance(context, ssl.SSLContext):
+                raise TypeError("A normal TLS context is required")
+            peer_factory = peer_factory or TLSPeer
         self.context = context
         self.handler = handler
+        self.profile = profile
+        self.peer_factory = peer_factory
         self.sessions: dict[str, GATTSession] = {}
 
     def write(self, device: str, frame: bytes, mtu: int = 23) -> None:
         self.expire()
-        if not device or not 1 <= len(frame) <= min(512, max(20, mtu - 3)):
+        if self.profile == BOOTSTRAP_PROFILE:
+            if type(mtu) is not int or mtu < 23:
+                self.disconnect(device)
+                raise TransportError("Fragment invalide")
+            capacity = min(244, mtu - 3)
+        else:
+            capacity = min(512, max(20, mtu - 3))
+        if not device or not 1 <= len(frame) <= capacity:
+            if self.profile == BOOTSTRAP_PROFILE:
+                self.disconnect(device)
             raise TransportError("Fragment invalide")
         if frame[0] == CLOSE and len(frame) == 1:
             self.disconnect(device)
@@ -222,7 +270,14 @@ class GATTTransport:
             self.disconnect(device)
             if len(self.sessions) >= 2:
                 raise TransportError("Cadre occupé")
-            self.sessions[device] = GATTSession(TLSPeer(self.context, self.handler), frame[1:])
+            peer = self.peer_factory(self.context, self.handler)
+            if self.profile == BOOTSTRAP_PROFILE:
+                from .bootstrap_tls import BootstrapTLSPeer
+
+                if not isinstance(peer, BootstrapTLSPeer):
+                    peer.close()
+                    raise TypeError("A dedicated bootstrap TLS peer is required")
+            self.sessions[device] = GATTSession(peer, frame[1:])
             return
         session = self.sessions.get(device)
         if session is None:
@@ -249,7 +304,12 @@ class GATTTransport:
     def expire(self) -> None:
         now = time.monotonic()
         for device, session in list(self.sessions.items()):
-            if now - session.touched > 180 or session.peer.closed:
+            handshake_expired = (self.profile == BOOTSTRAP_PROFILE
+                                 and not session.peer.authenticated
+                                 and now - session.peer.created >= 45)
+            idle_expired = (now - session.touched >= 180 if self.profile == BOOTSTRAP_PROFILE
+                            else now - session.touched > 180)
+            if idle_expired or session.peer.closed or handshake_expired:
                 self.disconnect(device)
 
     def close(self) -> None:

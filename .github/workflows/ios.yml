@@ -3,9 +3,9 @@ name: iOS
 on:
   push:
     branches: [main]
-    paths: ["ios/**", "scripts/build-mbedtls-apple.sh", "scripts/test-bluetooth-channel.sh", "scripts/test-https-wire.sh", "scripts/https-wire-bench/**", "server/inky_web/provisioning/**", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "scripts/build-mbedtls-apple.sh", "scripts/test-bluetooth-channel.sh", "scripts/test-bootstrap-channel.sh", "scripts/bootstrap-channel-bench/**", "scripts/test-https-wire.sh", "scripts/https-wire-bench/**", "server/inky_web/provisioning/**", ".github/workflows/ios.yml"]
   pull_request:
-    paths: ["ios/**", "scripts/build-mbedtls-apple.sh", "scripts/test-bluetooth-channel.sh", "scripts/test-https-wire.sh", "scripts/https-wire-bench/**", "server/inky_web/provisioning/**", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "scripts/build-mbedtls-apple.sh", "scripts/test-bluetooth-channel.sh", "scripts/test-bootstrap-channel.sh", "scripts/bootstrap-channel-bench/**", "scripts/test-https-wire.sh", "scripts/https-wire-bench/**", "server/inky_web/provisioning/**", ".github/workflows/ios.yml"]
   workflow_dispatch:
 
 concurrency:
@@ -40,6 +40,10 @@ jobs:
         run: swift test --package-path ios/Packages/InkyTLS
       - name: Test Bluetooth channel against Python GATT transport
         run: scripts/test-bluetooth-channel.sh
+      - name: Test isolated bootstrap claim against Python runtime
+        run: |
+          python3 -m pip install -e 'server[dev]'
+          scripts/test-bootstrap-channel.sh
       - name: Test adopted HTTPS identity over real loopback sockets
         run: scripts/test-https-wire.sh
       - name: Start isolated frame fixture

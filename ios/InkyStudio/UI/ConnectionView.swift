@@ -7,6 +7,7 @@ struct ConnectionView: View {
     @State private var remember = false
     @State private var bluetoothSetup = false
     @State private var gettingStarted = false
+    @State private var factoryAssociation = false
     @FocusState private var passwordFocused: Bool
     private var biometric: Bool { store.hasSavedFrame && store.biometricEnabled && !showPassword }
     var body: some View {
@@ -77,6 +78,14 @@ struct ConnectionView: View {
                         Link("Ouvrir les réglages iOS", destination: url).font(.subheadline)
                     }
                 }
+                if BootstrapFeatures.enabled {
+                    Button { factoryAssociation = true } label: {
+                        Label("Associer un nouveau cadre", systemImage: "qrcode.viewfinder")
+                    }.buttonStyle(OutlineButtonStyle()).disabled(store.connecting)
+                        .accessibilityIdentifier("connection.factoryAssociation")
+                    Text("Premier démarrage InkyOS : association par Bluetooth, puis préparation du cadre.")
+                        .font(.caption).foregroundStyle(Bento.secondaryInk)
+                }
                 Text("Votre iPhone et le cadre doivent être sur le même réseau Wi-Fi.")
                     .font(.subheadline).foregroundStyle(Bento.secondaryInk).multilineTextAlignment(.center).frame(maxWidth: .infinity)
                 Button { bluetoothSetup = true } label: {
@@ -97,6 +106,7 @@ struct ConnectionView: View {
             .background(Bento.background).scrollDismissesKeyboard(.interactively)
             .onAppear { remember = store.biometricEnabled }
             .onChange(of: store.biometricEnabled) { _, enabled in remember = enabled }
+            .sheet(isPresented: $factoryAssociation) { BootstrapSetupView() }
             .sheet(isPresented: $gettingStarted) { GettingStartedView() }
             .sheet(isPresented: $bluetoothSetup) {
                 BluetoothSetupView { endpoint, owner in
