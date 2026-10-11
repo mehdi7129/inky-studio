@@ -3,10 +3,9 @@
 Relevé du **9 octobre 2026**, destiné à la session InkyOS. Ce document distingue
 le banc LAN possible aujourd'hui de la cible de premier allumage sans LAN.
 Il ne donne pas à l'image le statut de release qualifiée.
-Dernier complément : **11 octobre**, échec d'activation Wi-Fi observé dans les
-anciens reçus ; nouvelle SD au diagnostic enrichi et capsule vérifiées,
-qualification réseau en attente. Un correctif de synchronisation radio est
-testé séparément, sans déploiement sur cette SD.
+Dernier retour daté du **11 octobre** : interface indisponible après l'échec
+d'activation et avant le nettoyage radio. Cause exacte et qualification réseau
+encore ouvertes ; correctif de synchronisation testé séparément, absent de la SD.
 
 ## Complément du 10 octobre — retour SD et installation iPhone
 
@@ -212,8 +211,9 @@ Studio a relu cette preuve ; aucune opération sur la SD n'est reproduite ici.
   Le démontage peut vider des écritures macOS en attente ; la protection
   contre toute écriture depuis l'insertion n'est pas établie.
 - **Nouvelle capsule liée au contexte**, signature vérifiée, installée et
-  relue sur la SD, puis carte éjectée. Le prochain boot réseau reste à effectuer :
-  l'installation ne prouve pas l'import runtime ni la connexion.
+  relue sur la SD, puis carte éjectée. Au relevé `caa3ad5`, le prochain boot
+  réseau restait à effectuer ; le retour suivant est distingué ci-dessous.
+  L'installation seule ne prouve pas l'import runtime ni la connexion.
 
 Source OS `07271cf`, backend `c31b13a`, manifeste applicatif `c4183e7` et build
 iOS 9 inchangés. Aucun Wi-Fi/SSH, Bluetooth, activation de l'app, photo,
@@ -247,9 +247,40 @@ ne doit pas être réinterprétée comme une preuve de readiness sur cette SD.
 macOS et 1 Linux ARM64 ; syntaxe de 23 scripts validée et revue indépendante
 rapportée. Cette reproduction ne démontre pas la cause du boot réel.
 **Aucune nouvelle image construite ni SD modifiée pour ce correctif.** La carte
-reste sur `07271cf`, backend `c31b13a` ; la lecture de son nouveau diagnostic
-reste l'étape suivante avant de décider d'une autre image. Aucun parcours
-Wi-Fi/SSH, application, écran ou BLE n'est qualifié par ces tests logiciels.
+reste sur `07271cf`, backend `c31b13a`. La lecture de son diagnostic est décrite
+ci-dessous. Aucun parcours Wi-Fi/SSH, application, écran ou BLE n'est qualifié
+par ces tests logiciels.
+
+### Retour recoupé avec état NetworkManager
+
+Le [retour avec état du périphérique](https://github.com/mehdi7129/inkyOS/blob/2e435c9684bc6a6c59f0e6bceec04fb540371444/docs/validation/2026-10-11-network-device-state-return.json)
+est publié au commit `2e435c9684bc6a6c59f0e6bceec04fb540371444`, dont la
+[CI passe](https://github.com/mehdi7129/inkyOS/actions/runs/38131449503).
+Studio a relu les preuves ; la lecture ciblée de la SD reste rapportée par
+InkyOS. Les contrôles de média et de binding FAT passent ; les deux reçus
+partagent le même identifiant de boot privé, pour la source SD `07271cf`.
+
+| Champ du diagnostic | Valeur et portée |
+|---|---|
+| Sortie `nmcli` | `4` : échec d'activation, pas un rejet spécifique du mot de passe |
+| État de l'interface | `20`, `UNAVAILABLE` : interface indisponible |
+| Raison d'état | `2`, `NOW_MANAGED` : interface désormais prise en gestion ; ce n'est pas nécessairement la cause de l'échec |
+| Budget | Attente complète disponible, budget de travail non épuisé |
+
+L'état est échantillonné **après l'échec de l'activation et avant le nettoyage
+qui coupe la radio** : l'indisponibilité observée n'est donc pas créée par cette
+coupure. Ce n'est pas un historique des transitions. Import, garde radio et
+pays passent ; arrêt radio vérifié ensuite, aucun démarrage SSH demandé ni
+activation applicative autorisée. La disponibilité retardée est cohérente
+avec ce résultat, **sans cause exacte ni rejet PSK démontrés**.
+
+L'horloge peu fiable et le journal ext4 à récupérer, sans replay, limitent la
+fraîcheur du constat : même identifiant de boot ne prouve pas indépendamment
+le dernier démarrage et des mises à jour en attente peuvent manquer.
+Le correctif `52ddfc1` reste absent de cette SD ; aucune réussite Wi-Fi,
+validation du correctif sur matériel, SSH, BLE ou appairage n'est établie.
+InkyOS prépare la reconstruction avec ce correctif ; aucun nouveau flash
+n'est rapporté à ce relevé. L'app et le protocole Studio restent inchangés.
 
 ## Couple à conserver pour l'essai
 
