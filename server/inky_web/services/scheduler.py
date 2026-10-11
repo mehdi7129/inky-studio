@@ -23,6 +23,7 @@ from fastapi import HTTPException
 
 from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
+from inky_web.inky.errors import DisplayUnavailableError
 from inky_web.models import ChangeMode
 from inky_web.services import history, queue, settings
 from inky_web.services.photos import path_for
@@ -47,11 +48,15 @@ class Scheduler:
         logger.info("Scheduler started")
 
     async def stop(self) -> None:
-        self._stop.set()
+        self.request_stop()
         if self._task is not None:
             await self._task
             self._task = None
         logger.info("Scheduler stopped")
+
+    def request_stop(self) -> None:
+        """Stop producing work without waiting for an already admitted refresh."""
+        self._stop.set()
 
     def next_change_at(self) -> float | None:
         """Return the unix timestamp of the next scheduled change, or None for manual mode."""
@@ -91,6 +96,7 @@ class Scheduler:
 
     def _advance(self, source: str) -> None:
         with self._display.operation():
+            self._display.require_available()
             if self._display.reserved:
                 return
             # A manual refresh can complete while this worker waits for the display.
@@ -179,6 +185,7 @@ def _manual_previous(display: DisplayController, bus: EventBus) -> None:
 
 
 def _require_available(display: DisplayController) -> None:
+    display.require_available()
     if display.reserved:
         raise HTTPException(status_code=409, detail="Termine la connexion Bluetooth avant de changer de photo")
 
@@ -190,7 +197,11 @@ def _show(
     path = path_for(photo_id)
     if not path.exists():
         raise FileNotFoundError(f"Photo file missing for {photo_id}")
-    display.display_image(path, saturation=settings.get().saturation)
+    try:
+        display.display_image(path, saturation=settings.get().saturation)
+    except DisplayUnavailableError as exc:
+        bus.broadcast("display_error", exc.payload())
+        raise
     entry = history.record(
         photo_id, source=source, navigation_history_id=navigation_history_id,  # type: ignore[arg-type]
     )

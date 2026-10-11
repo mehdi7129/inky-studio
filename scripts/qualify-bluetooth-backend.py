@@ -133,6 +133,8 @@ async def qualify(args, directory):
     os.environ["INKY_STUDIO_DATA_DIR"] = str(directory)
     os.environ["INKY_STUDIO_DISABLE_AUTH"] = "0"
     os.environ["INKY_STUDIO_BLUETOOTH"] = "1"
+    os.environ["INKY_STUDIO_DISPLAY_MODE"] = "mock"
+    os.environ.pop("INKY_STUDIO_DISPLAY_PROFILE", None)
     sys.path.insert(0, str(args.server_dir.resolve()))
     import uvicorn
     from inky_web import auth, main

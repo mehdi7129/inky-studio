@@ -146,6 +146,46 @@ describe('UI stability regressions', () => {
     expect(api.fetchState).toHaveBeenCalledTimes(calls + 1)
   })
 
+  it('shows the hardware failure when the initial state is unavailable', async () => {
+    vi.mocked(api.fetchAuthStatus).mockResolvedValue({ authenticated: true, auth_required: false })
+    vi.mocked(api.fetchHealth).mockResolvedValue({ version: '1', status: 'ok' })
+    vi.mocked(api.fetchState).mockRejectedValue(new api.ApiError(503, 'L’écran du cadre est indisponible.'))
+    vi.mocked(api.fetchQueue).mockResolvedValue([])
+    render(<App />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('L’écran du cadre est indisponible.')
+    expect(screen.getByRole('heading', { name: 'Le cadre est indisponible' })).toBeInTheDocument()
+  })
+
+  it('resynchronizes after a remote display error and keeps its message even when state is readable', async () => {
+    const onEvent = await mountApp()
+    const calls = vi.mocked(api.fetchState).mock.calls.length
+    await act(async () => {
+      onEvent({ type: 'display_error', payload: { detail: 'Le cadre est occupé.', code: 'display_busy_timeout' } })
+    })
+    expect(api.fetchState).toHaveBeenCalledTimes(calls + 1)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Le cadre est occupé.')
+    await act(async () => { onEvent({ type: 'display_changed' }) })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('uses a readable display event fallback instead of stringifying an object', async () => {
+    const onEvent = await mountApp()
+    await act(async () => {
+      onEvent({ type: 'display_error', payload: { detail: { message: 'unavailable' } } })
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent('La photo n’a pas pu être affichée sur le cadre.')
+    expect(screen.queryByText(/\[object Object\]/)).not.toBeInTheDocument()
+  })
+
+  it('shows the current hardware error when state refresh also fails after a display event', async () => {
+    const onEvent = await mountApp()
+    vi.mocked(api.fetchState).mockRejectedValueOnce(new api.ApiError(503, 'L’écran est indisponible. Redémarrez le service.'))
+    await act(async () => {
+      onEvent({ type: 'display_error', payload: { detail: 'Le rafraîchissement a échoué.' } })
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent('L’écran est indisponible. Redémarrez le service.')
+  })
+
   it('refreshes an already open history tab after a remote display change', async () => {
     const onEvent = await mountApp()
     vi.mocked(api.fetchHistory).mockResolvedValueOnce([]).mockResolvedValueOnce([

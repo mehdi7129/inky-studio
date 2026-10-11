@@ -4,7 +4,8 @@
 Run: python3 ios/scripts/mock-server.py --port 8765
 Test password: test-password. Never connects to or changes a physical frame.
 Fault controls: POST /__test/availability {"available": false/true},
-POST /__test/settings-delay {"seconds": 0..5}; /__test/reset clears both.
+POST /__test/settings-delay {"seconds": 0..5}, and
+POST /__test/display-status {"state": "error"/"ready"/"mock"}; /__test/reset clears all.
 """
 from __future__ import annotations
 
@@ -94,6 +95,20 @@ class Fixture:
             self.next_history_id = 3
             self.navigation_history_id = 2
             self.display = {"model": 'Mock Inky Impression 7.3" (Spectra 6)', "width": WIDTH, "height": HEIGHT, "colors": 6, "is_mock": True}
+            self.display_state = "mock"
+
+    def display_status(self) -> dict:
+        """c31 diagnostics shape; hardware states are synthetic and never use GPIO."""
+        with self.lock:
+            is_mock = self.display_state == "mock"
+            return {
+                "mode": "mock" if is_mock else "hardware",
+                "profile": None if is_mock else "ac073-800x480",
+                "state": self.display_state,
+                "is_mock": is_mock,
+                "error": {"code": "display_unavailable", "detail": "L’écran est indisponible. Vos photos sont conservées. Vérifiez le cadre."} if self.display_state == "error" else None,
+                "driver": {}, "busy_monitor": "not_monitored", "observations": [],
+            }
 
     def close_sockets(self) -> None:
         """Drop transports without invalidating authenticated fixture sessions."""
@@ -251,6 +266,19 @@ class Handler(BaseHTTPRequestHandler):
                 FIXTURE.settings_delay = float(seconds)
             self.reply(200, {"seconds": seconds})
             return
+        if path == "/__test/display-status" and method == "POST":
+            state = body.get("state")
+            if state not in ("error", "ready", "mock"):
+                self.failure(400, "Expected display state error, ready or mock")
+                return
+            with FIXTURE.lock:
+                FIXTURE.display_state = state
+                FIXTURE.display["is_mock"] = state == "mock"
+                diagnostics = FIXTURE.display_status()
+            self.reply(200, diagnostics)
+            # Existing clients refresh on hello; errors use the real event shape.
+            FIXTURE.emit("display_error" if diagnostics["error"] else "hello", diagnostics["error"] or {})
+            return
         with FIXTURE.lock:
             if path.startswith("/api/") and not FIXTURE.available:
                 self.failure(503, "Fixture API temporarily unavailable")
@@ -306,6 +334,14 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, {"authenticated": False, "auth_required": True}, cookie='inky_session=""; Max-Age=0; Path=/; SameSite=Strict')
             FIXTURE.emit("hello", {})
             return
+        if path == "/api/display/status" and method == "GET":
+            self.reply(200, FIXTURE.display_status())
+            return
+        if path in {"/api/state", "/api/display"} and method == "GET":
+            error = FIXTURE.display_status()["error"]
+            if error:
+                self.failure(503, error["detail"])
+                return
         if path == "/api/state" and method == "GET":
             self.reply(200, FIXTURE.state())
             return
@@ -452,6 +488,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def display_action(self, previous: bool) -> None:
         with FIXTURE.lock:
+            error = FIXTURE.display_status()["error"]
+            if error:
+                self.failure(503, error["detail"])
+                return
             photo = None
             popped = None
             navigation_id = None

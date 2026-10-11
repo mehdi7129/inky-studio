@@ -8,9 +8,45 @@ import pytest
 from fastapi.testclient import TestClient
 
 from inky_web import auth
+from inky_web.inky.display import DisplayController
 from inky_web.provisioning.network import NetworkUnavailable
 from inky_web.provisioning.ownership import OwnershipError
 from inky_web.provisioning.runtime import ProvisioningRuntime
+
+
+async def test_shutdown_keeps_qr_marker_without_refresh_and_cancels_network(inky_env, monkeypatch):
+    credentials = auth._new_credentials(inky_env, "test-stop-password")
+    auth._write_credentials(credentials)
+    display = DisplayController(mode="mock")
+    runtime = ProvisioningRuntime(inky_env / "provisioning",
+                                  auth.CredentialService(credentials, auth.SessionStore()), display)
+    marker = runtime.directory / ".adoption-screen"
+    marker.touch()
+    display.reserve("bluetooth-adoption")
+    runtime.owners.open_window()
+    calls = []
+
+    async def stop_bluez():
+        calls.append("ble-stop")
+
+    def no_restore(*args):
+        pytest.fail("Shutdown must not start a new display refresh")
+
+    original_close = runtime.owners.close_window
+
+    def close_window():
+        calls.append("window-close")
+        original_close()
+
+    monkeypatch.setattr(runtime.bluez, "stop", stop_bluez)
+    monkeypatch.setattr(runtime.network, "cancel_pending_sync", lambda: calls.append("network-cancel"))
+    monkeypatch.setattr(runtime.owners, "close_window", close_window)
+    monkeypatch.setattr("inky_web.provisioning.screen.restore_if_reserved", no_restore)
+    display.begin_shutdown()
+    await runtime.stop()
+    assert calls[:3] == ["ble-stop", "network-cancel", "window-close"]
+    assert marker.is_file()
+    assert not display.reserved
 
 
 @pytest.fixture

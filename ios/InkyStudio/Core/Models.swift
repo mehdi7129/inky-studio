@@ -51,6 +51,32 @@ struct DisplayState: Codable, Equatable, Sendable {
     var nextChangeAt: Double?
 }
 
+/// Hardware health is separate from the frame's network connection and photo history.
+/// Keep state as a string so a newer server can report an unknown, non-ready state.
+struct DisplayDiagnostics: Codable, Equatable, Sendable {
+    struct Failure: Codable, Equatable, Sendable {
+        var code: String
+        var detail: String
+    }
+
+    var state: String
+    var error: Failure?
+
+    var isBusy: Bool { state == "busy" || state == "stopping" }
+    var isReady: Bool { state == "ready" || state == "mock" }
+    var allowsUpload: Bool { isReady || state == "busy" }
+    var explainsUnavailableState: Bool { state == "error" || state == "stopping" || state == "uninitialized" }
+    var message: String? {
+        switch state {
+        case "ready", "mock", "busy": return nil
+        case "stopping": return "Le cadre termine son affichage avant de s’arrêter. Patientez sans le débrancher."
+        case "error": return error?.detail ?? "L’écran est indisponible. Vos photos sont conservées. Vérifiez le cadre."
+        case "uninitialized": return "L’écran se prépare. Patientez avant de changer de photo."
+        default: return "L’état de l’écran n’a pas pu être confirmé. Actualisez avant de changer de photo."
+        }
+    }
+}
+
 struct AuthStatus: Codable, Equatable, Sendable {
     var authenticated: Bool
     var authRequired: Bool

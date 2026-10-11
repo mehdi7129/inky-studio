@@ -1,0 +1,28 @@
+name: Offline packaging
+
+on:
+  push:
+    branches: [main]
+    paths: ["scripts/package_offline.py", "scripts/offline_wheels.py", "scripts/qualify_offline_runtime.py", "scripts/tests/**", "packaging/**", "server/pyproject.toml", ".github/workflows/offline-packaging.yml"]
+  pull_request:
+    paths: ["scripts/package_offline.py", "scripts/offline_wheels.py", "scripts/qualify_offline_runtime.py", "scripts/tests/**", "packaging/**", "server/pyproject.toml", ".github/workflows/offline-packaging.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  packaging:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -r packaging/requirements-tools.txt pytest ruff
+      - name: Lint packaging tools
+        run: ruff check --config server/pyproject.toml scripts/package_offline.py scripts/offline_wheels.py scripts/qualify_offline_runtime.py scripts/tests
+      - name: Check inert packaging and legacy updater compatibility
+        run: python -m pytest -q scripts/tests
