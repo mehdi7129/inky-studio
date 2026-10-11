@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+from configparser import ConfigParser
 from pathlib import Path
 
 import pytest
@@ -196,3 +197,37 @@ def test_fresh_install_same_version_repair_and_upgrade_are_allowed(tmp_path, cur
     assert (install_dir / "scripts/inky-studio-cli").read_bytes() == LEGACY_CLI.read_bytes()
     assert not (install_dir / "scripts/inky-studio-launcher").exists()
     assert not (tmp_path / "source-fallback").exists()
+
+
+def test_emitted_service_drains_main_process_without_forced_deadline(tmp_path):
+    """Exercise the real heredoc through stdin without writing a host unit."""
+    _script(tmp_path / "bin/sudo", '''#!/usr/bin/env bash
+if [[ "$1" != tee || "$2" != /etc/systemd/system/inky-studio.service ]]; then
+    exit 90
+fi
+cat > "$TEST_UNIT_OUTPUT"
+''')
+    environment = {
+        **_environment(tmp_path, tmp_path / "app", tmp_path / "data"),
+        "TEST_UNIT_OUTPUT": str(tmp_path / "inky-studio.service"),
+    }
+    script = '''set -euo pipefail
+INSTALL_DIR="$TEST_INSTALL_DIR"
+DATA_DIR="$TEST_DATA_DIR"
+REPO_SLUG=fixture/inky
+SERVICE_NAME=inky-studio.service
+RUN_USER=fixture
+say() { :; }
+''' + _stage("# ── 11. systemd unit", "sudo systemctl daemon-reload")
+    result = subprocess.run(["bash"], input=script, cwd=tmp_path,
+                            env=environment, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    unit = ConfigParser(interpolation=None, strict=False)
+    unit.read(tmp_path / "inky-studio.service")
+    service = unit["Service"]
+    assert service["ExecStart"] == f"{tmp_path}/app/server/.venv/bin/inky-studio-server"
+    assert service["KillSignal"] == "SIGTERM"
+    assert service["KillMode"] == "mixed"
+    assert service["TimeoutStopSec"] == "infinity"
+    assert not service.getboolean("SendSIGKILL")
+    assert "ExecStop" not in service  # The main process owns drain completion.

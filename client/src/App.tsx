@@ -24,14 +24,14 @@ function App() {
   const [settingsRevision, setSettingsRevision] = useState(0)
   const requestVersion = useRef(0)
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback((displayError?: string) => {
     const version = ++requestVersion.current
     return Promise.all([fetchState(), fetchQueue()])
       .then(([s, q]) => {
         if (version !== requestVersion.current) return
         setState(s)
         setQueue(q)
-        setError(null)
+        setError(displayError ?? null)
       })
       .catch((err: Error) => {
         if (version !== requestVersion.current) return
@@ -85,6 +85,15 @@ function App() {
         if (event.type === 'auth_required') {
           ++requestVersion.current
           setBootStatus('login-required')
+          return
+        }
+        if (event.type === 'display_error') {
+          const detail = event.payload?.detail
+          const message = typeof detail === 'string' && detail.trim()
+            ? detail.trim()
+            : "La photo n’a pas pu être affichée sur le cadre."
+          setError(message)
+          refresh(message)
           return
         }
         if (event.type === 'hello' || event.type === 'settings_changed') {
