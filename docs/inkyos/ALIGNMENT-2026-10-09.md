@@ -5,7 +5,8 @@ le banc LAN possible aujourd'hui de la cible de premier allumage sans LAN.
 Il ne donne pas à l'image le statut de release qualifiée.
 Dernier complément : **11 octobre**, échec d'activation Wi-Fi observé dans les
 anciens reçus ; nouvelle SD au diagnostic enrichi et capsule vérifiées,
-prochain essai réseau en attente.
+qualification réseau en attente. Un correctif de synchronisation radio est
+testé séparément, sans déploiement sur cette SD.
 
 ## Complément du 10 octobre — retour SD et installation iPhone
 
@@ -220,6 +221,35 @@ affichage ou appairage iPhone qualifié. InkyOS pilote le prochain démarrage
 et la collecte du diagnostic, avant toute reprise du banc applicatif. Le lecteur
 hors ligne doit rester épinglé au média de retour et valider le nouveau champ
 `connection.activation` du runtime correspondant.
+
+### Attente de disponibilité radio — validation logicielle uniquement
+
+InkyOS a publié les [tests de readiness](https://github.com/mehdi7129/inkyOS/blob/52ddfc1a2040888f3d77196819029a74d234205b/docs/validation/2026-10-11-radio-readiness-tests.json)
+au commit `52ddfc1a2040888f3d77196819029a74d234205b`, dont la
+[CI passe](https://github.com/mehdi7129/inkyOS/actions/runs/38097341268).
+Studio a relu les preuves ; les tests et la reproduction sur fixtures inertes
+sont rapportés par InkyOS, sans association Wi-Fi réelle ou hwsim.
+
+Le banc reproduit une disponibilité NetworkManager retardée après l'acquittement
+de la commande radio. Le correctif attend `wlan0` managed, état 30 (disconnected)
+et UUID actif vide, pendant **10 secondes au maximum**. Le budget global de
+90 secondes préserve 37 secondes pour l'unique activation, 9 pour les contrôles
+suivants et 6 pour le nettoyage. État invalide, délai dépassé ou budget
+insuffisant empêchent l'activation ; le nettoyage reste prévu. Aucun nouvel
+essai d'activation n'est ajouté.
+
+**Schéma inchangé, sens renforcé pour les nouveaux reçus uniquement** :
+`radio_enable_acknowledged` exige maintenant l'acquittement et la disponibilité.
+Les reçus de la SD `07271cf` gardent leur sens antérieur ; une valeur à `true`
+ne doit pas être réinterprétée comme une preuve de readiness sur cette SD.
+
+**39 tests ciblés et 1 047 tests par plateforme**, zéro échec/erreur, 4 ignorés
+macOS et 1 Linux ARM64 ; syntaxe de 23 scripts validée et revue indépendante
+rapportée. Cette reproduction ne démontre pas la cause du boot réel.
+**Aucune nouvelle image construite ni SD modifiée pour ce correctif.** La carte
+reste sur `07271cf`, backend `c31b13a` ; la lecture de son nouveau diagnostic
+reste l'étape suivante avant de décider d'une autre image. Aucun parcours
+Wi-Fi/SSH, application, écran ou BLE n'est qualifié par ces tests logiciels.
 
 ## Couple à conserver pour l'essai
 
