@@ -16,6 +16,7 @@ the checkpoint is removed. Hardware behavior still requires isolated Pi tests.
 API references (consulted 2026-09-27):
 https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.html
 https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.Settings.Connection.html
+https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.Device.Wireless.html
 """
 from __future__ import annotations
 
@@ -30,10 +31,14 @@ import math
 import os
 import re
 import secrets
+import signal
 import socketserver
 import stat
+import sys
 import tempfile
 import time
+import types
+from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -51,6 +56,132 @@ PERMISSIONS = tuple(f"{NM}.{name}" for name in ("wifi.scan", "network-control", 
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 CHECKPOINT_PATH = re.compile(r"/org/freedesktop/NetworkManager/Checkpoint/[0-9]+\Z")
 DEVICE_PATH = re.compile(r"/org/freedesktop/NetworkManager/Devices/[0-9]+\Z")
+SOCKET_PATH = Path("/run/inky-network/control.sock")
+STATE_DIR = Path("/var/lib/inky-network")
+REQUIRED_ENV = "INKY_STUDIO_FACTORY_REQUIRED"
+WRITER_ENV_NAMES = (
+    "INKYOS_WRITER_LEASE_FD",
+    "INKYOS_WRITER_ROLE",
+    "INKYOS_WRITER_CONTEXT_SHA256",
+)
+RUNTIME_PATH = Path("/usr/lib/inkyos/factory-runtime-contract.py")
+MANIFEST_PATH = Path("/etc/inkyos/factory-runtime-v1.json")
+FACTORY_SIGNAL_PATHS = (
+    Path("/etc/inky-studio/factory-v1.json"),
+    MANIFEST_PATH,
+    Path("/run/inkyos-factory/context.json"),
+    Path("/run/inkyos-factory"),
+)
+
+
+class FactoryWriterRefused(Exception):
+    """Fixed public diagnostic for failed installed factory admission."""
+
+    def __init__(self):
+        super().__init__("factory_runtime_refused")
+
+
+def _require(value):
+    if not value:
+        raise FactoryWriterRefused()
+
+
+def factory_signals_present():
+    """Read-only detection; partial/unreadable policy must never select legacy."""
+    if REQUIRED_ENV in os.environ or any(name.startswith("INKYOS_WRITER_") for name in os.environ):
+        return True
+    for path in FACTORY_SIGNAL_PATHS:
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return True
+        return True
+    return False
+
+
+def _stamp(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _read_protected(path, mode, limit):
+    """Read fixed OS policy through protected FDs before executing its Python."""
+    _require(path.is_absolute() and ".." not in path.parts)
+    _require(callable(getattr(os, "listxattr", None)))
+    parent = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in (None, *path.parts[1:-1]):
+            if part is not None:
+                child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                os.close(parent)
+                parent = child
+            info = os.fstat(parent)
+            _require(stat.S_ISDIR(info.st_mode) and (info.st_uid, info.st_gid) == (0, 0)
+                     and not stat.S_IMODE(info.st_mode) & 0o7022 and not os.listxattr(parent))
+        before = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+        _require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                 and (before.st_uid, before.st_gid) == (0, 0)
+                 and stat.S_IMODE(before.st_mode) == mode and 0 < before.st_size <= limit)
+        descriptor = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            _require(_stamp(os.fstat(descriptor)) == _stamp(before) and not os.listxattr(descriptor))
+            chunks, remaining = [], limit + 1
+            while remaining:
+                chunk = os.read(descriptor, min(65536, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+            _require(len(raw) == before.st_size and _stamp(before) == _stamp(os.fstat(descriptor))
+                     == _stamp(os.stat(path.name, dir_fd=parent, follow_symlinks=False)))
+            return raw
+        finally:
+            os.close(descriptor)
+    finally:
+        os.close(parent)
+
+
+def installed_factory_runtime():
+    # The helper runs with system Python and cannot import the application.
+    # Context, role and inherited-FD checks belong only to this pinned OS API.
+    manifest = json.loads(_read_protected(MANIFEST_PATH, 0o644, 16384),
+                          object_pairs_hook=unique_object,
+                          parse_constant=lambda _: (_ for _ in ()).throw(FactoryWriterRefused()))
+    _require(type(manifest) is dict and type(manifest.get("os_module_pins")) is dict)
+    expected = manifest["os_module_pins"].get(RUNTIME_PATH.name)
+    _require(type(expected) is str and HEX64.fullmatch(expected) is not None)
+    raw = _read_protected(RUNTIME_PATH, 0o555, 1024 * 1024)
+    _require(hashlib.sha256(raw).hexdigest() == expected)
+    module = types.ModuleType("inkyos_factory_runtime_contract")
+    module.__file__ = str(RUNTIME_PATH)
+    exec(compile(raw, module.__file__, "exec"), module.__dict__)  # noqa: S102 — pinned root-owned bytes
+    _require(callable(getattr(module, "writer_guard", None)))
+    return module
+
+
+class StopRequested:
+    requested = False
+
+    def request(self, _signum, _frame):
+        # Raising here could unwind a live synchronous NM mutation and release
+        # SH before its real effects finish. Repeated signals only set this flag.
+        self.requested = True
+
+
+@contextmanager
+def factory_signals():
+    stop = StopRequested()
+    previous = {}
+    try:
+        for number in (signal.SIGTERM, signal.SIGINT):
+            previous[number] = signal.signal(number, stop.request)
+        yield stop
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
 
 
 class HelperError(Exception):
@@ -250,6 +381,8 @@ class NetworkManagerAdapter:
     """Only this adapter imports dbus. Tests inject a side-effect-free fake."""
 
     def __init__(self):
+        self.factory_mode = False
+        self._factory_scan = None
         import dbus
 
         self.dbus = dbus
@@ -259,6 +392,11 @@ class NetworkManagerAdapter:
         properties = self.properties(self.device, NM + ".Device")
         if int(properties["DeviceType"]) != 2 or not bool(properties["Managed"]):
             raise HelperError("not_ready")
+
+    def close(self):
+        bus = getattr(self, "bus", None)
+        if bus is not None:
+            bus.close()
 
     def interface(self, path, name):
         return self.dbus.Interface(self.bus.get_object(NM, path), name)
@@ -297,6 +435,11 @@ class NetworkManagerAdapter:
 
     def scan(self):
         wireless = self.interface(self.device, NM + ".Device.Wireless")
+        if getattr(self, "factory_mode", False):
+            # RequestScan returns before the scan completes. LastScan is the
+            # documented completion observation; retain even an uncertain call.
+            baseline = int(self.properties(self.device, NM + ".Device.Wireless")["LastScan"])
+            self._factory_scan = (self.instance(), baseline)
         try:
             wireless.RequestScan(self.dbus.Dictionary({}, signature="sv"), timeout=3)
         except self.dbus.DBusException:
@@ -403,7 +546,44 @@ class NetworkManagerAdapter:
     def restore_previous(self, previous_uuid):
         profile = self._profile(previous_uuid)
         if profile is not None:
-            self.manager.ActivateConnection(self.dbus.ObjectPath(profile[0]), self.dbus.ObjectPath(self.device), self.dbus.ObjectPath("/"), timeout=3)
+            return str(self.manager.ActivateConnection(self.dbus.ObjectPath(profile[0]), self.dbus.ObjectPath(self.device), self.dbus.ObjectPath("/"), timeout=3))
+        return None
+
+    def factory_settled(self, cleanup, committed):
+        """Observe NM completion only; this is no physical radio qualification."""
+        if self._factory_scan is not None:
+            instance, baseline = self._factory_scan
+            if (self.instance() != instance
+                    or int(self.properties(self.device, NM + ".Device.Wireless")["LastScan"]) <= baseline):
+                return False
+        if cleanup is not None and self._profile(cleanup["profile_uuid"], cleanup["id"]) is not None:
+            return False
+        for row in (cleanup, committed[0] if committed is not None else None):
+            if row is not None and row["instance"] == self.instance() and row["checkpoint"] is not None:
+                checkpoints = self.properties(ROOT, NM)["Checkpoints"]
+                if row["checkpoint"] in map(str, checkpoints):
+                    return False
+        device = self.properties(self.device, NM + ".Device")
+        if not bool(device["Managed"]):
+            return False
+        state, active_path = int(device["State"]), str(device["ActiveConnection"])
+        if state == 30 and active_path == "/":
+            return committed is None and (cleanup is None or cleanup["previous_uuid"] is None)
+        if state != 100 or active_path == "/":
+            return False
+        active = self.properties(active_path, NM + ".Connection.Active")
+        if int(active["State"]) != 2:
+            return False
+        current = canonical_uuid(str(active["Uuid"]))
+        if committed is not None:
+            row, expected_path = committed
+            return current == row["profile_uuid"] and (expected_path is None or active_path == expected_path)
+        if cleanup is None:
+            return True
+        if current != cleanup["previous_uuid"]:
+            return False
+        return (not cleanup.get("_restore_required", False)
+                or cleanup.get("_restore_path") == active_path)
 
 
 class Provisioner:
@@ -414,6 +594,8 @@ class Provisioner:
         self.deadline = None
         self._password = None
         self._detached_activation = None
+        self._factory_cleanup = None
+        self._factory_committed = None
         permissions = adapter.permissions()
         if any(permissions.get(action) != "yes" for action in PERMISSIONS):
             raise HelperError("permission_denied")
@@ -451,6 +633,15 @@ class Provisioner:
                 and row["checkpoint"] is not None and self.adapter.checkpoint_exists(row["checkpoint"]))
 
     def _rollback(self, row, state):
+        # Retain the original checkpoint before journal finalization. NM profile
+        # deletion/reactivation can still be asynchronous after the final write.
+        previous_cleanup = self._factory_cleanup
+        self._factory_cleanup = row.copy()
+        if previous_cleanup is not None and previous_cleanup["id"] == row["id"]:
+            for name in ("_restore_required", "_restore_path"):
+                if name in previous_cleanup:
+                    self._factory_cleanup[name] = previous_cleanup[name]
+        self._factory_committed = None
         row = self._put(row, phase="rolling_back", state=state, addresses=[])
         try:
             # Never apply a previous-boot checkpoint path to a new NM instance.
@@ -459,7 +650,11 @@ class Provisioner:
             self.adapter.delete_profile(row)
             current = self.adapter.snapshot()["uuid"]
             if row["previous_uuid"] is not None and current in (None, row["profile_uuid"]):
-                self.adapter.restore_previous(row["previous_uuid"])
+                self._factory_cleanup["_restore_required"] = True
+                self._factory_cleanup["_restore_path"] = None
+                restored = self.adapter.restore_previous(row["previous_uuid"])
+                if isinstance(restored, str) and restored != "/":
+                    self._factory_cleanup["_restore_path"] = restored
             if self._same_checkpoint(row):
                 self.adapter.checkpoint_destroy(row["checkpoint"])
         except Exception:  # noqa: BLE001 — adapter errors may contain secrets
@@ -496,6 +691,7 @@ class Provisioner:
                 if self.monotonic() >= self.deadline or not self._same_checkpoint(row):
                     self._rollback(row, "rolled_back")
                     return
+                self._factory_committed = (row.copy(), self._detached_activation)
                 self.adapter.checkpoint_destroy(row["checkpoint"])
                 self._put(row, phase="committed", state="committed", checkpoint=None)
                 self._password = None
@@ -596,12 +792,54 @@ class Provisioner:
             return self._result(self.journal.get(row["id"]))
         raise HelperError("invalid_request")
 
+    def drain_factory(self):
+        """Cancel unfinished work and retain SH while NM remains uncertain.
+
+        A timeout or D-Bus return cannot prove that NM stopped its asynchronous
+        effects. No new requests are admitted during this retry loop, and there
+        is deliberately no deadline that releases the writer lease on failure.
+        """
+        while True:
+            try:
+                # Re-read durable state after an uncertain atomic write. A
+                # durable committed profile must never be cancelled on shutdown.
+                self.journal = Journal(self.journal.directory)
+                row = self.journal.active()
+                if row is not None:
+                    self._rollback(row, "rolled_back")
+                self.journal = Journal(self.journal.directory)
+                if self.journal.active() is None:
+                    cleanup, committed = self._factory_cleanup, self._factory_committed
+                    if cleanup is not None:
+                        durable = self.journal.get(cleanup["id"])
+                        if durable is None:
+                            raise HelperError("not_ready")
+                        if durable["phase"] == "committed":
+                            committed = (durable | {"checkpoint": cleanup["checkpoint"]}, None)
+                            cleanup = None
+                    if committed is not None:
+                        durable = self.journal.get(committed[0]["id"])
+                        if durable is None or durable["phase"] != "committed":
+                            raise HelperError("not_ready")
+                    if (cleanup is not None and cleanup.get("_restore_required", False)
+                            and cleanup.get("_restore_path") is None):
+                        restored = self.adapter.restore_previous(cleanup["previous_uuid"])
+                        if isinstance(restored, str) and restored != "/":
+                            cleanup["_restore_path"] = restored
+                    if self.adapter.factory_settled(cleanup, committed):
+                        return
+            except Exception:  # noqa: BLE001, S110 — uncertainty retains SH
+                pass
+            time.sleep(0.25)
+
 
 class Handler(socketserver.StreamRequestHandler):
     def handle(self):
         self.request.settimeout(2)
         try:
             request = parse_request(self.rfile.readline(REQUEST_LIMIT + 2))
+            if self.server.factory_stop is not None and self.server.factory_stop.requested:
+                return
             result = {"ok": True, "result": self.server.provisioner.handle(request)}
         except HelperError as error:
             result = {"ok": False, "error": error.code}
@@ -621,7 +859,20 @@ class Server(socketserver.UnixStreamServer):
 
     def __init__(self, path, provisioner):
         self.provisioner = provisioner
+        self.factory_stop = None
         super().__init__(str(path), Handler)
+
+    def verify_request(self, request, client_address):
+        return self.factory_stop is None or not self.factory_stop.requested
+
+    def serve_factory(self, stop, poll_interval=1):
+        """Stop admitting calls; drain the current synchronous call under SH."""
+        self.factory_stop = stop
+        self.timeout = poll_interval
+        while not stop.requested:
+            self.handle_request()
+            if not stop.requested:
+                self.service_actions()
 
     def service_actions(self):
         try:
@@ -635,22 +886,47 @@ class Server(socketserver.UnixStreamServer):
         pass
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--socket", default="/run/inky-network/control.sock")
-    parser.add_argument("--state-dir", default="/var/lib/inky-network")
-    args = parser.parse_args()
-    socket_path, state_dir = Path(args.socket), Path(args.state_dir)
+def run_helper(socket_path, state_dir, stop=None):
+    def stopping():
+        return stop is not None and stop.requested
+
+    if stopping():
+        return 0
     os.umask(0o077)
     lock = None
+    lock_owned = False
+    adapter = None
+    provisioner = None
     try:
         # The root-owned unit provides this directory with the socket's group.
         if not socket_path.parent.is_dir() or socket_path.parent.is_symlink():
             raise HelperError("not_ready")
         lock = os.open(socket_path.parent / ".helper.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_owned = True
+        if stopping():
+            return 0
         journal = Journal(state_dir)
-        provisioner = Provisioner(NetworkManagerAdapter(), journal)
+        if stopping():
+            return 0
+        if stop is None:
+            adapter = NetworkManagerAdapter()
+        else:
+            # Preserve a private bus even if its read-only startup probes fail.
+            adapter = NetworkManagerAdapter.__new__(NetworkManagerAdapter)
+            adapter.__init__()
+        if stopping():
+            return 0
+        if stop is None:
+            provisioner = Provisioner(adapter, journal)
+        else:
+            adapter.factory_mode = True
+            # Startup recovery can start a rollback and then raise. Retain the
+            # partial object so its admitted NM effects are still drained.
+            provisioner = Provisioner.__new__(Provisioner)
+            provisioner.__init__(adapter, journal)
+        if stopping():
+            return 0
         if socket_path.exists() or socket_path.is_symlink():
             if not stat.S_ISSOCK(socket_path.lstat().st_mode):
                 raise HelperError("not_ready")
@@ -658,7 +934,10 @@ def main():
         with Server(socket_path, provisioner) as server:
             os.chown(socket_path, -1, grp.getgrnam("inky-provisioning").gr_gid)
             socket_path.chmod(0o660)
-            server.serve_forever(poll_interval=1)
+            if stop is None:
+                server.serve_forever(poll_interval=1)
+            else:
+                server.serve_factory(stop)
     except KeyboardInterrupt:
         return 0
     except Exception:  # noqa: BLE001 — fixed startup diagnostic without secrets
@@ -666,9 +945,68 @@ def main():
         print("Inky network helper unavailable; check permissions and private state.", flush=True)
         return 1
     finally:
-        if lock is not None:
-            os.close(lock)
+        try:
+            if stop is not None and lock_owned:
+                drain_factory_shutdown(state_dir, adapter, provisioner)
+        finally:
+            if lock is not None:
+                os.close(lock)
     return 0
+
+
+def drain_factory_shutdown(state_dir, adapter, provisioner):
+    """Retry uncertain startup recovery without releasing either writer lock."""
+    while True:
+        try:
+            if provisioner is not None and hasattr(provisioner, "instance"):
+                provisioner.drain_factory()
+                adapter.close()
+                return
+            # A failed constructor did not issue NM mutations, but durable work
+            # from an earlier helper may still need rollback. Corrupt/unreadable
+            # state cannot establish absence and therefore retains SH as well.
+            journal = Journal(state_dir)
+            if journal.active() is None:
+                if adapter is not None:
+                    adapter.close()
+                return
+            if adapter is not None:
+                adapter.close()
+            adapter = NetworkManagerAdapter.__new__(NetworkManagerAdapter)
+            adapter.__init__()
+            adapter.factory_mode = True
+            provisioner = Provisioner.__new__(Provisioner)
+            provisioner.__init__(adapter, journal)
+        except Exception:  # noqa: BLE001, S110 — uncertainty retains SH
+            pass
+        time.sleep(0.25)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--socket", default=str(SOCKET_PATH))
+    parser.add_argument("--state-dir", default=str(STATE_DIR))
+    args = parser.parse_args()
+    socket_path, state_dir = Path(args.socket), Path(args.state_dir)
+    if not factory_signals_present():
+        return run_helper(socket_path, state_dir)
+    try:
+        _require(os.environ.get(REQUIRED_ENV) == "1")
+        _require(not any(name.startswith("INKYOS_WRITER_") and name not in WRITER_ENV_NAMES
+                         for name in os.environ))
+        _require(socket_path == SOCKET_PATH and state_dir == STATE_DIR)
+        with factory_signals() as stop:
+            runtime = installed_factory_runtime()
+            # The OS API acquires its own SH before context/role validation and
+            # strictly validates any inherited triplet. It owns lease cleanup.
+            with runtime.writer_guard("helper") as lease:
+                lease.check()
+                # Socket admission, NM completion observations, private bus and
+                # .helper.lock all finish before the OS lease leaves this scope.
+                return run_helper(socket_path, state_dir, stop)
+    except Exception:  # noqa: BLE001 — OS/bootstrap diagnostics are fixed
+        print("Inky network helper factory runtime refused.", file=sys.stderr, flush=True)
+        return 78
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 import tarfile
 import tempfile
 import time
@@ -33,6 +34,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from inky_web import __version__
+from inky_web.db import resolve_data_dir
+from inky_web.provisioning import factory_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -282,6 +285,11 @@ async def perform_update(emit: EmitFn, *, install_dir: Path | None = None) -> bo
     Returns True if the restart was triggered (the process will be killed
     shortly after), False on failure. Progress flows through ``emit``.
     """
+    try:
+        factory_runtime.guard_legacy_command(resolve_data_dir())
+    except factory_runtime.FactoryRuntimeError as error:
+        _emit(emit, "error", error.code)
+        return False
     install_dir = install_dir or INSTALL_DIR
     lock = (install_dir / ".inky-update.lock").open("a")
     try:
@@ -390,6 +398,12 @@ def bus_emitter(bus: Any) -> EmitFn:
 
 # ── CLI entry point: `python -m inky_web.services.updater` (used by `inky-studio update`)
 def main() -> int:
+    try:
+        factory_runtime.guard_legacy_command(resolve_data_dir())
+    except factory_runtime.FactoryRuntimeError as error:
+        print(error.code, file=sys.stderr)
+        return error.exit_status
+
     def emit(stage: str, message: str = "", **extra: Any) -> None:
         version = extra.get("version")
         prefix = f"[{stage}]"

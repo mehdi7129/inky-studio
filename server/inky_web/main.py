@@ -6,7 +6,6 @@ import logging
 import os
 import signal
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
@@ -21,15 +20,17 @@ from inky_web import __version__, auth
 from inky_web.api import router as api_router
 from inky_web.db import data_dir, init_db, resolve_data_dir
 from inky_web.events import EventBus
+from inky_web.frontend import resolve_client_dist
 from inky_web.inky.display import DisplayController
 from inky_web.inky.errors import DisplayUnavailableError
 from inky_web.provisioning.api import CONFIRM_PATH
 from inky_web.provisioning.api import router as provisioning_router
+from inky_web.provisioning.factory_writer import FactoryWriterRefused, main_writer_guard
 from inky_web.services.scheduler import Scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
-CLIENT_DIST = Path(__file__).resolve().parents[2] / "client" / "dist"
+CLIENT_DIST = resolve_client_dist(__file__)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -63,6 +64,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 async def _select_startup_runtime() -> None:
+    """Obtain OS admission before the selector or its admitted factory worker."""
+    with main_writer_guard():
+        await _select_startup_runtime_admitted()
+
+
+async def _select_startup_runtime_admitted() -> None:
     """Return only for legacy startup; factory preparation never enables it."""
     from inky_web.provisioning.factory_runtime import (
         FactoryRuntimeError,
@@ -104,8 +111,16 @@ async def _select_startup_runtime() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
                    _legacy_selected: bool = False):
-    if not _legacy_selected:
+    with main_writer_guard():
+        # Retain the old keyword for callers, but never treat a boolean as
+        # authority to skip selection, including when only durable traces remain.
         await _select_startup_runtime()
+        async with _legacy_lifespan(app, stop_requested):
+            yield
+
+
+@asynccontextmanager
+async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None):
     init_db()
     app.state.sessions = auth.SessionStore()
     app.state.auth_service = auth.CredentialService(
@@ -243,7 +258,7 @@ def run() -> None:
 
     try:
         asyncio.run(serve(with_https=os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled()))
-    except FactoryRuntimeError as exc:
+    except (FactoryRuntimeError, FactoryWriterRefused) as exc:
         logging.getLogger(__name__).error("Frame startup stopped: %s", exc.code)
         raise SystemExit(exc.exit_status) from None
 
@@ -254,6 +269,12 @@ async def serve_with_https() -> None:
 
 
 async def serve(*, with_https: bool = False) -> None:
+    """Own factory admission until all startup workers and listeners drain."""
+    with main_writer_guard():
+        await _serve_admitted(with_https=with_https)
+
+
+async def _serve_admitted(*, with_https: bool = False) -> None:
     """One hardware owner and drain policy for both HTTP and HTTP+HTTPS."""
     from contextlib import contextmanager
 
@@ -311,7 +332,9 @@ async def serve(*, with_https: bool = False) -> None:
         if with_https:
             app.state.frame_identity = await asyncio.to_thread(load_or_create_identity, data_dir() / "provisioning")
             cert, key = await asyncio.to_thread(app.state.frame_identity.materialize_tls_files)
-        async with lifespan(app, stop_requested, _legacy_selected=True):
+        # This core is reached only after the selector above and under serve's
+        # writer guard. Direct ASGI lifespan calls always perform their own check.
+        async with _legacy_lifespan(app, stop_requested):
             if stop_requested.is_set():
                 return
             # Never cancel an admitted physical operation on a wall-clock timeout.

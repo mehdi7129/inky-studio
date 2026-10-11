@@ -274,9 +274,21 @@ def initialize_factory(config: FactoryRuntimeConfig) -> NoReturn:
 
 
 def guard_legacy_command(data_directory: Path) -> None:
-    """Refuse factory password/reset/welcome commands without calling IPC."""
-    if select_runtime(data_directory) is not None:
-        raise FactoryRuntimeError()
+    """Refuse every legacy maintenance command without importing OS authority.
+
+    Any installed factory signal is enough, even a partial/empty writer handoff.
+    Maintenance cannot reuse the main writer's lease or repair factory state.
+    The existing selection also inspects durable traces when signals vanished.
+    """
+    try:
+        from .factory_environment import factory_signals_present
+
+        if factory_signals_present() or select_runtime(data_directory) is not None:
+            raise FactoryRuntimeError()
+    except FactoryRuntimeError:
+        raise
+    except Exception:
+        raise FactoryRuntimeError() from None
 
 
 def _check_legacy_main() -> int:
