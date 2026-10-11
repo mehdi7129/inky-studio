@@ -7,7 +7,7 @@ from dbus_fast.aio import MessageBus
 from dbus_fast.constants import BusType, PropertyAccess
 from dbus_fast.service import ServiceInterface, dbus_method, dbus_property
 
-from .transport import CERTIFICATE_UUIDS, IDENTITY_UUID, SERVICE_UUID, STREAM_UUID, TransportError
+from .transport import BOOTSTRAP_PROFILE, NORMAL_PROFILE, TransportError
 
 ROOT = "/org/inky/provisioning"
 SERVICE = ROOT + "/service"
@@ -15,12 +15,13 @@ ADAPTER = "/org/bluez/hci0"
 
 
 class Service(ServiceInterface):
-    def __init__(self):
+    def __init__(self, profile=NORMAL_PROFILE):
         super().__init__("org.bluez.GattService1")
+        self.profile = profile
 
     @dbus_property(access=PropertyAccess.READ)
     def UUID(self) -> "s":  # noqa: F821
-        return SERVICE_UUID
+        return self.profile.service
 
     @dbus_property(access=PropertyAccess.READ)
     def Primary(self) -> "b":  # noqa: F821
@@ -28,17 +29,21 @@ class Service(ServiceInterface):
 
 
 class Characteristic(ServiceInterface):
-    def __init__(self, uuid, transport, identity):
+    def __init__(self, uuid, transport, identity, profile=NORMAL_PROFILE):
         super().__init__("org.bluez.GattCharacteristic1")
         self.uuid, self.transport = uuid, transport
+        self.profile = profile
         if not 1 <= len(identity.cert_der) <= 960:
             raise ValueError("Certificate exceeds GATT identity representation")
-        self.identity_value = json.dumps({
+        metadata = {
             "v": 1, "id": identity.frame_id,
             "cert_length": len(identity.cert_der),
-        }, separators=(",", ":")).encode()
-        if uuid in CERTIFICATE_UUIDS:
-            index = CERTIFICATE_UUIDS.index(uuid)
+        }
+        if profile == BOOTSTRAP_PROFILE:
+            metadata.update(v=2, p="bootstrap")
+        self.identity_value = json.dumps(metadata, separators=(",", ":")).encode()
+        if uuid in profile.certificates:
+            index = profile.certificates.index(uuid)
             self.identity_value = identity.cert_der[index * 480:(index + 1) * 480]
 
     @dbus_property(access=PropertyAccess.READ)
@@ -47,17 +52,17 @@ class Characteristic(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def Service(self) -> "o":  # noqa: F821
-        return SERVICE
+        return self.profile.root + "/service"
 
     @dbus_property(access=PropertyAccess.READ)
     def Flags(self) -> "as":  # noqa: F722
-        return ["read", "write"] if self.uuid == STREAM_UUID else ["read"]
+        return ["read", "write"] if self.uuid == self.profile.stream else ["read"]
 
     @dbus_method()
     def ReadValue(self, options: "a{sv}") -> "ay":  # noqa: F722,F821
         values = {key: item.value for key, item in options.items()}
         offset = values.get("offset", 0)
-        if self.uuid != STREAM_UUID:
+        if self.uuid != self.profile.stream:
             if not 0 <= offset <= len(self.identity_value):
                 raise DBusError("org.bluez.Error.InvalidOffset", "Offset invalide")
             return self.identity_value[offset:]
@@ -69,7 +74,7 @@ class Characteristic(ServiceInterface):
     @dbus_method()
     def WriteValue(self, value: "ay", options: "a{sv}"):  # noqa: F722,F821
         values = {key: item.value for key, item in options.items()}
-        if (self.uuid != STREAM_UUID or values.get("offset", 0) != 0
+        if (self.uuid != self.profile.stream or values.get("offset", 0) != 0
                 or values.get("type", "request") != "request"
                 or values.get("prepare-authorize", False)):
             raise DBusError("org.bluez.Error.NotPermitted", "Écriture non autorisée")
@@ -80,8 +85,9 @@ class Characteristic(ServiceInterface):
 
 
 class Advertisement(ServiceInterface):
-    def __init__(self):
+    def __init__(self, profile=NORMAL_PROFILE):
         super().__init__("org.bluez.LEAdvertisement1")
+        self.profile = profile
 
     @dbus_property(access=PropertyAccess.READ)
     def Type(self) -> "s":  # noqa: F821
@@ -89,7 +95,7 @@ class Advertisement(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def ServiceUUIDs(self) -> "as":  # noqa: F722
-        return [SERVICE_UUID]
+        return [self.profile.service]
 
     @dbus_property(access=PropertyAccess.READ)
     def LocalName(self) -> "s":  # noqa: F821
@@ -105,8 +111,13 @@ class Advertisement(ServiceInterface):
 
 
 class BlueZServer:
-    def __init__(self, transport, identity):
+    def __init__(self, transport, identity, *, profile=NORMAL_PROFILE):
+        if profile not in (NORMAL_PROFILE, BOOTSTRAP_PROFILE) or transport.profile != profile:
+            raise ValueError("GATT registration profile mismatch")
         self.transport, self.identity = transport, identity
+        self.profile = profile
+        self.root = profile.root
+        self.service = self.root + "/service"
         self.bus = None
         self.registered = False
         self.advertising = False
@@ -126,12 +137,12 @@ class BlueZServer:
         self.bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
         try:
             # MessageBus exports ObjectManager automatically for descendants.
-            self.bus.export(SERVICE, Service())
-            self.bus.export(SERVICE + "/identity", Characteristic(IDENTITY_UUID, self.transport, self.identity))
-            self.bus.export(SERVICE + "/stream", Characteristic(STREAM_UUID, self.transport, self.identity))
-            for index, uuid in enumerate(CERTIFICATE_UUIDS):
-                self.bus.export(SERVICE + f"/certificate{index}", Characteristic(uuid, self.transport, self.identity))
-            self.bus.export(ROOT + "/advertisement", Advertisement())
+            self.bus.export(self.service, Service(self.profile))
+            self.bus.export(self.service + "/identity", Characteristic(self.profile.identity, self.transport, self.identity, self.profile))
+            self.bus.export(self.service + "/stream", Characteristic(self.profile.stream, self.transport, self.identity, self.profile))
+            for index, uuid in enumerate(self.profile.certificates):
+                self.bus.export(self.service + f"/certificate{index}", Characteristic(uuid, self.transport, self.identity, self.profile))
+            self.bus.export(self.root + "/advertisement", Advertisement(self.profile))
             self.bus.add_message_handler(self._signal)
             match = "type='signal',sender='org.bluez',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged'"
             result = await self.bus.call(Message(
@@ -143,9 +154,9 @@ class BlueZServer:
                 raise RuntimeError(result.error_name)
             # Radio enablement belongs to explicit installation, never a silent
             # networking side effect while importing or testing this module.
-            await self._call("org.bluez.GattManager1", "RegisterApplication", "oa{sv}", [ROOT, {}])
+            await self._call("org.bluez.GattManager1", "RegisterApplication", "oa{sv}", [self.root, {}])
             self.registered = True
-            await self._call("org.bluez.LEAdvertisingManager1", "RegisterAdvertisement", "oa{sv}", [ROOT + "/advertisement", {}])
+            await self._call("org.bluez.LEAdvertisingManager1", "RegisterAdvertisement", "oa{sv}", [self.root + "/advertisement", {}])
             self.advertising = True
             self._task = asyncio.create_task(self._expire())
         except BaseException:
@@ -175,9 +186,9 @@ class BlueZServer:
         if self.bus:
             try:
                 if self.advertising:
-                    await self._call("org.bluez.LEAdvertisingManager1", "UnregisterAdvertisement", "o", [ROOT + "/advertisement"])
+                    await self._call("org.bluez.LEAdvertisingManager1", "UnregisterAdvertisement", "o", [self.root + "/advertisement"])
                 if self.registered:
-                    await self._call("org.bluez.GattManager1", "UnregisterApplication", "o", [ROOT])
+                    await self._call("org.bluez.GattManager1", "UnregisterApplication", "o", [self.root])
             finally:
                 self.bus.disconnect()
                 self.bus = None

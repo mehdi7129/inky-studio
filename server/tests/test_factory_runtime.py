@@ -355,6 +355,29 @@ def test_success_is_pending_and_relaunch_reuses_intent_identity_and_credentials(
         assert connection.execute("SELECT COUNT(*) FROM window").fetchone() == (0,)
 
 
+def test_prepare_returns_durable_result_without_activating_factory_or_legacy(configured):
+    from inky_web.provisioning.first_boot import FirstBootResult
+
+    config = guard.select_runtime(configured.data)
+    assert config is not None
+    prepared = guard.prepare_factory(config)
+    assert isinstance(prepared, FirstBootResult)
+    directory = configured.data / "provisioning"
+    identity_before = (directory / PREPARED_IDENTITY_FILENAME).read_bytes()
+    prepared.ownership.close()
+    relaunched = guard.prepare_factory(config)
+    assert relaunched.prepared_identity == prepared.prepared_identity
+    assert (directory / PREPARED_IDENTITY_FILENAME).read_bytes() == identity_before
+    assert not (directory / "identity.json").exists()
+    assert not (directory / ".adoption-screen").exists()
+    assert not (configured.data / "inky_studio.db").exists()
+    assert not (configured.data / "photos").exists()
+    with sqlite3.connect(directory / "ownership.sqlite3") as connection:
+        assert connection.execute("SELECT COUNT(*) FROM owners").fetchone() == (0,)
+        assert connection.execute("SELECT COUNT(*) FROM window").fetchone() == (0,)
+    relaunched.ownership.close()
+
+
 def test_lost_begin_response_never_grants_recreation(configured):
     def lose(_reply):
         raise OSError("synthetic private response")

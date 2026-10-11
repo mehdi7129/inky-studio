@@ -74,6 +74,7 @@ import XCTest
         root, fixtures, mtu = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
         spec = importlib.util.spec_from_file_location('inky_transport', root/'server/inky_web/provisioning/transport.py')
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version = context.maximum_version = ssl.TLSVersion.TLSv1_3
