@@ -6,20 +6,27 @@ import XCTest
 final class InkyStudioUITests: XCTestCase {
     private var app: XCUIApplication!
     private let fixtureURL = URL(string: "http://127.0.0.1:8765")!
+    private var originalAppearance: XCUIDevice.Appearance?
 
-    private func launchFixtureApp(resetCamera: Bool = false, appearance: String? = nil) {
+    private func launchFixtureApp(resetCamera: Bool = false, appearance: XCUIDevice.Appearance? = nil) {
         continueAfterFailure = false
         resetFixture()
         app = XCUIApplication()
         // Resetting a protected resource terminates an already-running app.
         if resetCamera { app.resetAuthorizationStatus(for: .camera) }
         app.launchArguments = ["--uitesting", "--frame-address", fixtureURL.absoluteString]
-        if let appearance { app.launchArguments += ["-AppleInterfaceStyle", appearance] }
-        app.launch()
         let teardown: @MainActor @Sendable () -> Void = { [weak self] in
             self?.finish()
         }
         addTeardownBlock(teardown)
+        if let appearance {
+            // The ordinary app follows the system; -AppleInterfaceStyle is only
+            // interpreted by the separate Bluetooth UI fixture.
+            originalAppearance = XCUIDevice.shared.appearance
+            XCUIDevice.shared.appearance = appearance
+            XCTAssertEqual(XCUIDevice.shared.appearance, appearance, "The simulator must use the requested appearance.")
+        }
+        app.launch()
     }
 
     private func finish() {
@@ -31,6 +38,10 @@ final class InkyStudioUITests: XCTestCase {
         }
         app?.terminate()
         app = nil
+        if let originalAppearance {
+            XCUIDevice.shared.appearance = originalAppearance
+            self.originalAppearance = nil
+        }
     }
 
     /// Requires Xcode 27 and the fixture's opt-in --biometric-device mode.
@@ -297,14 +308,15 @@ final class InkyStudioUITests: XCTestCase {
     }
 
     func testDisplayFailureKeepsConnectionAndRecoversLight() {
-        verifyDisplayFailureAndRecovery(appearance: "Light")
+        verifyDisplayFailureAndRecovery(appearance: .light)
     }
 
     func testDisplayFailureKeepsConnectionAndRecoversDark() {
-        verifyDisplayFailureAndRecovery(appearance: "Dark")
+        verifyDisplayFailureAndRecovery(appearance: .dark)
     }
 
-    private func verifyDisplayFailureAndRecovery(appearance: String) {
+    private func verifyDisplayFailureAndRecovery(appearance: XCUIDevice.Appearance) {
+        let appearanceName = appearance == .dark ? "Dark" : "Light"
         launchFixtureApp(appearance: appearance)
         login()
         let next = app.buttons["frame.next"]
@@ -325,7 +337,8 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertFalse(app.secureTextFields["connection.password"].exists)
         XCTAssertTrue(app.staticTexts["L’écran est indisponible. Vos photos sont conservées. Vérifiez le cadre."].exists)
         scrollTo(status)
-        capture("Écran indisponible — \(appearance)")
+        XCTAssertEqual(XCUIDevice.shared.appearance, appearance)
+        capture("Écran indisponible — \(appearanceName)")
 
         configureFixture("__test/display-status", body: ["state": "ready"])
         XCTAssertTrue(status.waitForNonExistence(timeout: 10), "Fresh ready diagnostics must clear the hardware error.")
@@ -334,7 +347,8 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(previous.isEnabled)
         XCTAssertTrue(app.staticTexts["Raspberry connecté"].exists)
         XCTAssertFalse(app.secureTextFields["connection.password"].exists)
-        capture("Écran rétabli — \(appearance)")
+        XCTAssertEqual(XCUIDevice.shared.appearance, appearance)
+        capture("Écran rétabli — \(appearanceName)")
     }
 
     func testUnavailableFrameShowsRecoverableError() {
