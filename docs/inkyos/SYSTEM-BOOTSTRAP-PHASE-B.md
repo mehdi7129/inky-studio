@@ -194,7 +194,7 @@ acceptées par un socket ou par BLE.
 |---|---|---|
 | Lire l'état | ID de requête frais | Disponibilité OS, état NTP observé, gate pays/radio, opération active ; aucune mutation |
 | Lire une opération | ID de requête + ID durable d'opération | Résultat durable ou incertain ; aucune répétition d'effet |
-| Accepter une assertion d'heure | ID durable + intent/frame/owner/epoch + preuve de phase initiale ouverte + timestamp entier UTC borné | État vérifié de l'application de l'assertion et de la restauration NTP ; aucune permission après clôture |
+| Accepter une assertion d'heure | ID durable + intent/frame/owner/epoch + preuve de phase initiale ouverte + timestamp entier UTC borné | État vérifié de l’application de l’assertion et politique NTP inchangée observée ; aucune permission après clôture |
 | Clôturer la phase heure | Liaison durable à l'opération, au candidat courant et à sa preuve de reconnexion stricte, sous la barrière commune | Fermeture irréversible du setter v0 avant admission pays/Wi-Fi/photo ; résultat relisible après ACK perdu |
 | Appliquer le pays confirmé | ID durable + liaison frame/epoch/admission normale + code de l'allowlist | Pays demandé, domaine effectif observé sur la radio épinglée, gate encore fermé ou qualifié |
 | Réconcilier le gate | Autorité OS au boot et état pays durable existant | Réobservation courante ; un ancien ACK seul ne libère jamais la radio |
@@ -220,9 +220,10 @@ de journal ferme l'admission et exige une récupération explicite.
 
 Le modèle Wi-Fi actuel conserve seulement un nombre borné de demandes récentes.
 Il ne doit pas être réutilisé tel quel pour l'heure : évincer un ID rendrait
-possible la réapplication d'un ancien timestamp. Le format doit conserver les
-tombstones ou un compteur de génération durable avec une règle de rejet prouvée
-pour tous les anciens IDs. La compaction ne peut pas rouvrir une admission.
+possible la réapplication d'un ancien timestamp. La v0 retient 64 opérations
+sans éviction ni compaction. Toute extension future
+devrait conserver une preuve de rejet de tous les anciens IDs ; elle ne peut
+pas rouvrir une admission par oubli d’un ID.
 
 | Coupure | Reprise autorisée |
 |---|---|
@@ -259,48 +260,72 @@ les exigences pause/drain/réconciliation ci-dessus restent obligatoires pour le
 futur lot de réparation après clôture. Le drain d'un refresh d'accueil/QR et
 les barrières révocation/epoch restent requis dès la v0.
 
-## Heure et restauration NTP
+## Politique heure v0 et observation NTP
 
-Le service accepte uniquement un entier UTC en microsecondes, dans une plage
-produit définie explicitement, avec une autorisation fraîche expirant sur une
-horloge monotonic. Rejeter booléens, floats, overflow, valeurs hors plage et
-assertions trop anciennes. La fraîcheur ne doit pas dépendre de l'horloge civile
-que l'opération corrige.
+Choix de politique convenus entre Studio et InkyOS le 11 octobre 2026, pour un
+prototype isolé. Ils ne constituent ni une API installée ni une qualification du
+setter réel. Le schéma d’admission owner/epoch/latch reste à figer avant le wire.
 
-Les bornes absolues, la durée du challenge, la tolérance du readback et la règle
-de recul/avance sont des bloqueurs de décision. Ne pas les déduire de la date
-courante du Pi ni d'un high-water mark permanent : une mauvaise date future ne
-doit pas rendre toute réparation ultérieure impossible. Une nouvelle correction
-exige une nouvelle assertion owner, pas un retry d'une valeur ancienne.
-Cette règle ne donne aucune permission de setter après clôture v0 ; ce cas
-relève de la récupération explicite et du lot de réparation ultérieure.
+| Élément | Politique v0 retenue |
+|---|---|
+| Assertion | Entier UTC en **secondes**, booléens et floats refusés |
+| Plage | `2026-01-01T00:00:00Z ≤ t < 2100-01-01T00:00:00Z` |
+| Fraîcheur | Challenge expirant au plus 30 secondes sur `CLOCK_BOOTTIME` Linux après sa **création côté service OS**, sans nouvelle fenêtre à réception de la réponse |
+| Mesure iPhone | Timestamp frais au moment de répondre ; aucune compensation implicite du payload par le serveur |
+| Recul/avance | Tous deux admis seulement dans le bootstrap initial ouvert ; aucun high-water civil permanent |
+| Effet | Worker dédié, un seul `clock_settime_ns(CLOCK_REALTIME, requested_seconds * 1_000_000_000)` ; aucune conversion float |
+| Vérification | Intervalle complet d’erreur du readback dans ±2 secondes ; sinon `uncertain` |
+| Journal | 64 opérations au maximum, sans éviction ni compaction ; plein = refus/récupération, jamais recyclage d’ID |
 
-Le modèle certificat utilise aujourd'hui `ClockResult.epoch_seconds`, en secondes
-entières. Avant de figer le transport, définir la conversion exacte vers les
-microsecondes systemd et la liaison entre timestamp demandé, readback et résultat
-certificat : calcul entier avec contrôle d'overflow, unités conservées dans le
-reçu, aucune conversion float ni substitution silencieuse du readback à l'assertion.
+La fraîcheur ne dépend pas de l’horloge civile corrigée. Le service OS utilise
+`clock_gettime_ns(CLOCK_BOOTTIME)` pour le TTL et les quatre bornes ci-dessous :
+la suspension compte dans le délai, aucun fallback silencieux vers
+`CLOCK_MONOTONIC` n’est admis. Un nouveau boot invalide le challenge ; les valeurs
+monotonic ne sont jamais comparées entre deux boots. Le TTL est contrôlé à la
+réception puis immédiatement avant l’effet, après drain, attentes et fsync ;
+une assertion expirée pendant ces étapes ne peut pas être appliquée. Une nouvelle correction
+exige une assertion fraîche et un nouvel ID, sous la même admission initiale ;
+elle n’ouvre aucun setter après clôture. Les multiplications et bornes doivent
+être vérifiées avant l’appel OS. `ClockResult.epoch_seconds` reste en secondes :
+le résultat conserve séparément assertion demandée, readback et leurs unités ;
+le choix du champ d’émission du certificat n’est pas implicite.
 
-Avant toute modification, journaliser l'état NTP à restaurer et vérifier que le
-backend temps attendu est disponible. Si une suspension NTP est nécessaire,
-la journaliser avant de l'effectuer. Appliquer l'heure au plus une fois, lire
-l'état résultant puis restaurer la politique NTP enregistrée, y compris après
-échec ou redémarrage du service. Une restauration non prouvée produit un résultat
-partiel/incertain et conserve un travail de récupération ; aucun succès global.
+Encadrer l’appel du setter par les lectures `CLOCK_BOOTTIME` nanosecondes `[e0, e1]`,
+puis la lecture civile `R = clock_gettime_ns(CLOCK_REALTIME)` par `[r0, r1]`,
+avec `e0 ≤ e1 ≤ r0 ≤ r1`. Pour
+`Q = requested_seconds * 1_000_000_000`, l’intervalle d’erreur conservateur est :
 
-Le résultat sépare application de l'assertion, lecture de l'heure et état NTP.
-Ne pas appeler « synchronisé » un simple `SetTime` réussi. La disponibilité,
-l'activation et la synchronisation NTP sont des observations distinctes.
-Une réparation ne modifie pas le fuseau ni la clé du cadre. Le certificat normal
-et la reconnexion stricte restent gérés par Studio après le résultat système.
+```text
+[R - Q - (r1 - e0), R - Q - (r0 - e1)]
+```
 
-Les API systemd fournissent `SetTime` absolu/relatif et `SetNTP`, ce dernier
-modifiant l'état du service de synchronisation. Le choix proposé est absolu et
-non interactif ; les permissions Trixie réellement installées restent à vérifier.
-La politique amont `set-time` implique aussi des droits timezone/NTP : ne pas
-présenter une règle polkit générale comme une permission limitée au seul setter.
-Sources : [interface timedate1](https://github.com/systemd/systemd/blob/main/man/org.freedesktop.timedate1.xml),
-[politique polkit](https://github.com/systemd/systemd/blob/main/src/timedate/org.freedesktop.timedate1.policy).
+Exiger que cet intervalle soit **entièrement** inclus dans
+`[-2_000_000_000, +2_000_000_000]`. Un simple chevauchement ne suffit pas. Le
+parent constate la fin et le réapage du worker avant résultat durable/ACK ; un
+timeout seul ne démontre pas la quiescence. Les marques `prepared` et
+`effect_attempted` précèdent toujours l’effet, selon le journal ci-dessus.
+
+Le worker v0 ne demande ni `SetNTP` ni changement de timezone et ne démarre/
+n’arrête aucun service NTP. La politique NTP configurée reste inchangée et doit
+être observée ; le réglage de l’horloge peut cependant invalider l’état de
+synchronisation du kernel. Un service NTP actif peut aussi corriger l’heure en
+parallèle : toute discordance au readback produit un résultat incertain, jamais
+un second setter implicite. Disponibilité, activation et synchronisation sont
+rapportées séparément ; un effet réussi ne prouve pas une heure UTC fiable.
+
+Cette direction évite la gestion d’une suspension/restauration de service.
+Si son implémentation nécessite finalement de modifier la politique NTP, revoir
+le contrat avant de coder cet effet : journalisation préalable et récupération
+durable de cette politique redeviennent obligatoires. La qualification du kernel,
+des privilèges et de la politique OS réels demeure ouverte.
+
+Sources primaires : [horloge incluant la suspension](https://docs.python.org/3.13/library/time.html#time.CLOCK_BOOTTIME),
+[entiers nanosecondes Python 3.13](https://docs.python.org/3.13/library/time.html#time.clock_settime_ns),
+[mise à jour du temps Linux 6.18](https://github.com/torvalds/linux/blob/v6.18/kernel/time/timekeeping.c),
+[état NTP Linux 6.18](https://github.com/torvalds/linux/blob/v6.18/kernel/time/ntp.c).
+L’alternative systemd `SetTime`/`SetNTP` n’est pas retenue pour ce prototype ; sa
+[politique polkit](https://github.com/systemd/systemd/blob/main/src/timedate/org.freedesktop.timedate1.policy)
+ne doit pas être présentée comme une permission limitée au seul setter.
 
 ## Pays, radio et transactions réseau
 
@@ -352,13 +377,13 @@ automatique par simple mise à jour de l'app.
 | Journal/latch et clôture v0 | Extension versionnée privilégiée ; liaison intent/frame/SPKI/owner/epoch, fermeture après preuve stricte avant admission pays/Wi-Fi/photo ; coordination des journaux et reprise ACK sans rouvrir le setter |
 | Candidat prêt vs bootstrap terminé | Canal de validation limité, preuve stricte liée au candidat courant, invalidation/remplacement cohérent sous correction fraîche ; aucun ancien ACK ni candidat `pending` ambigu |
 | Réparation après clôture | Lot produit séparé conservé dans le plan global ; aucun setter v0 général ni reset factory pour remplacer cette capacité |
-| Anti-rejeu de l'heure | Format de journal, génération/tombstones et compaction qui ne réadmettent jamais un ancien ordre |
-| Horloge propriétaire vs UTC fiable | Bornes numériques, fraîcheur monotonic, politique de correction et tolérance de vérification |
-| Unités et reçu certificat | Conversion entière secondes/microsecondes, champs assertion/readback distincts ; aucun reçu historique interprété comme preuve fraîche |
+| Anti-rejeu de l'heure | Schéma exact et reprise du journal borné à 64 opérations sans éviction ; aucun ancien ordre réadmis |
+| Horloge propriétaire vs UTC fiable | Qualifier les bornes 2026–2100, challenge 30 s, corrections initiales et intervalle readback ±2 s ; pas de preuve UTC indépendante |
+| Unités et reçu certificat | Conversion entière secondes/nanosecondes, champs assertion/readback distincts et liaison au certificat à préciser ; aucun reçu historique interprété comme preuve fraîche |
 | Mutation vs révocation | Barrière commune avec rotation de mot de passe/epoch ; le mutex BLE actuel seul ne suffit pas |
 | Horloge vs scheduler | V0 : exclusion prouvée des activités normales et drain du QR ; réparation ultérieure : pause/drain puis recalcul d'échéance sans consommer de photo ni rattrapage |
 | Timeout vs effet terminé | Preuve de quiescence des exécutants et appels OS avant nouvelle admission |
-| Politique NTP | Backend exact, état à restaurer, récupération durable et comportement si le service est absent |
+| Politique NTP | Qualifier le worker clock_settime_ns, politique de service inchangée, observation séparée et concurrence NTP ; aucun SetNTP dans la v0 |
 | Admission app→helper | Nouveau contrat strict et liaison à l'owner/epoch ; ne pas utiliser les IDs comme preuve d'autorité |
 | Pays vs gate | Allowlist versionnée, PHY épinglée, politique domaine effectif et vraie disponibilité radio |
 | Factory vs migration | Distinguer image neuve, cadre adopté et state manquant sans reset implicite |
@@ -384,13 +409,13 @@ automatique par simple mise à jour de l'app.
 - Timestamp ancien sous même ID, même ID avec autre contenu, nouveau boot,
   corruption, journal plein/compacté : aucun second appel du setter historique.
 - Coupure avant/après chaque fsync, après appel OS, avant résultat et après ACK :
-  résultat conservateur, NTP récupéré et absence de faux succès.
+  résultat conservateur, politique NTP inchangée et absence de faux succès.
 - Révocation/rotation pendant admission, effet en vol et ACK perdu : aucune
   mutation tardive autorisée par un ancien epoch.
 - Refresh et programmation actifs lors d'une correction : drain terminé, file
   inchangée, échéance réconciliée, jamais deux propriétaires SPI.
 - Date très passée/future, correction en arrière, NTP absent/actif/non synchronisé,
-  restauration échouée : résultat borné et reprise documentée.
+  correction concurrente ou readback incertain : résultat borné et reprise documentée.
 - Pays invalide/différent, transaction Wi-Fi active, PHY remplacée, radio lente,
   reboot avec ancien ACK : aucun scan/association avant qualification courante.
 - Après réparation : même frame/clé, nouveau certificat valide, TLS normale
