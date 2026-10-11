@@ -43,6 +43,7 @@ jobs:
       - name: Test isolated bootstrap claim against Python runtime
         run: |
           python3 -m pip install -e 'server[dev]'
+          ruff check scripts/bootstrap-channel-bench/peer.py
           scripts/test-bootstrap-channel.sh
       - name: Test adopted HTTPS identity over real loopback sockets
         run: scripts/test-https-wire.sh
