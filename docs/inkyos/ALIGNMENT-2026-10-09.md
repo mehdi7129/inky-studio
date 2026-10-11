@@ -5,7 +5,8 @@ le banc LAN possible aujourd'hui de la cible de premier allumage sans LAN.
 Il ne donne pas à l'image le statut de release qualifiée.
 Dernier retour daté du **11 octobre** : interface indisponible après l'échec
 d'activation et avant le nettoyage radio. Cause exacte et qualification réseau
-encore ouvertes ; correctif de synchronisation testé séparément, absent de la SD.
+encore ouvertes ; correctif de synchronisation intégré dans une nouvelle image
+vérifiée, pas encore flashée sur la SD.
 
 ## Complément du 10 octobre — retour SD et installation iPhone
 
@@ -246,10 +247,10 @@ ne doit pas être réinterprétée comme une preuve de readiness sur cette SD.
 **39 tests ciblés et 1 047 tests par plateforme**, zéro échec/erreur, 4 ignorés
 macOS et 1 Linux ARM64 ; syntaxe de 23 scripts validée et revue indépendante
 rapportée. Cette reproduction ne démontre pas la cause du boot réel.
-**Aucune nouvelle image construite ni SD modifiée pour ce correctif.** La carte
-reste sur `07271cf`, backend `c31b13a`. La lecture de son diagnostic est décrite
-ci-dessous. Aucun parcours Wi-Fi/SSH, application, écran ou BLE n'est qualifié
-par ces tests logiciels.
+Au relevé `52ddfc1`, aucune nouvelle image n'était construite ni SD modifiée
+pour ce correctif. La carte reste sur `07271cf`, backend `c31b13a`. Son retour
+et la construction suivante sont décrits ci-dessous. Aucun parcours Wi-Fi/SSH,
+application, écran ou BLE n'est qualifié par ces tests logiciels.
 
 ### Retour recoupé avec état NetworkManager
 
@@ -279,8 +280,36 @@ fraîcheur du constat : même identifiant de boot ne prouve pas indépendamment
 le dernier démarrage et des mises à jour en attente peuvent manquer.
 Le correctif `52ddfc1` reste absent de cette SD ; aucune réussite Wi-Fi,
 validation du correctif sur matériel, SSH, BLE ou appairage n'est établie.
-InkyOS prépare la reconstruction avec ce correctif ; aucun nouveau flash
-n'est rapporté à ce relevé. L'app et le protocole Studio restent inchangés.
+Au relevé `2e435c9`, InkyOS préparait la reconstruction avec ce correctif ;
+aucun nouveau flash n'était rapporté. L'app et le protocole Studio restent inchangés.
+
+### Image avec attente radio intégrée — pas encore flashée
+
+La [preuve de construction](https://github.com/mehdi7129/inkyOS/blob/84cbdc708284b6275a6fa560c35fd1d170e1546c/docs/validation/2026-10-11-radio-readiness-access-image.json)
+est publiée au commit `84cbdc708284b6275a6fa560c35fd1d170e1546c`, dont la
+[CI passe](https://github.com/mehdi7129/inkyOS/actions/runs/38132394298).
+Studio a relu la preuve ; construction et revue de l'export privé sont
+rapportées par InkyOS, pas reproduites ici.
+
+- Recette `2e435c9` avec arbre propre et sources publiques concordantes ;
+  correctif `52ddfc1` intégré à l'image, incluant l'attente de readiness.
+- **123 contrôles offline réussis** : 18 configuration, 17 parent, 62 système,
+  26 applicatifs. Hash de l'image privée vérifié et revue indépendante de
+  l'export validée. Ces hashes locaux non signés prouvent la cohérence des
+  fichiers, pas une authenticité indépendante.
+- Parent `dcc451dc…a595`, backend `c31b13a` et manifeste `c4183e7` inchangés.
+  Aucune identité de cadre existante ni clé opérateur privée copiée ; clé
+  publique opérateur réutilisée, aucun identifiant Wi-Fi embarqué.
+- **Aucun flash ni boot cible effectué par cette préparation** ; l'app n'est
+  pas activée. La SD conserve `07271cf`. Le cycle suivant demande un flash
+  vérifié, un nouvel enrôlement avec arrêt et son retour 35 + 10 contrôles,
+  puis un nouveau contexte et une capsule signée liée à ce contexte avant
+  l'essai réseau. Les anciens bindings ne sont pas réutilisés.
+
+La construction ne confirme ni la cause du précédent échec, ni l'efficacité
+du correctif sur le Pi. Wi-Fi/SSH, photo/affichage et QR/BLE restent à qualifier.
+La PR Studio reste ouverte et non fusionnée ; aucune modification de l'app
+ou du protocole n'est apportée par cette synchronisation.
 
 ## Couple à conserver pour l'essai
 
