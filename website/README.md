@@ -9,6 +9,26 @@ analytics integration, forms, or build dependencies are included.
 
 Public origin: `https://inky-studio.netlify.app`.
 
+Product-status copy was refreshed on **2026-10-09** against
+[`TESTFLIGHT-DELIVERY.md`](../docs/ios/TESTFLIGHT-DELIVERY.md) and the iOS views:
+
+- Internal TestFlight build **1.0.0 (9)** has been distributed. The local demo,
+  getting-started guide, camera capture and Bluetooth setup are included.
+- QR adoption and a real Wi-Fi transition still require physical qualification;
+  the demo does not configure hardware or prove physical display behavior.
+- Apple approved encryption compliance on **2026-10-08**. This is not public
+  App Review approval; the app has not been released publicly.
+
+The privacy-page refresh changes feature availability wording only. Data flows,
+retention periods and user-rights commitments are unchanged.
+
+Published on **2026-10-09**, Netlify deploy **6ac8afec8db6a703ee84da1c**. At
+**09:12 UTC**, all three public pages and five assets returned HTTP 200; page
+text and asset bytes matched this source, and the configured security headers
+were present. The preview's home and support sections were visually checked in
+Chrome. CSS and screenshots were unchanged. Deployment receipts and checks live
+under ignored `build/ios/release-readiness-2026-10-09/` at the repository root.
+
 The three screenshots in `assets/` are unmodified copies of the authentic beta
 captures in `docs/ios/screenshots/`. They contain synthetic test images and a
 loopback test-server address. Their origin is disclosed next to the screenshots.

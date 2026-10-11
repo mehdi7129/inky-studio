@@ -1,7 +1,16 @@
 # Offline demo and first connection
 
-Source addition after TestFlight build 4. It is not available in the distributed
-build 3 and does not resolve the encryption-document gate for build 4.
+Current delivery: **TestFlight 1.0.0 (9)**, assigned to the internal group on
+**2026-10-09**. The demo, first-connection guide and native support/privacy links
+are included. Apple export compliance was approved on **2026-10-08**; the former
+build 4 gate is historical. See [delivery evidence](TESTFLIGHT-DELIVERY.md).
+
+Mehdi reported that the app works well without a connected screen. On
+**2026-10-10**, InkyOS relayed the operator's confirmation that **build 9 is
+installed**, not directly observed by Studio. These reports do not qualify all
+demo/hardware journeys. See [delivery provenance](TESTFLIGHT-DELIVERY.md).
+The [French no-frame checklist](TEST-WITHOUT-FRAME.md) separates tests
+that can continue now from those that require a Raspberry and screen.
 
 ## Product behavior
 
@@ -52,9 +61,24 @@ The demo provides a reproducible overview; it does not qualify physical Bluetoot
 Face ID, camera capture, Wi-Fi recovery or an actual e-ink refresh. App Review may
 still request a hardware video or other resources.
 
+A read-only App Store Connect check on **2026-10-09 around 09:10 UTC** confirmed
+that the demo review notes and review contacts are filled. The public version is
+still **À finaliser avant soumission**, with manual release selected and the old
+build 7 attached. The final qualified candidate and matching screenshot set must
+be selected before submission; none of those Apple fields was changed in this
+check. See [the current listing snapshot](APP-STORE-PLAN.md).
+
 ## Validation
 
-Validation results and screenshots are recorded with the implementation PR.
-Local generated evidence lives under ignored `build/ios/demo-onboarding/`.
-No public App Store submission, TestFlight upload or Pi deployment is performed
-as part of this UI work.
+Build 9 source `181edb2` passed **109 unit tests and 17 UI tests**, with one
+expected simulated Face ID skip and zero failures; the iPhone Release build and
+**76/76 signed archive/IPA checks** passed. The UI suite includes the public demo
+walkthrough, large-text navigation and semantic accessibility checks. See the
+[stability review and screenshots](reviews/2026-10-08-stability/README.md) for
+individual run provenance and limits; these results do not establish real
+VoiceOver speech, camera capture or frame behavior.
+
+Historical generated evidence remains under ignored `build/ios/demo-onboarding/`.
+The signed beta was subsequently uploaded and assigned as documented in
+[TESTFLIGHT-DELIVERY.md](TESTFLIGHT-DELIVERY.md). No public App Review submission or
+new Pi deployment is part of this documentation update.
