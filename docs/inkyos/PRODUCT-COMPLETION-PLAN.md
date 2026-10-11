@@ -55,6 +55,38 @@ Le catalogue comporte 20 variantes de métadonnées. L'observation du signal bus
 ne couvre que l'AC073 avec `inky==2.3.0` ; aucun autre panneau n'est réputé testé
 physiquement. Un QR non tronqué dans une image ne prouve pas sa lecture caméra.
 
+## Lot matériel restant : familles de panneaux et dépendance Inky
+
+La cible produit comprend Spectra 6 en 4″, 7,3″ et 13,3″, ainsi que les anciens
+Impression 7 couleurs en 5,7″ et 7,3″. Le payload TEST `c31b13a` et les PR Studio
+#23/#24/#26 conservent `inky==2.3.0` ; aucune montée implicite depuis ce plan.
+
+| Variante EEPROM | ID | Autodétection upstream 2.3.0 |
+|---|---|---|
+| Impression 5,7″ 7 couleurs | 14 | Présente, driver UC8159 |
+| Impression 7,3″ 7 couleurs | 20 | Présente, driver AC073 |
+| Spectra 6 13,3″ | 21 | Présente, driver EL133UF1 |
+| Spectra 6 7,3″ | 22 | Présente, driver E673 |
+| Spectra 6 4″ | 25 | Présente, driver E640 |
+| Spectra 6 7,3″ AC | 26 | Absente ; ajoutée en 2.4.0 |
+| Spectra 6 13,3″ AC | 27 | Absente ; ajoutée en 2.4.0 |
+
+Studio s’appuie sur cette autodétection sans mapping de secours pour 26/27.
+La présence d’un driver ne qualifie pas son panneau. L’observateur busy AC073
+exige actuellement la version exacte 2.3.0 ; changer seulement la dépendance
+ferait refuser ce panneau. Les autres drivers restent `not_monitored`.
+
+Le lot doit réunir upgrade épinglé et revu, adaptation/test de l’observateur,
+alignement du catalogue InkyOS et de ses checks, puis manifeste/payload Studio
+unique. Critères matériels par variante effectivement revendiquée : identité
+EEPROM, dimensions/couleurs, accueil et QR lisible, photo affichée, erreur/timeout
+et arrêt avec drain. Tout modèle sans essai physique reste explicitement non
+qualifié ; le catalogue de métadonnées et la CI ne remplacent pas cet essai.
+
+Sources Pimoroni : [autodétection 2.3.0](https://github.com/pimoroni/inky/blob/v2.3.0/inky/auto.py),
+[autodétection 2.4.0](https://github.com/pimoroni/inky/blob/v2.4.0/inky/auto.py),
+[EEPROM 2.4.0](https://github.com/pimoroni/inky/blob/v2.4.0/inky/eeprom.py).
+
 ## Invariants à garder pendant l'intégration
 
 - Une autorité OS consommée ne peut pas être reconstituée depuis un fichier
