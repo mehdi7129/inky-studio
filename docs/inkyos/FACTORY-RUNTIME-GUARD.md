@@ -68,6 +68,12 @@ réseau. Leur parcours factory futur reste à implémenter.
 
 ## Responsabilités de l'image OS avant activation future
 
+La [sonde interne IPC-A](FACTORY-IPC-OBSERVATION.md) fournit une observation
+root-authentifiée sans appeler le coordinator ou `begin`. Elle possède et draine
+sa propre garde SH. Aucun caller installé ne l'active dans ce lot. Son résultat
+ne constitue pas un grant et ne remplace aucune vérification fraîche du chemin
+d'initialisation réel, ni la preuve Ready du superviseur factory.
+
 - Créer et persister **une fois par appareil** ses credentials individuels par
   un hook explicitement autorisé, distinct de ce raccord. Aucun mot de passe,
   salt, hash ou secret individuel commun ne doit être embarqué dans l'image.
