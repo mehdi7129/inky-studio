@@ -3,11 +3,10 @@
 Relevé du **9 octobre 2026**, destiné à la session InkyOS. Ce document distingue
 le banc LAN possible aujourd'hui de la cible de premier allumage sans LAN.
 Il ne donne pas à l'image le statut de release qualifiée.
-Dernier retour daté du **11 octobre** : interface indisponible après l'échec
-d'activation et avant le nettoyage radio. Cause exacte et qualification réseau
-encore ouvertes ; correctif de synchronisation intégré dans une nouvelle image
-désormais flashée, nouvel enrôlement et capsule vérifiés. Le prochain essai
-réseau avec ce correctif reste à effectuer.
+Dernier retour daté du **11 octobre** : Wi-Fi connecté et deux échanges SSH
+authentifiés observés sur la SD corrigée. Préflight OS bloqué, app et helper
+toujours arrêtés et masqués. La stabilité réseau, BLE, l'affichage et l'appairage
+restent à qualifier ; les observations d'échec précédentes restent historiques.
 
 ## Complément du 10 octobre — retour SD et installation iPhone
 
@@ -338,6 +337,53 @@ Studio relit les preuves publiques ; ces opérations sont rapportées par InkyOS
   Bluetooth, app et écran restent non qualifiés. L'efficacité du correctif
   sur le Pi reste à observer dans cet essai, piloté par InkyOS.
 
+### Réseau observé, préflight OS encore bloqué
+
+La [preuve réseau authentifiée](https://github.com/mehdi7129/inkyOS/blob/28ccf9abe47dfec3e3d63ae43164562de9711602/docs/validation/2026-10-11-radio-readiness-network-observation.json)
+est publiée au commit `28ccf9abe47dfec3e3d63ae43164562de9711602`, dont la
+[CI passe](https://github.com/mehdi7129/inkyOS/actions/runs/38137459511).
+Studio a relu la preuve ; les échanges avec le Pi sont rapportés par InkyOS,
+sans connexion parallèle effectuée ici. Recette `2e435c9`, correctif `52ddfc1`
+et backend `c31b13a` inchangés.
+
+Deux STATUS authentifiés répondent PASS. Le premier préflight reste
+`UNCONFIRMED` ; un préflight ultérieur vérifié répond **BLOCKED, 17/24 contrôles
+réussis**. Sa sortie SSH 1 correspond au blocage distant, pas à un échec
+d'authentification. Il observe directement NetworkManager gérant `wlan0`
+connecté. Cela établit la connectivité lors de ces échanges, pas sa stabilité
+durable ni la cause certaine du précédent échec.
+
+| Contrôles faux | Portée |
+|---|---|
+| `bluetooth_unblocked`, `hci0_powered`, `utc_synchronized`, `system_packages_present` | Quatre conditions requises non satisfaites par le préflight ; ces booléens seuls n'identifient pas leur cause |
+| `country_phy_matches`, `panel_inventory_supplied_and_valid`, `panel_runtime_evidence_verified` | Trois contrôles historiques remplacés par des gardes dédiées dans le contrat TEST ; ces gardes n'ont pas été évaluées et ne sont pas réputées réussies |
+
+BlueZ tourne, le contrôle `firstboot_success` passe et l'UTC concorde avec une
+référence indépendante récente. Ce dernier résultat ne prouve pas la
+synchronisation NTP ; `firstboot_success` n'est pas une attestation indépendante
+du runtime ou de l'arrêt. App et helper restent arrêtés et masqués, sans demande
+d'activation. Aucun affichage, photo, QR/BLE ou appairage iOS validé.
+
+L'[inspection OS distincte](https://github.com/mehdi7129/inkyOS/blob/28ccf9abe47dfec3e3d63ae43164562de9711602/docs/BOOT-NETWORK-DIAGNOSIS.md)
+identifie trois corrections à préparer ensemble :
+
+- Ajouter `i2c-tools`, absent de l'inventaire scellé ; les six autres paquets
+  requis sont présents. Cette conclusion vient de l'inventaire, pas du seul
+  booléen `system_packages_present`.
+- Reprendre la préparation radio de l'installateur dans le lifecycle OS.
+  Le [script c31b13a](https://github.com/mehdi7129/inky-studio/blob/c31b13afdc957425571810c46230eaaf52fa5d14/scripts/install-bluetooth.sh#L102-L104)
+  débloque rfkill et met `hci0` sous tension ; le backend ne le fait pas.
+  La copie offline des fichiers n'exécute pas ces actions au boot. L'état
+  précis du contrôleur reste distinct d'une commande d'observation en échec.
+- Fiabiliser la lecture `NTPSynchronized` : la requête actuelle interdit
+  l'activation D-Bus de `timedated`, qui peut être inactif. Le faux négatif est
+  reproduit en VM ; il ne prouve pas une désynchronisation du Pi. Le préflight
+  et le contrôle d'heure précédant l'activation doivent être couverts ensemble.
+
+Aucun correctif de ces trois points n'est déployé à ce relevé. Leur traitement
+reste côté InkyOS, en conservant SSH si la préparation Bluetooth échoue.
+L'app, son protocole et le payload restent inchangés ; PR Studio non fusionnée.
+
 ## Couple à conserver pour l'essai
 
 | Élément | Référence et portée |
@@ -411,11 +457,11 @@ protections d'arrêt/diagnostics matériels de `c31b13a`. Ne pas remplacer le
 payload ARM64 par le SHA de compilation iOS. Une version intégrée demandera une
 fusion revue, des tests combinés et un nouveau manifeste.
 
-## Protocole après résolution du réseau
+## Protocole après validation des prérequis OS
 
-Le retour du 11 octobre établit un échec d'activation réseau dans le reçu
-observé, après import de la capsule. InkyOS doit diagnostiquer cet échec,
-obtenir une connexion et valider les prérequis avant l'activation de l'app.
+Le dernier relevé `28ccf9a` observe Wi-Fi connecté et SSH authentifié, mais le
+préflight reste bloqué. InkyOS doit corriger les trois écarts système décrits
+ci-dessus et valider les gardes TEST requises avant l'activation de l'app.
 
 1. InkyOS identifie le boot réel, l'IP/SSH, le panneau exact, l'état système,
    le pays radio, l'heure et le payload. Les services restent masqués pendant
