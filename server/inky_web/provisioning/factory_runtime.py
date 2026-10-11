@@ -12,13 +12,14 @@ import re
 import sqlite3
 import stat
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
 from .bootstrap_identity import PREPARED_IDENTITY_FILENAME
+from .connected_peer import ConnectedPeerGuard
 from .first_boot import FirstBootCoordinator, FirstBootRefused, FirstBootResult, FirstBootUncertain
 from .initialization_ipc import InitializationIPCClient
 from .ownership import credential_epoch
@@ -240,20 +241,43 @@ def _verified_epoch(config: FactoryRuntimeConfig) -> str:
     return credential_epoch(credentials.salt, credentials.digest)
 
 
-def prepare_factory(config: FactoryRuntimeConfig) -> FirstBootResult:
+def prepare_factory(
+    config: FactoryRuntimeConfig,
+    *,
+    admission_check: Callable[[], None] | None = None,
+    initialization_peer_guard: ConnectedPeerGuard | None = None,
+) -> FirstBootResult:
     """Prepare durable state only; this is not OS admission or radio readiness.
 
-    The future installed wrapper must qualify and retain its writer lease before
-    calling this function. No installed entry point uses the returned result to
-    activate the candidate runtime yet.
+    Composition supplies both direct callbacks, never an ambient cached grant.
+    Legacy initialize_factory keeps both absent and still terminates pending.
+    No installed entry point activates a runtime from the returned result.
     """
     try:
         if type(config) is not FactoryRuntimeConfig or type(config.app_uid) is not int:
             raise ValueError
-        _verified_epoch(config)
+        if (admission_check is None) != (initialization_peer_guard is None):
+            raise ValueError
+        if admission_check is not None and (
+                not callable(admission_check) or not callable(initialization_peer_guard)):
+            raise ValueError
+
+        def verify_credentials() -> str:
+            if admission_check is not None:
+                if admission_check() is not None:
+                    raise ValueError
+            epoch = _verified_epoch(config)
+            if admission_check is not None:
+                if admission_check() is not None:
+                    raise ValueError
+            return epoch
+
+        verify_credentials()
+        client = (InitializationIPCClient(peer_guard=initialization_peer_guard)
+                  if initialization_peer_guard is not None else InitializationIPCClient())
         coordinator = FirstBootCoordinator(
-            config.data_dir / "provisioning", InitializationIPCClient(),
-            verify_credentials=lambda: _verified_epoch(config),
+            config.data_dir / "provisioning", client, verify_credentials=verify_credentials,
+            **({"admission_check": admission_check} if admission_check is not None else {}),
         )
     except Exception:
         raise FactoryRuntimeError() from None

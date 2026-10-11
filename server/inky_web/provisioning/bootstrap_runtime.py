@@ -130,7 +130,7 @@ class BootstrapRuntime:
         self.result, self.owners = result, result.ownership
         self.verify_epoch, self.display = verify_epoch, display
         self.directory, self.monotonic = Path(directory), monotonic
-        self.screen = BootstrapScreen(display, self.directory)
+        self.screen = BootstrapScreen(display, self.directory, verify_epoch=self._verified_epoch)
         self.server_factory = server_factory
         self.operations = OperationRegistry()
         self.mutation_lock = asyncio.Lock()
@@ -144,7 +144,7 @@ class BootstrapRuntime:
         self._window_task = None
         self._attempts: deque[float] = deque()
 
-    def _verify(self):
+    def _verified_epoch(self) -> str:
         try:
             epoch = self.verify_epoch()
             if type(epoch) is not str:
@@ -152,6 +152,10 @@ class BootstrapRuntime:
             validate_token(epoch)
         except Exception:
             raise FactoryRecoveryRequired() from None
+        return epoch
+
+    def _verify(self):
+        epoch = self._verified_epoch()
         prepared = PreparedFactoryIdentity.reopen(
             self.directory, expected_intent=self.result.prepared_identity.initialization_intent,
             expected_binding=self.result.prepared_identity.binding,
@@ -200,7 +204,15 @@ class BootstrapRuntime:
                 await asyncio.to_thread(self.screen.show_status, adopted=True)
             if self._stopping:
                 return
+            # A completed QR refresh is not a reusable admission for a new
+            # radio registration. Once started, registration remains owned by
+            # this startup task and shutdown must drain it before unregister.
+            await asyncio.to_thread(self._verified_epoch)
+            if self._stopping:
+                return
             await self.bluez.start()
+            if not self._stopping:
+                await asyncio.to_thread(self._verified_epoch)
             if not self._stopping:
                 self.available = self._admitting = True
 

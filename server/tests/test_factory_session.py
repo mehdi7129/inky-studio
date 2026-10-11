@@ -220,6 +220,16 @@ async def test_real_runtime_session_drains_claim_and_controller_without_normal_s
     ))
     await asyncio.wait_for(advertised.wait(), 5)
     runtime = runtimes[0]
+
+    async def admitted():
+        # BlueZ registration precedes the runtime's final admission check.
+        # Exercise claim lifetime only once that check has opened admission.
+        while not runtime.available:
+            if session_task.done():
+                await session_task
+            await asyncio.sleep(0.001)
+
+    await asyncio.wait_for(admitted(), 5)
     if blocked_operation == "sqlite":
         original_claim = prepared.ownership.claim
 

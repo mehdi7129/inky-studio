@@ -1,12 +1,15 @@
 """Factory-only display content; no normal photo/history/settings restoration."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
 from inky_web.welcome import _find_font
 
+from .factory import FactoryRecoveryRequired
+from .identity import validate_token
 from .screen import _push, render_qr
 
 RESERVATION = "factory-bootstrap"
@@ -33,23 +36,41 @@ def render_status(width: int, height: int, *, adopted: bool) -> Image.Image:
 
 
 class BootstrapScreen:
-    def __init__(self, display, directory: Path):
+    def __init__(self, display, directory: Path, *, verify_epoch: Callable[[], str] | None = None):
         self.display, self.directory = display, Path(directory)
+        self.verify_epoch = verify_epoch
+
+    def _check_admission(self) -> None:
+        # Standalone legacy renderers keep their existing default. The phase A
+        # runtime explicitly supplies the checked canonical epoch callback.
+        if self.verify_epoch is not None:
+            try:
+                epoch = self.verify_epoch()
+                if type(epoch) is not str:
+                    raise ValueError()
+                validate_token(epoch)
+            except Exception:
+                raise FactoryRecoveryRequired() from None
 
     def reserve(self) -> None:
         with self.display.operation():
+            self._check_admission()
             self.display.reserve(RESERVATION)
 
     def show_qr(self, payload: str) -> None:
         with self.display.operation():
+            self._check_admission()
             self.display.reserve(RESERVATION)
             image = render_qr(payload, self.display.spec.width, self.display.spec.height)
+            self._check_admission()
             _push(self.display, self.directory, image)
 
     def show_status(self, *, adopted: bool) -> None:
         with self.display.operation():
+            self._check_admission()
             self.display.reserve(RESERVATION)
             image = render_status(self.display.spec.width, self.display.spec.height, adopted=adopted)
+            self._check_admission()
             _push(self.display, self.directory, image)
 
     def release(self) -> None:

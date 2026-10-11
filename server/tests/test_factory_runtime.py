@@ -94,7 +94,7 @@ def configured(tmp_path, monkeypatch, record):
     monkeypatch.setenv(guard.REQUIRED_ENV, "1")
     monkeypatch.delenv("INKY_STUDIO_DISABLE_AUTH", raising=False)
     adapter = FakeOS()
-    monkeypatch.setattr(guard, "InitializationIPCClient", lambda: adapter)
+    monkeypatch.setattr(guard, "InitializationIPCClient", lambda **_hooks: adapter)
     return SimpleNamespace(data=data, marker=marker, marker_value=value,
                            adapter=adapter, uid=uid, root=tmp_path)
 

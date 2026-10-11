@@ -13,6 +13,7 @@ import sys
 import time
 from uuid import uuid4
 
+from .connected_peer import ConnectedPeerGuard, connected_peer_scope
 from .first_boot import _receipt_response
 from .identity import canonical_uuid
 
@@ -104,8 +105,9 @@ class InitializationIPCClient:
     fallback to a weaker transport. It performs no clock/country/network action.
     """
 
-    def __init__(self, path: str = SOCKET_PATH):
+    def __init__(self, path: str = SOCKET_PATH, *, peer_guard: ConnectedPeerGuard | None = None):
         self.path = path
+        self.peer_guard = peer_guard
 
     def inspect_initialization(self) -> dict:
         return self._call("initialization.inspect")
@@ -132,30 +134,35 @@ class InitializationIPCClient:
                 _remaining(connection, deadline)
                 connection.connect(self.path)
                 _verify_server_peer(connection)
-                _remaining(connection, deadline)
-                # Mark before sendall: an exception may follow a partial send.
-                begin_submitted = operation == "initialization.begin"
-                connection.sendall(raw)
-                value = _read_response(connection, deadline)
-            if (type(value.get("v")) is not int or value["v"] != 1
-                    or value.get("id") != request_id or type(value.get("ok")) is not bool):
-                raise ValueError
-            if value["ok"]:
-                if set(value) != {"v", "id", "ok", "result"}:
-                    raise ValueError
-                _, returned_intent, _ = _receipt_response(value["result"], inspect=intent is None)
-                if intent is not None and returned_intent != intent:
-                    raise ValueError
-                return value["result"]
-            if (set(value) != {"v", "id", "ok", "error"}
-                    or type(value.get("error")) is not str or value["error"] not in ERROR_CODES):
-                raise ValueError
-            code = value["error"]
-            raise InitializationIPCError(code, begin_submitted=begin_submitted,
-                                         uncertain=begin_submitted and code not in _DEFINITE_REFUSALS)
+                with connected_peer_scope(connection, self.peer_guard):
+                    try:
+                        _remaining(connection, deadline)
+                        # Mark before sendall: an exception may follow a partial send.
+                        begin_submitted = operation == "initialization.begin"
+                        connection.sendall(raw)
+                        value = _read_response(connection, deadline)
+                        if (type(value.get("v")) is not int or value["v"] != 1
+                                or value.get("id") != request_id or type(value.get("ok")) is not bool):
+                            raise ValueError
+                        if value["ok"]:
+                            if set(value) != {"v", "id", "ok", "result"}:
+                                raise ValueError
+                            _, returned_intent, _ = _receipt_response(value["result"], inspect=intent is None)
+                            if intent is not None and returned_intent != intent:
+                                raise ValueError
+                            return value["result"]
+                        if (set(value) != {"v", "id", "ok", "error"}
+                                or type(value.get("error")) is not str or value["error"] not in ERROR_CODES):
+                            raise ValueError
+                        code = value["error"]
+                        raise InitializationIPCError(code, begin_submitted=begin_submitted,
+                                                     uncertain=begin_submitted and code not in _DEFINITE_REFUSALS)
+                    finally:
+                        # The OS proof outlives validation and the actual socket.
+                        connection.close()
         except InitializationIPCError:
             raise
-        except (OSError, ValueError, TypeError, AttributeError, RecursionError, struct.error):
+        except Exception:
             raise InitializationIPCError(
                 "initialization_uncertain" if begin_submitted else "unavailable",
                 begin_submitted=begin_submitted, uncertain=begin_submitted,

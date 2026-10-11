@@ -16,6 +16,7 @@ from typing import NoReturn, cast
 
 from inky_web.inky.display import DisplayController
 
+from .connected_peer import ConnectedPeerGuard
 from .factory_runtime import FactoryRuntimeError, _verified_epoch, prepare_factory, select_runtime
 from .factory_session import FactorySessionRuntime, serve_prepared_factory
 from .factory_writer import main_writer_guard
@@ -45,18 +46,30 @@ async def _drain(task: asyncio.Task, on_cancel: Callable[[], None] = lambda: Non
 class _Lifetime:
     def __init__(self, stop_requested: asyncio.Event):
         self.stop_requested = stop_requested
+        self.loop = asyncio.get_running_loop()
         self.display: DisplayController | None = None
         self.runtime: _OwnedRuntime | None = None
 
     def close_admission(self) -> None:
-        self.stop_requested.set()
-        # Non-blocking admission closure precedes waiting for SPI or BlueZ.
+        # DisplayController's gate is a threading.Event: close it before
+        # scheduling loop-owned Event/BlueZ work from a credential callback.
         try:
             if self.display is not None:
                 self.display.begin_shutdown()
         finally:
-            if self.runtime is not None:
-                self.runtime.begin_stop()
+            def stop_on_loop() -> None:
+                self.stop_requested.set()
+                if self.runtime is not None:
+                    self.runtime.begin_stop()
+
+            try:
+                current_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                current_loop = None
+            if current_loop is self.loop:
+                stop_on_loop()
+            else:
+                self.loop.call_soon_threadsafe(stop_on_loop)
 
     async def watch_stop(self) -> None:
         await self.stop_requested.wait()
@@ -118,15 +131,32 @@ async def _serve_owned(
     runtime_factory: Callable[
         [FirstBootResult, DisplayController, Callable[[], str]], FactorySessionRuntime,
     ],
+    admission_check: Callable[[], None],
+    initialization_peer_guard: ConnectedPeerGuard,
 ) -> None:
     with main_writer_guard() as lease:
         if lease is None:
             raise FactoryRuntimeError()
         lease.check()
+
+        def check_admission() -> None:
+            try:
+                with main_writer_guard():
+                    lease.check()
+                    if admission_check() is not None:
+                        raise FactoryRuntimeError()
+                    lease.check()
+            except Exception:
+                lifetime.close_admission()
+                raise FactoryRuntimeError() from None
+
+        check_admission()
         config = select_runtime(data_directory)
         if config is None:
             raise FactoryRuntimeError()
+        check_admission()
         expected_epoch = _verified_epoch(config)
+        check_admission()
 
         def verify_epoch() -> str:
             # Runtime mutations run in to_thread, which inherits this owner's
@@ -134,12 +164,15 @@ async def _serve_owned(
             try:
                 with main_writer_guard():
                     lease.check()
+                    check_admission()
                     current = _verified_epoch(config)
+                    check_admission()
                     if not secrets.compare_digest(expected_epoch, current):
                         raise FactoryRuntimeError()
                     lease.check()
                     return current
             except Exception:
+                lifetime.close_admission()
                 raise FactoryRuntimeError() from None
 
         prepared: FirstBootResult | None = None
@@ -159,7 +192,10 @@ async def _serve_owned(
 
             def prepare() -> FirstBootResult:
                 verify_epoch()
-                return prepare_factory(config)
+                return prepare_factory(
+                    config, admission_check=check_admission,
+                    initialization_peer_guard=initialization_peer_guard,
+                )
 
             # No cancellation of the coordinator: its one-use begin may have
             # been consumed even if the caller disappears during the exchange.
@@ -227,6 +263,8 @@ async def serve_factory_phase_a(
     runtime_factory: Callable[
         [FirstBootResult, DisplayController, Callable[[], str]], FactorySessionRuntime,
     ],
+    admission_check: Callable[[], None],
+    initialization_peer_guard: ConnectedPeerGuard,
 ) -> NoReturn:
     """Compose candidates on this event loop, then exit pending or refuse.
 
@@ -236,12 +274,15 @@ async def serve_factory_phase_a(
     """
     lifetime = _Lifetime(stop_requested)
     try:
+        if not callable(admission_check) or not callable(initialization_peer_guard):
+            raise FactoryRuntimeError()
         with main_writer_guard() as caller_lease:
             if caller_lease is None:
                 raise FactoryRuntimeError()
             caller_lease.check()
             task = asyncio.create_task(_serve_owned(
                 Path(data_directory), lifetime, display_factory, runtime_factory,
+                admission_check, initialization_peer_guard,
             ), context=Context())
             await _drain(task, lifetime.close_admission)
     except FactoryRuntimeError:

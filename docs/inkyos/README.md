@@ -15,6 +15,7 @@ Le dossier local est `~/Desktop/inkyOS`.
 - [Client d'initialisation IPC-A](INITIALIZATION-IPC-V1.md).
 - [Garde de démarrage factory — raccord inactif](FACTORY-RUNTIME-GUARD.md).
 - [Composition async de la phase A — lifecycle QR inactif](FACTORY-PHASE-A-LIFECYCLE.md).
+- [Hooks d'admission OS et de peer connecté — raccord inactif](FACTORY-ADMISSION-HOOKS.md).
 - [Observation IPC-A sans initialisation — raccord inactif](FACTORY-IPC-OBSERVATION.md).
 - [Proposition wire QR/Bluetooth — association factory, revue commune requise](BOOTSTRAP-WIRE-PROPOSAL.md).
 - [Candidat d’association initiale — lot A inactif](BOOTSTRAP-RUNTIME-LOT-A.md).

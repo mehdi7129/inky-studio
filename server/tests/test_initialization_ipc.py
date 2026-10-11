@@ -8,6 +8,7 @@ import struct
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -405,3 +406,149 @@ def test_coordinator_failed_inspection_preserves_unconsumed_local_state(serve, r
         coordinator.initialize()
     assert not (directory / PREPARED_IDENTITY_FILENAME).exists()
     assert [request["op"] for request in server.requests] == ["initialization.inspect"]
+
+
+def test_peer_guard_covers_real_socket_eof_validation_and_close(serve, root_peer, monkeypatch):
+    """Portable guard double, actual connected socket; no PIDFD/UID qualification."""
+    active = []
+    events = []
+    read_response = ipc._read_response
+    receipt_response = ipc._receipt_response
+
+    @contextmanager
+    def guard(connection):
+        assert root_peer == [connection.fileno()]  # Existing peer auth ran first.
+        assert connection.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) == socket.SOCK_STREAM
+        active.append(connection)
+        events.append("enter")
+        try:
+            yield
+        finally:
+            assert connection.fileno() == -1
+            events.append("closed")
+            active.pop()
+
+    def read(connection, deadline):
+        assert active == [connection]
+        value = read_response(connection, deadline)
+        events.append("eof")
+        return value
+
+    def receipt(*args, **kwargs):
+        assert active and active[0].fileno() >= 0
+        events.append("validated")
+        return receipt_response(*args, **kwargs)
+
+    monkeypatch.setattr(ipc, "_read_response", read)
+    monkeypatch.setattr(ipc, "_receipt_response", receipt)
+    server = serve(lambda connection, request: connection.sendall(encode(success(request))))
+    assert ipc.InitializationIPCClient(server.path, peer_guard=guard).begin_initialization(INTENT)["intent"] == INTENT
+    assert events == ["enter", "eof", "validated", "closed"]
+    assert not active and len(server.requests) == 1
+
+
+@pytest.mark.parametrize("phase", ["factory", "enter"])
+def test_peer_guard_failure_before_begin_sends_no_bytes(serve, root_peer, phase):
+    server = serve(lambda *_: pytest.fail("Guard refusal must precede any request"))
+
+    class Refused:
+        def __enter__(self):
+            raise RuntimeError("private-peer-proof")
+
+        def __exit__(self, *_):
+            pytest.fail("An unentered proof cannot be released")
+
+    def guard(connection):
+        assert root_peer == [connection.fileno()]
+        if phase == "factory":
+            raise RuntimeError("private-peer-proof")
+        return Refused()
+
+    with pytest.raises(ipc.InitializationIPCError) as caught:
+        ipc.InitializationIPCClient(server.path, peer_guard=guard).begin_initialization(INTENT)
+    assert str(caught.value) == "unavailable"
+    assert not caught.value.begin_submitted and not caught.value.uncertain
+    assert caught.value.__cause__ is None
+    assert not server.requests
+
+
+@pytest.mark.parametrize("begin", [False, True])
+@pytest.mark.parametrize("response", ["success", "forbidden"])
+def test_peer_guard_exit_failure_after_send_is_fixed_and_begin_uncertain(serve, root_peer, begin, response):
+    def respond(connection, request):
+        value = success(request) if response == "success" else {"v": 1, "id": request["id"], "ok": False, "error": "forbidden"}
+        connection.sendall(encode(value))
+
+    @contextmanager
+    def guard(connection):
+        try:
+            yield
+        finally:
+            assert connection.fileno() == -1
+            raise RuntimeError("private-peer-proof")
+
+    server = serve(respond)
+    client = ipc.InitializationIPCClient(server.path, peer_guard=guard)
+    with pytest.raises(ipc.InitializationIPCError) as caught:
+        client.begin_initialization(INTENT) if begin else client.inspect_initialization()
+    assert str(caught.value) == ("initialization_uncertain" if begin else "unavailable")
+    assert caught.value.begin_submitted is begin and caught.value.uncertain is begin
+    assert caught.value.__cause__ is None and len(server.requests) == 1
+
+
+@pytest.mark.parametrize("response", ["malformed", "forbidden"])
+def test_peer_guard_cannot_suppress_transport_or_explicit_refusal(serve, root_peer, response):
+    observed = []
+
+    class Suppressing:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, exception_type, exception, traceback):
+            observed.append(exception)
+            return True
+
+    def respond(connection, request):
+        value = b"{}\n" if response == "malformed" else encode({"v": 1, "id": request["id"], "ok": False, "error": "forbidden"})
+        connection.sendall(value)
+
+    server = serve(respond)
+    with pytest.raises(ipc.InitializationIPCError) as caught:
+        ipc.InitializationIPCClient(server.path, peer_guard=lambda _: Suppressing()).begin_initialization(INTENT)
+    assert str(caught.value) == ("initialization_uncertain" if response == "malformed" else "forbidden")
+    assert len(observed) == len(server.requests) == 1
+    assert observed[0] is not None
+
+
+def test_existing_peer_refusal_never_enters_injected_guard(serve, monkeypatch):
+    def deny(_connection):
+        raise ipc.InitializationIPCError("forbidden")
+
+    monkeypatch.setattr(ipc, "_verify_server_peer", deny)
+    server = serve(lambda *_: pytest.fail("Untrusted peer must receive no request"))
+    with pytest.raises(ipc.InitializationIPCError, match="^forbidden$"):
+        ipc.InitializationIPCClient(server.path, peer_guard=lambda _: pytest.fail("UID refusal precedes guard")).inspect_initialization()
+    assert not server.requests
+
+
+@pytest.mark.parametrize("entered", [False, True, object()], ids=["false", "true", "object"])
+@pytest.mark.parametrize("exit_fails", [False, True])
+def test_peer_guard_non_none_entry_is_refused_and_proof_released_before_send(serve, root_peer, entered, exit_fails):
+    events = []
+
+    class InvalidProof:
+        def __enter__(self):
+            events.append("entered")
+            return entered
+
+        def __exit__(self, *_):
+            events.append("released")
+            if exit_fails:
+                raise RuntimeError("private-proof-diagnostic")
+
+    server = serve(lambda *_: pytest.fail("A non-None entry is not an admission proof"))
+    with pytest.raises(ipc.InitializationIPCError, match="^unavailable$") as caught:
+        ipc.InitializationIPCClient(server.path, peer_guard=lambda _: InvalidProof()).begin_initialization(INTENT)
+    assert not caught.value.begin_submitted and not caught.value.uncertain
+    assert caught.value.__cause__ is None
+    assert events == ["entered", "released"] and not server.requests
