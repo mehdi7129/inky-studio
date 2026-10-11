@@ -165,7 +165,10 @@ def test_update_uses_existing_module(tmp_path):
         env={**os.environ, "INKY_STUDIO_INSTALL_DIR": str(tmp_path)},
         text=True, capture_output=True, check=True,
     )
-    assert result.stdout.splitlines() == ["-m", "inky_web.services.updater"]
+    assert result.stdout.splitlines() == [
+        "-m", "inky_web.provisioning.factory_runtime", "--check-legacy",
+        "-m", "inky_web.services.updater",
+    ]
 
 
 def test_failed_welcome_restarts_service(tmp_path):
@@ -288,7 +291,9 @@ def test_failed_reset_cli_keeps_credentials_and_restarts_service(tmp_path):
     ]
 
 
-@pytest.mark.parametrize("command", ["welcome", "reset-password", "password"])
+@pytest.mark.parametrize("command", [
+    "welcome", "reset-password", "password", "start", "stop", "restart", "update",
+])
 def test_factory_cli_preflight_refuses_before_service_or_credential_effects(tmp_path, monkeypatch, command):
     initial = auth.reset_credentials(tmp_path / "data")
     before = initial.path.read_bytes()
@@ -302,3 +307,28 @@ def test_factory_cli_preflight_refuses_before_service_or_credential_effects(tmp_
     assert initial.path.read_bytes() == before
     assert not (tmp_path / "service.log").exists()
     assert not (tmp_path / "data/provisioning").exists()
+
+
+@pytest.mark.parametrize("command", ["start", "stop", "restart"])
+def test_legacy_cli_service_lifecycle_is_preserved(tmp_path, command):
+    result = _password_cli(tmp_path, command)
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "service.log").read_text().splitlines() == [
+        f"systemctl {command} inky-studio.service",
+    ]
+    assert not (tmp_path / "data").exists()
+
+
+@pytest.mark.parametrize("command", ["start", "stop", "restart", "update"])
+@pytest.mark.parametrize("writer_value", ["", "private-handoff"])
+def test_partial_writer_handoff_refuses_cli_before_service_or_update(
+    tmp_path, monkeypatch, command, writer_value,
+):
+    monkeypatch.delenv("INKY_STUDIO_FACTORY_REQUIRED", raising=False)
+    monkeypatch.setenv("INKYOS_WRITER_LEASE_FD", writer_value)
+    result = _password_cli(tmp_path, command)
+    assert result.returncode == 78
+    assert result.stderr.strip() == "factory_runtime_refused"
+    assert not result.stdout
+    assert not (tmp_path / "service.log").exists()
+    assert not (tmp_path / "data").exists()
