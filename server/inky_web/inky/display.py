@@ -149,6 +149,14 @@ class DisplayController:
             "color_raw": color if type(color) is int else None,
             "color_interpretation": "unmapped" if color == 4 else "not_interpreted",
         }
+        families = {
+            "inky.inky_ac073tc1a": ("ac073", {(800, 480)}),
+            "inky.inky_uc8159": ("uc8159", {(600, 448), (640, 400)}),
+            "inky.inky_e640": ("e640", {(600, 400)}),
+            "inky.inky_e673": ("e673", {(800, 480)}),
+            "inky.inky_el133uf1": ("el133uf1", {(1600, 1200)}),
+        }
+        selected = families.get(module)
         is_ac073 = module == "inky.inky_ac073tc1a" and (impl.width, impl.height) == (800, 480)
         eeprom_size = (getattr(eeprom, "width", None), getattr(eeprom, "height", None))
         if self._profile and not is_ac073:
@@ -159,12 +167,16 @@ class DisplayController:
                 raise ValueError("Unexpected raw EEPROM tuple for the AC073 observer")
             if color == 4 and self._profile != "ac073-800x480":
                 raise ValueError("Unmapped EEPROM color 4 requires the explicit bench profile")
+        if selected is not None:
+            family, dimensions = selected
+            if type(impl.width) is not int or type(impl.height) is not int or (impl.width, impl.height) not in dimensions:
+                raise ValueError("Detected dimensions do not match the qualified BUSY contract")
             installed = version("inky")
             self._driver_info["inky_version"] = installed
-            if installed != "2.3.0":
-                raise ValueError("AC073 busy observer requires inky 2.3.0")
+            if installed != "2.5.0":
+                raise ValueError("Impression BUSY observer requires inky 2.5.0")
             from inky_web.inky.busy import BusyObserver
-            self._busy_observer = BusyObserver(impl)
+            self._busy_observer = BusyObserver(impl, family)
             for dependency in ("gpiod", "gpiodevice", "spidev"):
                 try:
                     self._driver_info[f"{dependency}_version"] = version(dependency)
@@ -188,7 +200,7 @@ class DisplayController:
             "is_mock": self._is_mock,
             "error": self._error.payload() if self._error else None,
             "driver": dict(self._driver_info),
-            "busy_monitor": "ac073_2.3.0" if self._busy_observer is not None else "not_monitored",
+            "busy_monitor": f"{self._busy_observer.family}_2.5.0" if self._busy_observer is not None else "not_monitored",
             "observations": [dict(item) for item in self._observations],
         }
 
@@ -281,20 +293,10 @@ class DisplayController:
                 observations = self._busy_observer.run_show()
             finally:
                 self._observations = [dict(item) for item in self._busy_observer.observations]
-            # Diagnose only after the original sequence (including power-off)
-            # finishes. Never cancel the GPIO thread or raise inside its wait.
-            if any(item["outcome"] == "edge_timeout" for item in observations):
-                raise DisplayUnavailableError(
-                    "Le cadre n’a pas répondu à temps. La photo est conservée. Vérifie le matériel, puis redémarre le service.",
-                    "display_busy_timeout",
-                )
-            phases = [item["phase"] for item in observations]
-            refresh = [item for item in observations if item["phase"] == "refresh"]
-            if phases != ["setup", "power_on", "refresh", "power_off"] or not refresh or refresh[0]["outcome"] != "edge_received":
-                raise DisplayUnavailableError(
-                    "La fin de l’affichage n’a pas pu être confirmée. La photo est conservée. Vérifie le cadre, puis redémarre le service.",
-                    "display_busy_unverified",
-                )
+            # Each driver owns its clocks/waits. EL133 refuses an unproved
+            # refresh before POF; all other verdicts follow the full show().
+            from inky_web.inky.busy import validate_observations
+            validate_observations(observations, self._busy_observer.family)
         logger.info("Displayed %s (sat=%s, boost=%s)", path, pimoroni_sat, color_factor)
 
 

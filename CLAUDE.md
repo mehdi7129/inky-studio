@@ -108,10 +108,13 @@ The installer and updater pull the **latest GitHub Release**, so shipping is:
 
 ## Hardware notes
 
-- The `inky` package stays pinned to `2.3.0` pending coordinated hardware
-  qualification. AC073 source is byte-identical in 2.3/2.4, so the historical
-  GPIO failure cannot be attributed to a change in that file. Its cause remains
-  unresolved. The AC073 busy observer targets 2.3.0; do not bump independently.
+- The new source candidate pins `inky==2.5.0`; BUSY observation is specific to
+  each driver family. Keep the strict version/EEPROM guards and nominal driver
+  sequence. EL133UF1 refuses POF after an unverified refresh wait. This is not
+  physical qualification. The installed 2.3.0 TEST payload and the immutable
+  a071 bundle are historical artifacts; never relabel or rebuild them with this
+  pin. New native closure, image and panel qualification are coordinated with
+  InkyOS. See `docs/inkyos/DISPLAY-DRIVER-250.md`.
 - Newer Inky panels need `dtoverlay=spi0-0cs` (no kernel chip-select on SPI0)
   or the first refresh fails with "pins in use" on GPIO8.
 - `INKY_STUDIO_DISPLAY_MODE=auto|hardware|mock`: auto selects hardware on Linux

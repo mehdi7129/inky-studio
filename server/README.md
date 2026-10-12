@@ -27,7 +27,11 @@ pip install -e ".[pi]"
 
 This installs the pinned Pimoroni `inky` driver. The installer selects
 `INKY_STUDIO_DISPLAY_MODE=hardware`. Autodetection selects a driver; it does not
-establish physical qualification. The AC073 busy observer targets **2.3.0** only.
+establish physical qualification. This source candidate pins **2.5.0** and has
+separate BUSY contracts for AC073, UC8159 and the three Spectra families.
+The existing 2.3.0 TEST payload is a distinct artifact. A new native dependency
+closure and physical qualification are required before deployment; see
+[the migration contract](../docs/inkyos/DISPLAY-DRIVER-250.md).
 
 Hardware errors remain latched until an operator has checked the frame and
 restarted the service. `/api/state`, `/api/display`, uploads and display actions
@@ -43,5 +47,10 @@ for scope, diagnostics and physical qualification limits.
 ## Tests
 
 ```bash
+pip download --no-deps --require-hashes -r tests/fixtures/inky_250_requirement.txt -d .test-wheels
 pytest
 ```
+
+Install `.[dev]` first. The driver tests load the SHA-256/RECORD-verified official
+wheel from this cache, with real NumPy/Pillow and simulated GPIO/SPI ports.
+Pytest does not download dependencies or touch hardware.

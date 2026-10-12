@@ -29,17 +29,24 @@
 
 The [SwiftUI iPhone app](ios/README.md) supports iOS 18+, the approved light bento design, optional Face ID/Touch ID login, native photo import and crop, queue/history management, display controls and Raspberry settings. It connects to the existing server on the same Wi-Fi network. Build and device/TestFlight instructions are in [`ios/README.md`](ios/README.md).
 
-## Supported hardware
+## Recognized display formats
 
 Displays are auto-detected via [`inky`](https://github.com/pimoroni/inky):
 
 | Display | Resolution | Colours |
 |---|---|---|
-| Inky Impression 7.3" | 800×480 | 7 |
-| Inky Impression 7.3" (2025) | 800×480 | 6 (Spectra) |
-| Inky Impression 13.3" (2025) | 1600×1200 | 6 (Spectra) |
+| Inky Impression 4" (Spectra, E640) | 600×400 | 6 |
+| Inky Impression 7.3" (Spectra, E673) | 800×480 | 6 |
+| Inky Impression 13.3" (Spectra, EL133UF1) | 1600×1200 | 6 |
+| Inky Impression 7.3" (AC073TC1A) | 800×480 | 7 |
+| Inky Impression 5.7" (UC8159) | 600×448 | 7 |
+| Inky Impression 4" (UC8159) | 640×400 | 7 |
 
-Tested on Raspberry Pi Zero 2 W, 3, 4 and 5 running Raspberry Pi OS (Debian Bookworm or Trixie, 64-bit).
+The new source candidate pins **Inky 2.5.0** and has separate BUSY contracts for
+these families. Driver/EEPROM tests and dimension tests do not qualify a physical
+panel or a Pi model. The installed TEST payload still uses Inky 2.3.0.
+See [driver migration and qualification](docs/inkyos/DISPLAY-DRIVER-250.md)
+before building a new native payload or deploying this candidate.
 
 ## Install
 

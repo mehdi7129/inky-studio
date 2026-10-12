@@ -4,6 +4,11 @@ Status: software candidate, 3 October 2026. No Raspberry, SD card, EEPROM,
 GPIO, Wi-Fi profile or personal frame was changed while developing it.
 This does not qualify an image, physical refresh, QR scan or iPhone Bluetooth.
 
+**Historical 2.3.0 contract:** this document describes the October 3 candidate
+used by the existing TEST payload, not the new source pin. The separate
+[Inky 2.5.0 candidate](DISPLAY-DRIVER-250.md) requires a new native closure and
+per-panel qualification. The traces and counts below do not transfer to it.
+
 ## Scope and deployment contract
 
 The source candidate is based on PR #17 (`758a2bf`), which already contains the

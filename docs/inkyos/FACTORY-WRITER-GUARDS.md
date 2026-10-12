@@ -4,6 +4,12 @@ This lot follows the inactive bootstrap candidate in PR #29. It does not enable
 Bluetooth bootstrap, publish normal identity, change the Wi-Fi protocol, install
 an OS image or replace the physical TEST payload.
 
+The `a071f19` bundle and its 2.3.0 dependency closure below are immutable
+historical artifacts. The later [2.5.0 driver candidate](DISPLAY-DRIVER-250.md)
+does not rewrite their manifest or qualify a new installed graph. A new closure
+and bundle must be reviewed separately; do not package new sources with the old
+Inky wheel.
+
 ## Installed boundary
 
 Presence of `INKY_STUDIO_FACTORY_REQUIRED`, any `INKYOS_WRITER_*` variable,

@@ -57,6 +57,7 @@ jobs:
           cd server
           python -m pip install -e ".[dev]"
           ruff check .
+          python -m pip download --no-deps --require-hashes -r tests/fixtures/inky_250_requirement.txt -d .test-wheels
           pytest -q
           python ../scripts/qualify-password-upgrade.py
 
@@ -81,6 +82,7 @@ jobs:
             --exclude '.venv' \
             --exclude '__pycache__' \
             --exclude '*.egg-info' \
+            --exclude '.test-wheels' \
             --exclude 'tests' \
             server "$STAGE/"
           cp -a client/dist "$STAGE/client/dist"

@@ -51,9 +51,13 @@ confirmation HTTPS. La cible actuelle est WPA2 Personal 2,4 GHz/IPv4. Réseaux
 ouverts, entreprise et portails captifs d'hôtel ne sont pas implémentés. Le
 partage de connexion compatible est le premier scénario de voyage à qualifier.
 
-Le catalogue comporte 20 variantes de métadonnées. L'observation du signal busy
-ne couvre que l'AC073 avec `inky==2.3.0` ; aucun autre panneau n'est réputé testé
-physiquement. Un QR non tronqué dans une image ne prouve pas sa lecture caméra.
+Le catalogue comporte 20 variantes de métadonnées. Le payload TEST existant
+observe seulement l'AC073 avec `inky==2.3.0`. Le nouveau
+[candidat 2.5.0](DISPLAY-DRIVER-250.md) ajoute des contrats distincts pour les
+trois Spectra et les Impression AC073/UC8159, y compris le 5,7″ 600 × 448.
+Les tests du vrai code driver utilisent des ports GPIO/SPI simulés ; chaque
+panneau et nouvelle fermeture native restent à qualifier physiquement. Un QR
+non tronqué dans une image ne prouve pas sa lecture caméra.
 
 ## Invariants à garder pendant l'intégration
 
