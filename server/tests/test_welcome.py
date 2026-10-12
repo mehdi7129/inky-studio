@@ -9,9 +9,10 @@ from fastapi.testclient import TestClient
 from inky_web.welcome import render_welcome_image, show_welcome
 
 
-def test_render_welcome_image_returns_correct_dimensions():
-    img = render_welcome_image(800, 480, url="http://192.168.1.120:8000", password="abc123XYZ0")
-    assert img.size == (800, 480)
+@pytest.mark.parametrize("size", [(600, 400), (800, 480), (1600, 1200), (600, 448), (640, 400)])
+def test_render_welcome_image_returns_correct_dimensions(size):
+    img = render_welcome_image(*size, url="http://192.168.1.120:8000", password="abc123XYZ0")
+    assert img.size == size
     assert img.mode == "RGB"
 
 

@@ -1,17 +1,21 @@
-"""Run the actual pinned busy wait/update against inert GPIO and SPI commands."""
+"""Exact pinned 2.5 BUSY/update methods, inert GPIO/SPI, actual Studio verdicts."""
+from __future__ import annotations
 
 import ast
+import asyncio
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
 from enum import Enum
-from threading import Barrier
+from threading import Barrier, Event
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
-from inky_web.inky.busy import BusyObserver
-from tests.fixtures.inky_ac073_busy_230 import SOURCE
+from inky_web.inky.busy import CONTRACTS, BusyObserver, validate_observations
+from inky_web.inky.display import DisplayController, DisplaySpec
+from inky_web.inky.errors import DisplayUnavailableError
+from tests.fixtures.inky_busy_250 import BUSY_PINS, CONSTANTS, SOURCES
 
 
 class Value(Enum):
@@ -19,404 +23,408 @@ class Value(Enum):
     ACTIVE = 1
 
 
-class FakeGPIO:
-    def __init__(self, trace, phases=None, barrier=None):
+class EdgeEvent:
+    class Type(Enum):
+        RISING_EDGE = 1
+        FALLING_EDGE = 2
+
+    def __init__(self, line=17, event_type=None):
+        self.line_offset = line
+        self.event_type = event_type or self.Type.RISING_EDGE
+
+
+class Clock:
+    def __init__(self, trace):
+        self.now = 0.0
         self.trace = trace
-        self.phases = phases or [(Value.INACTIVE, True)] * 4
-        self.index = -1
+
+    def time(self):
+        return self.now
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.trace.append(("sleep", seconds))
+        self.now += seconds
+
+
+class FakeGPIO:
+    def __init__(self, trace, family, scenarios, barrier, blocked):
+        self.trace = trace
+        self.family = family
+        self.scenarios = scenarios
         self.barrier = barrier
+        self.blocked = blocked
+        self.phase = "setup"
+        self.indices = {}
 
     def get_value(self, pin):
+        index = self.indices.get(self.phase, 0)
+        self.indices[self.phase] = index + 1
         self.trace.append(("get_value", pin))
-        self.index += 1
-        value = self.phases[self.index][0]
+        if self.phase == "refresh" and index == 0:
+            if self.barrier:
+                self.barrier.wait(timeout=3)
+            if self.blocked:
+                entered, release = self.blocked
+                entered.set()
+                assert release.wait(3)
+        defaults = ([Value.INACTIVE] if self.family in {"ac073", "uc8159"}
+                    else [Value.INACTIVE, Value.INACTIVE] if self.family == "el133uf1" and self.phase != "refresh"
+                    else [Value.INACTIVE, Value.INACTIVE, Value.ACTIVE])
+        values = self.scenarios.get(self.phase, {}).get("values", defaults)
+        value = values[min(index, len(values) - 1)]
         if isinstance(value, BaseException):
             raise value
         return value
 
-    def wait_edge_events(self, timeout):
-        self.trace.append(("wait_edge_events", timeout))
-        if self.barrier:
-            self.barrier.wait(timeout=3)
-        result = self.phases[self.index][1]
-        if isinstance(result, BaseException):
-            raise result
-        return result
-
-    def read_edge_events(self):
-        self.trace.append(("read_edge_events",))
-        return ["rising-edge"]
-
 
 @pytest.fixture
 def driver_factory():
-    def make(phases=None, *, lazy_gpio=False, barrier=None):
+    def make(family="ac073", scenarios=None, *, lazy_gpio=False, barrier=None, blocked=None):
         trace = []
-        namespace = {
-            "Value": Value,
-            "time": SimpleNamespace(sleep=lambda seconds: trace.append(("sleep", seconds))),
-            "warnings": warnings,
-            "timedelta": timedelta,
-            "AC073TC1_DTM": 0x10,
-            "AC073TC1_PON": 0x04,
-            "AC073TC1_DRF": 0x12,
-            "AC073TC1_POF": 0x02,
-        }
-        parsed_class = ast.parse(SOURCE).body[0]
-        # Compile the upstream method AST, without its imports or GPIO setup.
-        exec(compile(ast.Module(body=parsed_class.body, type_ignores=[]), "pimoroni-2.3.0-busy", "exec"), namespace)
-        upstream = type("PinnedWaitAndUpdate", (), {
-            "_busy_wait": namespace["_busy_wait"],
-            "_update": namespace["_update"],
-        })
-        gpio = FakeGPIO(trace, phases, barrier)
+        scenarios = scenarios or {}
+        clock = Clock(trace)
+        gpio = FakeGPIO(trace, family, scenarios, barrier, blocked)
+
+        def wait_for_edge(request, line, timeout):
+            # The helper receives the very same real request as the baseline;
+            # the observation never passes its proxy into gpiodevice.
+            assert type(request) is FakeGPIO
+            request.trace.append(("wait_for_edge", line, timeout))
+            result = request.scenarios.get(request.phase, {}).get("edge", EdgeEvent())
+            if isinstance(result, BaseException):
+                raise result
+            return result
+
+        helper = SimpleNamespace(wait_for_edge=wait_for_edge)
+        namespace = {"Value": Value, "time": clock, "warnings": warnings,
+                     "gpiod": SimpleNamespace(EdgeEvent=EdgeEvent), "gpiodevice": helper}
+        namespace.update(CONSTANTS[family])
+        parsed = ast.parse(SOURCES[family]).body[0]
+        exec(compile(ast.Module(body=parsed.body, type_ignores=[]), f"inky-2.5.0-{family}", "exec"), namespace)
+        upstream = type("PinnedWaitAndUpdate", (), {node.name: namespace[node.name] for node in parsed.body})
+        dims = {"ac073": (800, 480), "uc8159": (600, 448), "e640": (600, 400),
+                "e673": (800, 480), "el133uf1": (1600, 1200)}[family]
 
         class Driver(upstream):
-            busy_pin = 17
+            busy_pin = BUSY_PINS[family]
+            width, height = dims
 
             def __init__(self):
                 self._gpio = None if lazy_gpio else gpio
                 self.show_calls = 0
 
             def setup(self):
-                # Only GPIO acquisition is simulated. The wait and complete
-                # PON/DRF/POF ordering are executed from the upstream source.
+                # GPIO acquisition/reset/init commands excluded from this
+                # fixture; the setup wait and update/wait bodies are exact.
                 if self._gpio is None:
                     self._gpio = gpio
-                self._busy_wait(1.0)
+                gpio.phase = "setup"
+                gpio.indices = {}
+                self._busy_wait(CONTRACTS[family][0][2])
 
             def show(self):
                 self.show_calls += 1
-                self._update([0x77])
+                self._update([0x77], [0x77]) if family == "el133uf1" else self._update([0x77])
                 trace.append(("show_returned",))
 
-            def _send_command(self, command, data=None):
-                trace.append(("command", command, data))
+            def set_image(self, image, *, saturation):
+                assert image.size == dims and image.mode == "RGB"
+                trace.append(("set_image", image.size, image.mode, saturation))
 
-        return Driver(), gpio, trace
+            def _send_command(self, command, *data):
+                trace.append(("command", command, *data))
+                phase = {0x04: "power_on", 0x12: "refresh", 0x02: "power_off"}.get(command)
+                if command == 0x00 and family == "e673":
+                    phase = "standby"
+                if phase:
+                    gpio.phase = phase
+
+        return Driver(), gpio, trace, namespace
 
     return make
 
 
-def test_healthy_trace_is_identical_to_unobserved_upstream(driver_factory):
-    baseline, _, baseline_trace = driver_factory()
+@pytest.mark.parametrize("family", CONTRACTS)
+def test_healthy_trace_identical_to_unobserved_upstream_and_globals_unchanged(driver_factory, family):
+    baseline, _, baseline_trace, _ = driver_factory(family)
     baseline.show()
-    driver, gpio, trace = driver_factory()
-    observer = BusyObserver(driver)
+    driver, gpio, trace, namespace = driver_factory(family)
+    before = dict(namespace)
+    observer = BusyObserver(driver, family)
+    observed = observer.run_show()
+    validate_observations(observed, family)
+    assert trace == baseline_trace and driver.show_calls == 1
+    assert [item["phase"] for item in observed] == [phase for _, phase, _ in CONTRACTS[family]]
+    assert [item["timeout"] for item in observed] == [timeout for _, _, timeout in CONTRACTS[family]]
+    assert namespace == before and driver._gpio is gpio
+    assert all(name not in vars(driver) for name in ("_busy_wait", "_refresh_wait"))
 
-    assert observer.run_show() == [
-        {"phase": phase, "sequence": index, "timeout": timeout, "outcome": "edge_received"}
-        for index, (phase, timeout) in enumerate([
-            ("setup", 1.0), ("power_on", 0.4), ("refresh", 45.0), ("power_off", 0.4),
-        ], start=1)
-    ]
-    assert driver.show_calls == 1
-    assert trace == baseline_trace
+
+@pytest.mark.parametrize("family", ["ac073", "uc8159"])
+@pytest.mark.parametrize("edge", [False, [], object(), EdgeEvent(18), EdgeEvent(17, EdgeEvent.Type.FALLING_EDGE)])
+def test_edge_metadata_is_exact_and_unknown_results_never_grant_refresh(driver_factory, family, edge):
+    driver, gpio, trace, _ = driver_factory(family, {"refresh": {"edge": edge}})
+    observed = BusyObserver(driver, family).run_show()
+    assert observed[2]["outcome"] == "edge_unverified"
+    with pytest.raises(DisplayUnavailableError) as caught:
+        validate_observations(observed, family)
+    assert caught.value.code == "display_busy_unverified"
+    assert trace[-1] == ("show_returned",) and driver._gpio is gpio
+    assert len([item for item in trace if item[0] == "wait_for_edge"]) == 4
+
+
+@pytest.mark.parametrize("family", ["ac073", "uc8159"])
+def test_unknown_gpio_level_is_not_proved_by_matching_edge(driver_factory, family):
+    driver, _, _, _ = driver_factory(family, {"refresh": {"values": [None]}})
+    observed = BusyObserver(driver, family).run_show()
+    assert observed[2]["outcome"] == "edge_unverified"
+    with pytest.raises(DisplayUnavailableError) as caught:
+        validate_observations(observed, family)
+    assert caught.value.code == "display_busy_unverified"
+
+
+@pytest.mark.parametrize(("family", "phase"), [(f, p) for f, contract in CONTRACTS.items() for _, p, _ in contract])
+@pytest.mark.filterwarnings("ignore:.*Wait")
+def test_every_timeout_refuses_success_and_only_el_refresh_blocks_pof(driver_factory, family, phase):
+    fault = {"edge": None} if family in {"ac073", "uc8159"} else {"values": [Value.INACTIVE]}
+    if family == "el133uf1" and phase != "refresh":
+        # Its power waits only time out after initialLOW then HIGH held.
+        fault = {"values": [Value.INACTIVE, Value.ACTIVE]}
+    driver, gpio, trace, _ = driver_factory(family, {phase: fault})
+    observer = BusyObserver(driver, family)
+    with pytest.raises(DisplayUnavailableError) as caught:
+        observations = observer.run_show()
+        validate_observations(observations, family)
+    assert caught.value.code == "display_busy_timeout"
     assert driver._gpio is gpio
-    assert "_busy_wait" not in vars(driver)
+    assert all(name not in vars(driver) for name in ("_busy_wait", "_refresh_wait"))
+    if family == "el133uf1" and phase == "refresh":
+        assert not any(item[0] == "command" and item[1] == 0x02 for item in trace)
+        assert trace[-1][0] == "get_value"  # Final upstream check preceded its timeout return.
+    else:
+        assert trace[-1] == ("show_returned",)
+        assert any(item[0] == "command" and item[1] == 0x02 for item in trace)
 
 
-def test_ready_wait_followed_by_empty_events_is_unverified(driver_factory):
-    baseline, baseline_gpio, baseline_trace = driver_factory()
-    driver, gpio, trace = driver_factory()
-
-    def empty_read(target_trace):
-        def read():
-            target_trace.append(("read_edge_events",))
-            return []
-        return read
-
-    baseline_gpio.read_edge_events = empty_read(baseline_trace)
-    gpio.read_edge_events = empty_read(trace)
-    baseline.show()
-
-    observations = BusyObserver(driver).run_show()
-
-    assert [item["outcome"] for item in observations] == ["edge_unverified"] * 4
-    assert trace == baseline_trace
-    assert trace.count(("read_edge_events",)) == 4
-    assert ("command", 0x02, [0x00]) in trace
-    assert trace[-1] == ("show_returned",)
-    assert driver._gpio is gpio
-
-
-def test_non_list_events_are_not_consumed_to_verify_presence(driver_factory):
-    driver, gpio, _ = driver_factory()
-    results = []
-
-    class Events:
-        def __init__(self):
-            self.iterations = 0
-
-        def __iter__(self):
-            self.iterations += 1
-            assert self.iterations == 1
-            yield "one-edge"
-
-        def __len__(self):
-            raise AssertionError("Observer must not probe an arbitrary iterable")
-
-    def read():
-        result = Events()
-        results.append(result)
-        return result
-
-    gpio.read_edge_events = read
-
-    observations = BusyObserver(driver).run_show()
-
-    assert [item["outcome"] for item in observations] == ["edge_unverified"] * 4
-    assert len(results) == 4
-    assert all(result.iterations == 1 for result in results)
-    assert driver._gpio is gpio
-
-
-@pytest.mark.parametrize("failed_phase", range(4))
+@pytest.mark.parametrize("family", ["ac073", "uc8159", "e640", "e673"])
 @pytest.mark.filterwarnings("ignore:Busy Wait")
-def test_false_edge_wait_is_recorded_without_skipping_power_off(driver_factory, failed_phase):
-    phases = [(Value.INACTIVE, True)] * 4
-    phases[failed_phase] = (Value.INACTIVE, False)
-    baseline, _, baseline_trace = driver_factory(phases)
-    baseline.show()
-    driver, gpio, trace = driver_factory(phases)
-    observations = BusyObserver(driver).run_show()
-
-    assert [item["outcome"] for item in observations] == [
-        "edge_timeout" if index == failed_phase else "edge_received" for index in range(4)
-    ]
-    assert trace == baseline_trace
-    assert ("command", 0x02, [0x00]) in trace
+def test_held_high_blind_sleep_is_unverified(driver_factory, family):
+    driver, _, trace, _ = driver_factory(family, {"refresh": {"values": [Value.ACTIVE]}})
+    observed = BusyObserver(driver, family).run_show()
+    assert observed[2]["outcome"] == "held_high_unverified"
+    with pytest.raises(DisplayUnavailableError) as caught:
+        validate_observations(observed, family)
+    assert caught.value.code == "display_busy_unverified"
+    assert ("sleep", CONTRACTS[family][2][2]) in trace
     assert trace[-1] == ("show_returned",)
-    assert observations[-1]["phase"] == "power_off"
-    assert driver.show_calls == 1
-    assert driver._gpio is gpio
 
 
-@pytest.mark.filterwarnings("ignore:Busy Wait")
-def test_held_high_is_unverified_even_with_warnings_disabled(driver_factory):
-    phases = [(Value.ACTIVE, None)] * 4
-    baseline, _, baseline_trace = driver_factory(phases)
-    baseline.show()
-    driver, _, trace = driver_factory(phases)
-    observations = BusyObserver(driver).run_show()
-
-    assert [item["outcome"] for item in observations] == ["held_high_unverified"] * 4
-    assert trace == baseline_trace
-    assert [item for item in trace if item[0] == "sleep"] == [
-        ("sleep", 1.0), ("sleep", 0.4), ("sleep", 45.0), ("sleep", 0.4),
-    ]
-    assert not any(item[0] in {"wait_edge_events", "read_edge_events"} for item in trace)
-    assert ("command", 0x02, [0x00]) in trace
+@pytest.mark.parametrize("values", [[Value.ACTIVE, Value.ACTIVE, Value.INACTIVE, Value.INACTIVE, Value.ACTIVE],
+                                    [Value.INACTIVE, Value.ACTIVE]])
+def test_el_refresh_accepts_only_observed_low_then_high(driver_factory, values):
+    driver, gpio, trace, _ = driver_factory("el133uf1", {"refresh": {"values": values}})
+    observer = BusyObserver(driver, "el133uf1")
+    observed = observer.run_show()
+    validate_observations(observed, "el133uf1")
+    assert observed[2]["outcome"] == "refresh_completed" and driver._gpio is gpio
+    assert trace[-1] == ("show_returned",)
 
 
-@pytest.mark.parametrize("operation", ["get", "wait", "read", "drain"])
-def test_gpio_exceptions_propagate_and_restore_attributes(driver_factory, operation):
-    fault = OSError("inert GPIO fault")
-    phases = [(fault if operation == "get" else Value.INACTIVE,
-               fault if operation == "wait" else True)]
-    driver, gpio, _ = driver_factory(phases)
-
-    def raising_read():
-        raise fault
-
-    def raising_iterator():
-        yield "one-edge"
-        raise fault
-
-    if operation == "read":
-        gpio.read_edge_events = raising_read
-    elif operation == "drain":
-        gpio.read_edge_events = raising_iterator
-    observer = BusyObserver(driver)
-    with pytest.raises(OSError) as caught:
+@pytest.mark.parametrize(("values", "outcome", "code"), [
+    ([Value.ACTIVE], "refresh_assert_timeout", "display_busy_timeout"),
+    ([Value.INACTIVE], "refresh_timeout", "display_busy_timeout"),
+    ([object()], "unrecognized", "display_busy_unverified"),
+])
+@pytest.mark.filterwarnings("ignore:Refresh Wait")
+def test_el_refusal_after_whole_wait_before_pof(driver_factory, values, outcome, code):
+    baseline, _, baseline_trace, _ = driver_factory("el133uf1", {"refresh": {"values": values}})
+    baseline.show()  # Upstream warning+return would proceed to POF.
+    driver, gpio, trace, _ = driver_factory("el133uf1", {"refresh": {"values": values}})
+    observer = BusyObserver(driver, "el133uf1")
+    with pytest.raises(DisplayUnavailableError) as caught:
         observer.run_show()
-
-    assert caught.value is fault
-    assert observer.observations == [{
-        "phase": "setup", "sequence": 1, "timeout": 1.0,
-        "outcome": "error", "error_type": "OSError",
-    }]
-    assert driver._gpio is gpio
-    assert "_busy_wait" not in vars(driver)
+    assert caught.value.code == code and observer.observations[2]["outcome"] == outcome
+    pof = next(i for i, item in enumerate(baseline_trace) if item[:2] == ("command", 0x02))
+    assert trace == baseline_trace[:pof]
+    assert driver._gpio is gpio and "_busy_wait" not in vars(driver) and "_refresh_wait" not in vars(driver)
 
 
-@pytest.mark.parametrize("fault", [RuntimeError("show failed"), SystemExit(3)])
-def test_show_exceptions_keep_completed_diagnostics_and_instance_method(driver_factory, fault):
-    driver, gpio, _ = driver_factory()
-    previous_wait = driver._busy_wait
-    driver._busy_wait = previous_wait
-
-    def failed_show():
-        driver._busy_wait(1.0)
-        raise fault
-
-    driver.show = failed_show
-    observer = BusyObserver(driver)
+@pytest.mark.parametrize("family", CONTRACTS)
+@pytest.mark.parametrize("fault", [OSError("inert GPIO fault"), SystemExit(3)])
+def test_gpio_errors_restore_preexisting_instance_methods(driver_factory, family, fault):
+    driver, gpio, _, _ = driver_factory(family, {"refresh": {"values": [fault]}})
+    previous = {name: getattr(driver, name) for name, _, _ in CONTRACTS[family]}
+    for name, method in previous.items():
+        setattr(driver, name, method)
+    observer = BusyObserver(driver, family)
     with pytest.raises(type(fault)) as caught:
         observer.run_show()
-
-    assert caught.value is fault
-    assert observer.observations[0]["outcome"] == "edge_received"
-    assert driver._busy_wait is previous_wait
+    assert caught.value is fault and observer.observations[-1]["outcome"] == "error"
     assert driver._gpio is gpio
+    assert all(getattr(driver, name) is method for name, method in previous.items())
 
 
-def test_class_gpio_is_not_shadowed_after_observation(driver_factory):
-    driver, gpio, _ = driver_factory()
+@pytest.mark.parametrize("family", ["ac073", "uc8159"])
+def test_helper_wait_exception_restores_gpio_method_and_module_globals(driver_factory, family):
+    fault = OSError("inert edge helper fault")
+    driver, gpio, _, namespace = driver_factory(family, {"refresh": {"edge": fault}})
+    before = dict(namespace)
+    observer = BusyObserver(driver, family)
+    with pytest.raises(OSError) as caught:
+        observer.run_show()
+    assert caught.value is fault and observer.observations[-1]["outcome"] == "error"
+    assert namespace == before and driver._gpio is gpio and "_busy_wait" not in vars(driver)
+
+
+@pytest.mark.parametrize("family", CONTRACTS)
+def test_lazy_and_class_gpio_ownership_is_preserved(driver_factory, family):
+    driver, gpio, _, _ = driver_factory(family, lazy_gpio=True)
+    BusyObserver(driver, family).run_show()
+    assert driver._gpio is gpio
     type(driver)._gpio = gpio
     del driver._gpio
-
-    BusyObserver(driver).run_show()
-
-    assert driver._gpio is gpio
-    assert "_gpio" not in vars(driver)
-    assert "_busy_wait" not in vars(driver)
+    BusyObserver(driver, family).run_show()
+    assert driver._gpio is gpio and "_gpio" not in vars(driver)
 
 
-def test_first_show_preserves_gpio_created_by_setup(driver_factory):
-    driver, gpio, _ = driver_factory(lazy_gpio=True)
-    assert driver._gpio is None
-
-    BusyObserver(driver).run_show()
-
-    assert driver._gpio is gpio
-    assert driver.show_calls == 1
-
-
-@pytest.mark.filterwarnings("ignore:Busy Wait")
-def test_two_instances_observe_independently_during_overlapping_shows(driver_factory):
+@pytest.mark.parametrize("family", CONTRACTS)
+def test_overlapping_instances_have_no_global_hook_interference(driver_factory, family):
     barrier = Barrier(2)
-    healthy, healthy_gpio, _ = driver_factory(barrier=barrier)
-    failed, failed_gpio, _ = driver_factory([(Value.INACTIVE, False)] * 4, barrier=barrier)
-    observers = [BusyObserver(healthy), BusyObserver(failed)]
-
+    left, left_gpio, _, left_globals = driver_factory(family, barrier=barrier)
+    right, right_gpio, _, right_globals = driver_factory(family, barrier=barrier)
+    # Real driver instances share their module globals and gpiodevice helper.
+    # Rebind the right fixture's exact methods to that same namespace as well.
+    for name in ("_busy_wait", "_refresh_wait", "_update"):
+        if hasattr(left, name):
+            setattr(type(right), name, getattr(left, name).__func__)
+    assert left._busy_wait.__func__.__globals__ is right._busy_wait.__func__.__globals__
+    before = [dict(left_globals), dict(right_globals)]
     with ThreadPoolExecutor(max_workers=2) as pool:
-        tasks = [pool.submit(observer.run_show) for observer in observers]
-        results = [task.result(timeout=5) for task in tasks]
-
-    assert [item["outcome"] for item in results[0]] == ["edge_received"] * 4
-    assert [item["outcome"] for item in results[1]] == ["edge_timeout"] * 4
-    assert healthy._gpio is healthy_gpio
-    assert failed._gpio is failed_gpio
-    assert "_busy_wait" not in vars(healthy)
-    assert "_busy_wait" not in vars(failed)
+        tasks = [pool.submit(BusyObserver(driver, family).run_show) for driver in (left, right)]
+        for task in tasks:
+            validate_observations(task.result(timeout=5), family)
+    assert [left_globals, right_globals] == before
+    assert left._gpio is left_gpio and right._gpio is right_gpio
 
 
-@pytest.mark.filterwarnings("ignore:Busy Wait")
-def test_second_show_starts_fresh_and_keeps_previous_result_stable(driver_factory):
-    driver, gpio, _ = driver_factory([(Value.INACTIVE, False)] * 4)
-    observer = BusyObserver(driver)
-    previous = observer.run_show()
-    gpio.phases = [(Value.INACTIVE, True)] * 4
-    gpio.index = -1
+@pytest.mark.parametrize("family", CONTRACTS)
+def test_unrecognized_sequence_never_grants_completed_show(driver_factory, family):
+    driver, gpio, _, _ = driver_factory(family)
+    original = driver.show
 
-    current = observer.run_show()
+    def extra_wait():
+        original()
+        driver._busy_wait(0.3)
 
-    assert len(previous) == len(current) == 4
-    assert previous is not current
-    assert [item["outcome"] for item in previous] == ["edge_timeout"] * 4
-    assert [item["outcome"] for item in current] == ["edge_received"] * 4
-    assert current[0]["sequence"] == 1
-    assert driver.show_calls == 2
-
-
-def test_unexpected_timeout_or_extra_wait_has_unrecognized_phase(driver_factory):
-    driver, _, _ = driver_factory([(Value.INACTIVE, True)] * 5)
-
-    def unusual_show():
-        for timeout in [2.0, 0.4, 45.0, 0.4, 0.4]:
-            driver._busy_wait(timeout=timeout)
-
-    driver.show = unusual_show
-    observations = BusyObserver(driver).run_show()
-
-    assert [item["phase"] for item in observations] == [
-        "unrecognized", "power_on", "refresh", "power_off", "unrecognized",
-    ]
-    assert [item["outcome"] for item in observations] == ["edge_received"] * 5
+    driver.show = extra_wait
+    observations = BusyObserver(driver, family).run_show()
+    with pytest.raises(DisplayUnavailableError) as caught:
+        validate_observations(observations, family)
+    assert caught.value.code == "display_busy_unverified" and observations[-1]["phase"] == "unrecognized"
+    assert driver._gpio is gpio
 
 
-@pytest.mark.parametrize(("condition", "outcome", "code"), [
-    ("healthy", "edge_received", None),
-    ("timeout", "edge_timeout", "display_busy_timeout"),
-    ("held_high", "held_high_unverified", "display_busy_unverified"),
-    ("empty_events", "edge_unverified", "display_busy_unverified"),
-])
-@pytest.mark.filterwarnings("ignore:Busy Wait")
-def test_upstream_busy_sequence_through_controller_and_display_api(
-    client, png_factory, driver_factory, condition, outcome, code,
-):
-    """Exercise upload -> queue -> real controller/observer -> response/ack."""
-    phases = [(Value.INACTIVE, True)] * 4
+@pytest.mark.parametrize("family", CONTRACTS)
+@pytest.mark.parametrize("condition", ["healthy", "timeout", "unverified"])
+@pytest.mark.filterwarnings("ignore:.*Wait")
+def test_controller_and_display_api_preserve_queue_until_driver_verdict(client, png_factory, driver_factory, family, condition):
+    scenarios = {}
     if condition == "timeout":
-        phases[2] = (Value.INACTIVE, False)
-    elif condition == "held_high":
-        phases[2] = (Value.ACTIVE, None)
-    driver, gpio, trace = driver_factory(phases)
-    if condition == "empty_events":
-        original_read = gpio.read_edge_events
-
-        def read():
-            events = original_read()
-            return [] if gpio.index == 2 else events
-
-        gpio.read_edge_events = read
-
-    def set_image(image, *, saturation):
-        trace.append(("set_image", image.size, image.mode, saturation))
-
-    driver.set_image = set_image
+        scenarios["refresh"] = ({"edge": None} if family in {"ac073", "uc8159"} else {"values": [Value.INACTIVE]})
+    elif condition == "unverified":
+        scenarios["refresh"] = ({"edge": False} if family in {"ac073", "uc8159"}
+                                else {"values": [object()]} if family == "el133uf1" else {"values": [Value.ACTIVE]})
+    driver, gpio, trace, _ = driver_factory(family, scenarios)
     display = client.app.state.display
     display._impl, display._is_mock = driver, False
-    display._busy_observer = BusyObserver(driver)
-
-    upload = client.post(
-        "/api/queue",
-        files={"file": ("test.png", png_factory(), "image/png")},
-    )
+    display._spec = DisplaySpec(family, driver.width, driver.height, 7 if family in {"ac073", "uc8159"} else 6)
+    display._busy_observer = BusyObserver(driver, family)
+    upload = client.post("/api/queue", files={"file": ("test.png", png_factory(driver.width, driver.height), "image/png")})
     assert upload.status_code == 201
-    photo_id = upload.json()["photo"]["id"]
     original_queue = client.get("/api/queue").json()
-    original_history = client.get("/api/history").json()
-    assert len(original_queue) == 1
-    assert original_history == []
-
     response = client.post("/api/display/next")
-
-    assert driver.show_calls == 1
-    assert trace[0][:3] == ("set_image", (800, 480), "RGB")
-    # The actual upstream _update has completed POF and its final busy wait
-    # before the controller emits a success or a deferred failure response.
-    assert trace[-5:] == [
-        ("command", 0x02, [0x00]),
-        ("get_value", 17),
-        ("wait_edge_events", timedelta(seconds=0.4)),
-        ("read_edge_events",),
-        ("show_returned",),
-    ]
-    diagnostics = client.get("/api/display/status").json()
-    assert diagnostics["observations"][2]["outcome"] == outcome
-    assert driver._gpio is gpio
-    assert "_busy_wait" not in vars(driver)
-
-    if code is None:
-        assert response.status_code == 202
-        assert client.get("/api/queue").json() == []
-        history = client.get("/api/history").json()
-        assert len(history) == 1
-        assert history[0]["photo"]["id"] == photo_id
-        assert history[0]["source"] == "manual_next"
+    assert driver.show_calls == 1 and driver._gpio is gpio
+    if condition == "healthy":
+        assert response.status_code == 202 and client.get("/api/queue").json() == []
+        assert len(client.get("/api/history").json()) == 1 and trace[-1] == ("show_returned",)
     else:
-        assert response.status_code == 503
-        assert response.json()["code"] == code
-        assert diagnostics["error"]["code"] == code
-        assert client.get("/api/queue").json() == original_queue
-        assert client.get("/api/history").json() == original_history
-        completed_trace = list(trace)
-        second = client.post("/api/display/next")
-        assert second.status_code == 503
-        assert second.json()["code"] == code
-        assert driver.show_calls == 1
-        assert trace == completed_trace
-        assert client.get("/api/queue").json() == original_queue
-        assert client.get("/api/history").json() == original_history
+        code = "display_busy_timeout" if condition == "timeout" else "display_busy_unverified"
+        assert response.status_code == 503 and response.json()["code"] == code
+        assert client.get("/api/queue").json() == original_queue and client.get("/api/history").json() == []
+        assert client.get("/api/display/status").json()["error"]["code"] == code
+        completed = list(trace)
+        assert client.post("/api/display/next").status_code == 503
+        assert trace == completed and driver.show_calls == 1
+
+
+@pytest.mark.parametrize("family", ["ac073", "e640", "el133uf1"])
+def test_shutdown_waits_for_admitted_busy_owner_without_stopping_wait(tmp_path, driver_factory, family):
+    entered, release = Event(), Event()
+    driver, gpio, trace, _ = driver_factory(family, blocked=(entered, release))
+    path = tmp_path / "photo.png"
+    Image.new("RGB", (driver.width, driver.height)).save(path)
+    display = DisplayController(mode="mock")
+    display._impl, display._is_mock = driver, False
+    display._spec = DisplaySpec(family, driver.width, driver.height, 6)
+    display._busy_observer = BusyObserver(driver, family)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        show = pool.submit(display.display_image, path)
+        try:
+            assert entered.wait(2)
+            display.begin_shutdown()
+            stop = pool.submit(display.shutdown)
+            assert display.closing and not show.done() and not stop.done()
+            assert driver._gpio is not gpio  # Observer retained during blocked read.
+        finally:
+            release.set()
+        show.result(timeout=3)
+        stop.result(timeout=3)
+    assert trace[-1] == ("show_returned",) and driver.show_calls == 1
+    assert driver._gpio is gpio and display.status()["state"] == "stopping"
+
+
+@pytest.mark.parametrize("family", ["ac073", "e640", "el133uf1"])
+async def test_caller_cancellation_does_not_stop_busy_thread_and_shutdown_drains_it(tmp_path, driver_factory, family):
+    entered, release, finished, stop_started = Event(), Event(), Event(), Event()
+    driver, gpio, trace, _ = driver_factory(family, blocked=(entered, release))
+    path = tmp_path / "photo.png"
+    Image.new("RGB", (driver.width, driver.height)).save(path)
+    display = DisplayController(mode="mock")
+    display._impl, display._is_mock = driver, False
+    display._spec = DisplaySpec(family, driver.width, driver.height, 6)
+    display._busy_observer = BusyObserver(driver, family)
+
+    def show():
+        try:
+            display.display_image(path)
+        finally:
+            finished.set()
+
+    def shutdown():
+        stop_started.set()
+        display.shutdown()
+
+    caller = asyncio.create_task(asyncio.to_thread(show))
+    stop = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        caller.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await caller
+        assert not finished.is_set() and display.status()["state"] == "busy"
+        assert driver._gpio is not gpio
+        display.begin_shutdown()
+        stop = asyncio.create_task(asyncio.to_thread(shutdown))
+        assert await asyncio.to_thread(stop_started.wait, 2)
+        assert not stop.done() and not finished.is_set()
+    finally:
+        release.set()
+        if stop is not None:
+            await stop
+        if not caller.done():
+            await caller
+    assert finished.is_set() and trace[-1] == ("show_returned",)
+    assert driver.show_calls == 1 and driver._gpio is gpio

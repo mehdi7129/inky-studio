@@ -22,16 +22,18 @@ dependencies = [
 
 [project.optional-dependencies]
 pi = [
-    # Preserve the deployed version until a coordinated hardware qualification.
-    # AC073 source is identical in 2.3/2.4; the historical GPIO failure's cause
-    # remains unresolved. The AC073 busy observer also targets this exact pin.
-    "inky==2.3.0",
+    # Source candidate only: per-family BUSY contracts target this exact wheel.
+    # A new native dependency closure and physical qualification are required
+    # before this candidate replaces an installed 2.3.0 payload.
+    "inky==2.5.0",
     "gpiod>=2.2",
     "RPi.GPIO>=0.7",
 ]
 dev = [
     # Exercise the non-editable wheel and its installed frontend path in CI.
     "hatchling",
+    # Execute the hash-verified upstream driver's actual pixel pipeline in tests.
+    "numpy>=2,<3",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "httpx>=0.27",

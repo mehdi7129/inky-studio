@@ -1,14 +1,32 @@
-"""Observe the pinned AC073 busy waits without changing its refresh sequence.
+"""Observe the distinct BUSY contracts in the pinned Pimoroni inky 2.5.0.
 
-The caller must qualify the driver as Pimoroni AC073 / inky 2.3.0 and serialize
-access to the instance. This is not a deadline or a replacement driver: GPIO
-calls, sleeps, warnings, power-off and exceptions remain those of upstream.
+The caller qualifies module/version/dimensions and serializes each instance.
+GPIO reads, waits, clocks and sleeps remain upstream's. A returned matching
+edge is not proof of its freshness or of the physical image. EL133UF1 alone
+refuses to send POF after an unproved, fully drained refresh wait.
 """
+from __future__ import annotations
 
+from types import FunctionType, MethodType
 from typing import Any
 
+from .errors import DisplayUnavailableError
+
 _MISSING = object()
-_PHASES = (("setup", 1.0), ("power_on", 0.4), ("refresh", 45.0), ("power_off", 0.4))
+CONTRACTS = {
+    "ac073": (("_busy_wait", "setup", 1.0), ("_busy_wait", "power_on", 0.4),
+              ("_busy_wait", "refresh", 45.0), ("_busy_wait", "power_off", 0.4)),
+    "uc8159": (("_busy_wait", "setup", 1.0), ("_busy_wait", "power_on", 0.2),
+               ("_busy_wait", "refresh", 32.0), ("_busy_wait", "power_off", 0.2)),
+    "e640": (("_busy_wait", "setup", 0.3), ("_busy_wait", "power_on", 0.3),
+             ("_busy_wait", "refresh", 40.0), ("_busy_wait", "power_off", 0.3)),
+    "e673": (("_busy_wait", "setup", 0.3), ("_busy_wait", "power_on", 0.3),
+             ("_busy_wait", "refresh", 32.0), ("_busy_wait", "power_off", 0.3),
+             ("_busy_wait", "standby", 0.3)),
+    "el133uf1": (("_busy_wait", "setup", 0.3), ("_busy_wait", "power_on", 0.2),
+                 ("_refresh_wait", "refresh", 65.0), ("_busy_wait", "power_off", 0.2)),
+}
+_TIMEOUTS = {"edge_timeout", "level_timeout", "refresh_assert_timeout", "refresh_timeout"}
 
 
 def _restore_attribute(instance: Any, name: str, previous: Any) -> None:
@@ -18,104 +36,182 @@ def _restore_attribute(instance: Any, name: str, previous: Any) -> None:
         setattr(instance, name, previous)
 
 
-class _GPIOObservation:
-    """Forward the original calls once, retaining only their existing results."""
+def _raise_busy_failure(timeout: bool) -> None:
+    if timeout:
+        raise DisplayUnavailableError(
+            "Le cadre n’a pas répondu à temps. La photo est conservée. Vérifie le matériel, puis redémarre le service.",
+            "display_busy_timeout",
+        )
+    raise DisplayUnavailableError(
+        "La fin de l’affichage n’a pas pu être confirmée. La photo est conservée. Vérifie le cadre, puis redémarre le service.",
+        "display_busy_unverified",
+    )
 
-    def __init__(self, gpio: Any, active_value: Any) -> None:
-        self._gpio = gpio
-        self._active_value = active_value
-        self.initial_active: bool | None = None
-        self.wait_result: Any = _MISSING
-        self.read_events = False
-        self.events_present = False
+
+def validate_observations(observations: list[dict[str, Any]], family: str) -> None:
+    """A return from show() alone never proves these Impression refreshes."""
+    if any(item.get("outcome") in _TIMEOUTS for item in observations):
+        _raise_busy_failure(True)
+    expected = CONTRACTS[family]
+    if ([(item.get("phase"), item.get("timeout")) for item in observations]
+            != [(phase, timeout) for _, phase, timeout in expected]):
+        _raise_busy_failure(False)
+    refresh = next(item for item in observations if item["phase"] == "refresh")
+    required = ("edge_received" if family in {"ac073", "uc8159"}
+                else "refresh_completed" if family == "el133uf1" else "level_released")
+    if refresh["outcome"] != required:
+        _raise_busy_failure(False)
+
+
+class _GPIOObservation:
+    """Retain existing reads only, in bounded state; never probe GPIO again."""
+
+    def __init__(self, gpio: Any, value_enum: Any) -> None:
+        self.original = gpio
+        self.active = value_enum.ACTIVE
+        self.inactive = value_enum.INACTIVE
+        self.first: Any = _MISSING
+        self.last: Any = _MISSING
+        self.seen_inactive = False
+        self.active_after_inactive = False
+        self.invalid = False
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(self._gpio, name)
+        return getattr(self.original, name)
 
     def get_value(self, *args: Any, **kwargs: Any) -> Any:
-        value = self._gpio.get_value(*args, **kwargs)
-        if self.initial_active is None:
-            self.initial_active = value == self._active_value
+        value = self.original.get_value(*args, **kwargs)
+        if self.first is _MISSING:
+            self.first = value
+        self.last = value
+        if value == self.inactive:
+            self.seen_inactive = True
+        elif value == self.active:
+            self.active_after_inactive |= self.seen_inactive
+        else:
+            self.invalid = True
         return value
 
-    def wait_edge_events(self, *args: Any, **kwargs: Any) -> Any:
-        result = self._gpio.wait_edge_events(*args, **kwargs)
-        self.wait_result = result
-        return result
+    def polling_outcome(self, family: str, method: str) -> str:
+        if self.invalid or self.first is _MISSING:
+            return "unrecognized"
+        if method == "_refresh_wait":
+            if not self.seen_inactive:
+                return "refresh_assert_timeout"
+            if self.active_after_inactive and self.last == self.active:
+                return "refresh_completed"
+            return "refresh_timeout"
+        if self.first == self.active:
+            return "held_high_unverified"
+        if family == "el133uf1":
+            # LOW first, LOW next returns without establishing a transition.
+            return "idle_low_unverified" if self.last == self.inactive else "level_timeout"
+        return "level_released" if self.last == self.active else "level_timeout"
 
-    def read_edge_events(self, *args: Any, **kwargs: Any) -> Any:
-        result = self._gpio.read_edge_events(*args, **kwargs)
-        self.read_events = True
-        # gpiod returns a list. Inspect only that concrete, already returned
-        # container; never consume an iterator or call GPIO again to confirm it.
-        # Presence does not establish event freshness or successful rendering.
-        self.events_present = type(result) is list and len(result) > 0
+
+class _EdgeObservation:
+    """Forward wait_for_edge exactly once, using the actual LineRequest."""
+
+    def __init__(self, module: Any, gpio: _GPIOObservation, pin: int, edge_type: Any) -> None:
+        self._module = module
+        self._gpio = gpio
+        self._pin = pin
+        self._edge_type = edge_type
+        self.result: Any = _MISSING
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._module, name)
+
+    def wait_for_edge(self, request: Any, *args: Any, **kwargs: Any) -> Any:
+        actual = self._gpio.original if request is self._gpio else request
+        result = self._module.wait_for_edge(actual, *args, **kwargs)
+        self.result = result
         return result
 
     def outcome(self) -> str:
-        if self.wait_result is not _MISSING:
-            if not self.wait_result:
-                return "edge_timeout"
-            if self.read_events:
-                return "edge_received" if self.events_present else "edge_unverified"
-        elif self.initial_active is True:
-            return "held_high_unverified"
-        return "unrecognized"
+        if self.result is _MISSING:
+            return "held_high_unverified" if self._gpio.first == self._gpio.active else "unrecognized"
+        if self.result is None:
+            return "edge_timeout"
+        if (not self._gpio.invalid and self._gpio.first == self._gpio.inactive
+                and type(self.result) is self._edge_type and self.result.line_offset == self._pin
+                and self.result.event_type == self._edge_type.Type.RISING_EDGE):
+            return "edge_received"
+        return "edge_unverified"
 
 
 class BusyObserver:
-    """Per-instance, temporary observation of one complete AC073 ``show()``.
+    """Temporary, per-instance observation of one complete pinned show().
 
-    ``observations`` remains readable if upstream raises. Timeouts themselves
-    never raise here: the owner decides whether the completed call is a success
-    only after the driver has also performed its power-off and final busy wait.
+    No upstream class/module global is patched. AC073/UC8159/E640/E673 verdicts
+    are deferred until show() returns, including POF and E673 standby. EL133UF1
+    waits fully, then blocks POF if LOW→HIGH refresh completion is unproved.
     """
 
-    def __init__(self, impl: Any) -> None:
+    def __init__(self, impl: Any, family: str = "ac073") -> None:
+        if family not in CONTRACTS:
+            raise ValueError("Unknown qualified BUSY contract")
         self._impl = impl
+        self.family = family
         self.observations: list[dict[str, Any]] = []
 
     def run_show(self) -> list[dict[str, Any]]:
         self.observations = []
         impl = self._impl
-        original_wait = impl._busy_wait
-        # Use upstream's enum without importing gpiod or performing another read.
-        active_value = original_wait.__func__.__globals__["Value"].ACTIVE
-        previous_wait = vars(impl).get("_busy_wait", _MISSING)
+        originals = {name: getattr(impl, name) for name, _, _ in CONTRACTS[self.family]}
+        previous = {name: vars(impl).get(name, _MISSING) for name in originals}
+        applied = []
 
-        def observed_wait(*args: Any, **kwargs: Any) -> Any:
-            timeout = args[0] if args else kwargs.get("timeout", 40.0)
-            index = len(self.observations)
-            phase = "unrecognized"
-            if index < len(_PHASES) and timeout == _PHASES[index][1]:
-                phase = _PHASES[index][0]
-            observation = {
-                "phase": phase,
-                "sequence": index + 1,
-                "timeout": timeout,
-                "outcome": "unrecognized",
-            }
-            self.observations.append(observation)
-            # setup() may have just created the LineRequest. Preserve that real
-            # initialization; only the temporary proxy belongs to this observer.
-            previous_gpio = vars(impl).get("_gpio", _MISSING)
-            proxy = _GPIOObservation(impl._gpio, active_value)
-            impl._gpio = proxy
-            try:
-                result = original_wait(*args, **kwargs)
-            except BaseException as exc:
-                observation["outcome"] = "error"
-                observation["error_type"] = type(exc).__name__
-                raise
-            else:
-                observation["outcome"] = proxy.outcome()
+        def wrap(name: str, original: Any) -> Any:
+            function = original.__func__
+            value_enum = function.__globals__["Value"]
+
+            def observed(*args: Any, **kwargs: Any) -> Any:
+                default = 65.0 if name == "_refresh_wait" else 40.0
+                timeout = args[0] if args else kwargs.get("timeout", default)
+                index = len(self.observations)
+                phase = "unrecognized"
+                contract = CONTRACTS[self.family]
+                if index < len(contract) and (name, timeout) == (contract[index][0], contract[index][2]):
+                    phase = contract[index][1]
+                observation = {"phase": phase, "sequence": index + 1, "timeout": timeout, "outcome": "unrecognized"}
+                self.observations.append(observation)
+                previous_gpio = vars(impl).get("_gpio", _MISSING)
+                proxy = _GPIOObservation(impl._gpio, value_enum)
+                impl._gpio = proxy
+                edge = None
+                call = original
+                try:
+                    if self.family in {"ac073", "uc8159"}:
+                        globals_copy = dict(function.__globals__)
+                        edge = _EdgeObservation(globals_copy["gpiodevice"], proxy, impl.busy_pin,
+                                                globals_copy["gpiod"].EdgeEvent)
+                        globals_copy["gpiodevice"] = edge
+                        clone = FunctionType(function.__code__, globals_copy, function.__name__,
+                                             function.__defaults__, function.__closure__)
+                        clone.__kwdefaults__ = function.__kwdefaults__
+                        call = MethodType(clone, impl)
+                    result = call(*args, **kwargs)
+                except BaseException as exc:
+                    observation["outcome"] = "error"
+                    observation["error_type"] = type(exc).__name__
+                    raise
+                else:
+                    observation["outcome"] = edge.outcome() if edge else proxy.polling_outcome(self.family, name)
+                finally:
+                    _restore_attribute(impl, "_gpio", previous_gpio)
+                if name == "_refresh_wait" and (phase != "refresh" or observation["outcome"] != "refresh_completed"):
+                    _raise_busy_failure(observation["outcome"] in _TIMEOUTS)
                 return result
-            finally:
-                _restore_attribute(impl, "_gpio", previous_gpio)
 
-        impl._busy_wait = observed_wait
+            return observed
+
         try:
+            for name, original in originals.items():
+                setattr(impl, name, wrap(name, original))
+                applied.append(name)
             impl.show()
         finally:
-            _restore_attribute(impl, "_busy_wait", previous_wait)
+            for name in reversed(applied):
+                _restore_attribute(impl, name, previous[name])
         return self.observations

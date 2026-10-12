@@ -80,7 +80,7 @@ def ac073_driver(monkeypatch, *, color=4, width=800, height=480, variant=20, mod
     eeprom = SimpleNamespace(width=width, height=height, display_variant=variant, color=color)
     driver = type("Inky", (), {"__module__": module, "width": 800, "height": 480, "eeprom": eeprom})()
     install_auto(monkeypatch, driver=driver)
-    monkeypatch.setattr("inky_web.inky.display.version", lambda name: "2.3.0")
+    monkeypatch.setattr("inky_web.inky.display.version", lambda name: "2.5.0")
     return driver
 
 
@@ -95,7 +95,7 @@ def test_explicit_bench_profile_preserves_raw_eeprom_and_uses_driver_palette(mon
     assert display.info()["is_mock"] is False
     assert vars(driver.eeprom) == before
     assert display.status()["driver"]["color_raw"] == color
-    assert display.status()["busy_monitor"] == "ac073_2.3.0"
+    assert display.status()["busy_monitor"] == "ac073_2.5.0"
 
 
 def test_unmapped_color_requires_explicit_profile(monkeypatch):
@@ -122,13 +122,14 @@ def test_bench_profile_rejects_mismatching_or_noninteger_tuple(monkeypatch, over
     assert display.is_mock is False
 
 
-def test_busy_observer_rejects_unqualified_library_upgrade(monkeypatch):
+@pytest.mark.parametrize("installed", ["2.3.0", "2.4.0", "2.5.1"])
+def test_busy_observer_rejects_unqualified_library_upgrade(monkeypatch, installed):
     ac073_driver(monkeypatch, color=5)
-    monkeypatch.setattr("inky_web.inky.display.version", lambda name: "2.4.0")
+    monkeypatch.setattr("inky_web.inky.display.version", lambda name: installed)
     display = DisplayController(mode="hardware")
     display.initialize()
     assert display.status()["state"] == "error"
-    assert display.status()["driver"]["inky_version"] == "2.4.0"
+    assert display.status()["driver"]["inky_version"] == installed
 
 
 def test_display_diagnostics_are_not_public(client, monkeypatch):
@@ -203,7 +204,7 @@ def test_busy_fault_is_deferred_until_sequence_return_and_preserves_queue(
         trace.extend(["refresh", "power_off", "power_off_wait", "return"])
         return observations
 
-    display._busy_observer = SimpleNamespace(run_show=run_show, observations=observations)
+    display._busy_observer = SimpleNamespace(run_show=run_show, observations=observations, family="ac073")
     response = client.post("/api/display/next")
     assert trace[-1] == "return"
     assert response.status_code == 503

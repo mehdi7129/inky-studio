@@ -51,3 +51,5 @@ xcuserdata/
 *.xcarchive/
 *.ipa
 ios/Signing.xcconfig
+# Hash-verified upstream wheel cache used by display tests (never a Pi payload).
+server/.test-wheels/

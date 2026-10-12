@@ -1,6 +1,7 @@
 # InkyOS — sources matériel et système
 
-Recherche du **27 septembre 2026**. Ce document prépare la future image InkyOS
+Recherche du **27 septembre 2026**, identification et pin source actualisés le
+**12 octobre 2026**. Ce document prépare la future image InkyOS
 et le maintien d'une installation classique pour utilisateurs avancés. **Aucune
 image InkyOS n'est construite ou qualifiée par ce document.** Les sources externes
 ci-dessous sont celles des fabricants ou des mainteneurs officiels ; les constats
@@ -15,33 +16,38 @@ réseau ou installation n'a été effectué pour cette recherche.
 | Debian 13 Trixie, kernel `6.12.75+rpt-rpi-v8`, Python 3.13.5 | Même banc | Ne désigne pas le fichier image d'origine ni son checksum ; ne suffit pas à reproduire l'installation. |
 | BlueZ 5.82 et NetworkManager 1.52.1 | Même banc | Versions de la machine qualifiée, pas versions minimales universelles. |
 | Écran 800 × 480 | [Validation de l'API native sur le Pi](../ios/VALIDATION.md) | La résolution seule ne distingue pas un ancien panneau 7 couleurs d'un Spectra 6. |
-| Pilote Python `inky==2.3.0` | [Extras Pi](../../server/pyproject.toml) et [plan existant](../ios/PRODUCT-EVOLUTION-PLAN.md) | Pin volontaire du projet ; les dépendances transitives et le kernel font aussi partie de la qualification. |
+| Pilote du banc historique `inky==2.3.0` | [Candidat matériel 2.3.0](HARDWARE-CANDIDATE.md) | Version du payload TEST ; ne qualifie pas une montée de version. |
+| Nouveau pin source `inky==2.5.0` | [Extras Pi](../../server/pyproject.toml) et [migration](DISPLAY-DRIVER-250.md) | Candidat distinct ; nouvelle fermeture native et preuve physique par panneau encore requises. |
 | Installation classique | [install.sh](../../install.sh), [installateur Bluetooth](../../scripts/install-bluetooth.sh) | L'existant active SPI/I²C, prépare le venv et les services ; ce n'est pas un générateur d'image système. |
 
 Le contrôleur [display.py](../../server/inky_web/inky/display.py) utilise
-`inky.auto.auto(ask_user=False)` puis conserve le pilote choisi. Son fallback mock
-permet le développement sans matériel ; un écran mock ne prouve jamais que le
-cadre physique est correctement détecté.
+`inky.auto.auto(ask_user=False, verbose=False)` puis conserve le pilote choisi.
+Le mode auto sélectionne hardware sur Linux et mock ailleurs. Une erreur
+matérielle reste une erreur, sans fallback simulant un succès. Un écran mock
+permet le développement ; il ne prouve pas la détection du cadre physique.
 
-## 2. Identifier le bon panneau : écart documentaire trouvé
+## 2. Identifier le bon panneau
 
-Les tables officielles Pimoroni **v2.3.0** distinguent les variantes suivantes :
+Les tables officielles Pimoroni **v2.5.0** distinguent les variantes suivantes :
 
 | Variante EEPROM upstream | Pilote | Format | Famille |
 |---|---|---|---|
 | 20 | `inky_ac073tc1a.Inky` | 800 × 480, 7,3 pouces | 7 couleurs |
-| 22 | `inky_e673.Inky` | 800 × 480, 7,3 pouces | Spectra 6 |
-| 21 | `inky_el133uf1.Inky` | 1600 × 1200, 13,3 pouces | Spectra 6 |
+| 25 | `inky_e640.Inky` | 600 × 400, 4 pouces | Spectra 6 |
+| 22, 26 AC | `inky_e673.Inky` | 800 × 480, 7,3 pouces | Spectra 6 |
+| 21, 27 AC | `inky_el133uf1.Inky` | 1600 × 1200, 13,3 pouces | Spectra 6 |
+| 14 | `inky_uc8159.Inky` | 600 × 448, 5,7 pouces | 7 couleurs |
+| 15, 16 | `inky_uc8159.Inky` | 640 × 400, 4 pouces | 7 couleurs |
 
-Sources : [sélection du pilote, `auto.py` v2.3.0](https://github.com/pimoroni/inky/blob/v2.3.0/inky/auto.py#L20),
-[libellés des variantes, `eeprom.py` v2.3.0](https://github.com/pimoroni/inky/blob/v2.3.0/inky/eeprom.py#L13).
+Sources : [sélection du pilote, `auto.py` v2.5.0](https://github.com/pimoroni/inky/blob/v2.5.0/inky/auto.py),
+[libellés des variantes, `eeprom.py` v2.5.0](https://github.com/pimoroni/inky/blob/v2.5.0/inky/eeprom.py).
 
-**À corriger dans l'identification du projet :** le fallback de `display.py`
-associe actuellement le nom de module AC073TC1A à Spectra 6. Cette association
-contredit upstream. Le driver reste choisi par `inky.auto` ; l'erreur concerne
-au minimum le libellé et potentiellement le nombre de couleurs annoncé lorsque
-l'attribut explicite du pilote est absent. Ne pas utiliser ce libellé comme
-preuve physique du modèle installé. Aucun correctif de code n'est inclus ici.
+L'ancien écart AC073/Spectra signalé en septembre a été corrigé dans
+`display.py` : AC073 annonce sept couleurs, E640/E673/EL133UF1 six couleurs et
+UC8159 sept couleurs. L'EEPROM, le module sélectionné et les dimensions restent
+nécessaires à l'identification ; un libellé applicatif seul n'est pas une preuve
+physique du panneau. La couleur EEPROM brute 4 du banc AC073 reste non
+interprétée, avec son profil explicite existant.
 
 Le [guide officiel Pimoroni](https://learn.pimoroni.com/article/getting-started-with-inky-impression)
 explique l'autodétection par EEPROM et la distinction Gallery Palette/Spectra.
@@ -110,9 +116,8 @@ sur les systèmes récents dans `/boot/firmware/`.
 [Activation SPI](https://www.raspberrypi.com/documentation/computers/configuration.html#enable-or-disable-spi),
 [config.txt et overlays](https://www.raspberrypi.com/documentation/computers/config_txt.html#dtoverlay).
 
-Le commentaire de `server/pyproject.toml` attribue le pin 2.3.0 à une régression
-2.4.0 qui réacquerrait les GPIO à chaque `show()`. **Cette explication n'est pas
-confirmée par la comparaison upstream effectuée ici** : les fichiers
+L'ancienne attribution d'un incident GPIO à un changement du driver AC073
+2.4.0 n'est pas confirmée : les fichiers
 [`v2.3.0/inky_ac073tc1a.py`](https://raw.githubusercontent.com/pimoroni/inky/v2.3.0/inky/inky_ac073tc1a.py)
 et [`v2.4.0/inky_ac073tc1a.py`](https://raw.githubusercontent.com/pimoroni/inky/v2.4.0/inky/inky_ac073tc1a.py)
 téléchargés le 27 septembre sont identiques, SHA-256
@@ -120,8 +125,10 @@ téléchargés le 27 septembre sont identiques, SHA-256
 Ils comportent une garde `_gpio_setup` avant l'acquisition des lignes.
 
 Cela n'invalide pas un incident observé avec une autre combinaison de packages,
-un artefact distribué différent ou plusieurs processus. Le pin reste inchangé.
-Avant toute montée de version : conserver les hashes des artefacts réellement
+un artefact distribué différent ou plusieurs processus. Le payload TEST garde
+2.3.0 ; la [migration source 2.5.0](DISPLAY-DRIVER-250.md) corrige le défaut
+Spectra 13,3″ officiel #265 et adapte des contrats GPIO distincts. Elle ne prouve
+pas la cause de l'ancien incident. Avant tout déploiement : conserver les hashes des artefacts réellement
 installés, le traceback, les versions de `gpiod`, `gpiodevice`, `spidev`, le kernel,
 les overlays et l'état des processus ; reproduire sur une carte de test. Un
 second processus d'affichage peut contredire la propriété exclusive du matériel.
@@ -160,7 +167,7 @@ comme déjà livré.
 ## 7. Informations encore nécessaires avant une matrice de compatibilité
 
 - Identifier physiquement le panneau du cadre et relever sa variante EEPROM ;
-  corriger les métadonnées du projet à partir de cette identification.
+  confronter cette identité aux métadonnées et au driver effectivement installés.
 - Figer image OS, architecture utilisateur, kernel, firmware et tous les packages
   du couple Pi/panneau effectivement testé.
 - Mesurer plusieurs refreshs consécutifs, redémarrage, erreur GPIO et alimentation

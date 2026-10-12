@@ -108,6 +108,36 @@ final class PhotoPipelineTests: XCTestCase {
         XCTAssertNil(exif?[kCGImagePropertyExifUserComment])
     }
 
+    func testOrientedPhotoExportsEverySpectraAndSevenColorPanelFormat() throws {
+        let url = try fixture(type: .jpeg, orientation: 6)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let photo = try PhotoPipeline.decode(url: url)
+        for (width, height) in [(600, 400), (800, 480), (1_600, 1_200), (600, 448), (640, 400)] {
+            let panel = CGSize(width: width, height: height)
+            let viewport = CropGeometry.viewport(in: CGSize(width: 390, height: 400), panel: panel)
+            let crop = CropGeometry(sourceSize: photo.size, viewportSize: viewport)
+            XCTAssertTrue(crop.isValid, "\(width)x\(height)")
+            XCTAssertEqual(crop.sourceRect.width / crop.sourceRect.height,
+                           CGFloat(width) / CGFloat(height), accuracy: 0.001)
+            let data = try PhotoPipeline.encodePNG(photo: photo, crop: crop.sourceRect,
+                                                  width: width, height: height)
+            let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
+            XCTAssertEqual(CGImageSourceGetType(source) as String?, UTType.png.identifier)
+            let result = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+            XCTAssertEqual(result.width, width)
+            XCTAssertEqual(result.height, height)
+            XCTAssertEqual(result.colorSpace?.name, CGColorSpace.sRGB)
+            XCTAssertLessThanOrEqual(data.count, PhotoPipeline.maximumPNGBytes)
+            // EXIF rotation precedes the centered crop: blue left, red right.
+            let left = try pixel(result, x: width / 4, y: height / 4)
+            let right = try pixel(result, x: 3 * width / 4, y: height / 4)
+            XCTAssertGreaterThan(left.blue, 180)
+            XCTAssertLessThan(left.red, 60)
+            XCTAssertGreaterThan(right.red, 180)
+            XCTAssertLessThan(right.blue, 60)
+        }
+    }
+
     func testNativeHEICImportAndBoundedDownsample() throws {
         let available = CGImageDestinationCopyTypeIdentifiers() as! [String]
         guard available.contains(UTType.heic.identifier) else { throw XCTSkip("HEIC encoding unavailable on this runner") }

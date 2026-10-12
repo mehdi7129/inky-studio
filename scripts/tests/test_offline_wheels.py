@@ -9,6 +9,7 @@ import json
 import os
 import stat
 import sys
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -197,6 +198,17 @@ def test_conflicting_transitive_version_rejected(fixture):
     fixture.add("dependency", "2.1")
     with pytest.raises(offline.WheelhouseError, match="version mismatch"):
         fixture.build()
+
+
+def test_current_display_pin_refuses_historical_230_wheelhouse(fixture):
+    project = tomllib.loads((SCRIPT.parents[1] / "server/pyproject.toml").read_text())
+    pi_roots = project["project"]["optional-dependencies"]["pi"]
+    inky_root, = [value for value in pi_roots if offline.Requirement(value).name == "inky"]
+    fixture.project_roots([], pi=[inky_root])
+    fixture.add("inky", "2.3.0")
+    with pytest.raises(offline.WheelhouseError, match=r"version mismatch: .*inky==2\.5\.0; found 2\.3\.0"):
+        fixture.build()
+    assert not (fixture.root / "output").exists()
 
 
 def test_markers_use_fixed_target_and_extra_transitive_closure(fixture):

@@ -66,7 +66,7 @@ def test_installed_wheel_keeps_frontend_outside_site_packages(tmp_path):
         pi = [Requirement(value) for value in metadata.get_all("Requires-Dist")
               if Requirement(value).marker is not None
               and Requirement(value).marker.evaluate({"extra": "pi"})]
-        assert {str(value.specifier) for value in pi if value.name == "inky"} == {"==2.3.0"}
+        assert {str(value.specifier) for value in pi if value.name == "inky"} == {"==2.5.0"}
         entry_points = configparser.ConfigParser()
         entry_points.read_string(archive.read(metadata_path.replace("METADATA", "entry_points.txt")).decode())
         assert entry_points["console_scripts"]["inky-studio-server"] == "inky_web.main:run"
