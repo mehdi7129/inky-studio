@@ -221,6 +221,7 @@ def test_http_update_uses_same_guard_before_update_effects(tmp_path, inky_env, m
 
 @pytest.mark.parametrize("available", [False, True])
 def test_legacy_updater_main_keeps_status_and_install_behavior(inky_env, monkeypatch, available):
+    monkeypatch.setattr(updater, "REPO_SLUG", "fixture/inky")
     status = Mock(return_value={"current": "1.0.0", "latest": "1.1.0", "update_available": available})
     perform = AsyncMock(return_value=True)
     monkeypatch.setattr(updater, "get_status", status)

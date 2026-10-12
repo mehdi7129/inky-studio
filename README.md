@@ -2,7 +2,7 @@
 
 > A self-hosted web UI to run an Inky e-ink photo frame from any browser — local, no cloud.
 
-[![CI](https://github.com/mehdi7129/inky-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/mehdi7129/inky-studio/actions/workflows/ci.yml)
+[Continuous integration](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform: Raspberry Pi](https://img.shields.io/badge/platform-Raspberry%20Pi-red)](https://www.raspberrypi.com/)
 
@@ -21,8 +21,8 @@
 
 - 🖼️ **Zero-config rendering** — upload a photo and it displays at its best, automatically. The official Pimoroni `inky` library quantises to the exact palette of the detected panel (single faithful pass — no app-level colour modes).
 - 📥 Drag-and-drop **upload** with framing, a reorderable **queue**, scheduled rotation (daily / interval / manual), and a browsable **history**.
-- 🔄 **One-click in-app updates** — a button in Settings downloads the latest release and restarts the app for you.
-- 🔌 **One-line install** that handles SPI, dependencies, the service, and first-boot setup.
+- 🔄 **One-click in-app updates** — with a configured release repository, a button in Settings downloads the latest release and restarts the app for you.
+- 🔌 **Install script** that handles SPI, dependencies, the service, and first-boot setup.
 - 🔒 Single-password auth (the password is shown right on the e-ink screen on first boot). Runs entirely on your LAN — no account, no cloud.
 
 ## Native iPhone app
@@ -50,10 +50,13 @@ before building a new native payload or deploying this candidate.
 
 ## Install
 
-On the Raspberry Pi:
+On the Raspberry Pi, set the GitHub repository that provides your release. Replace
+`owner/repository` below with its actual slug; the application does not select a
+personal account by default:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mehdi7129/inky-studio/main/install.sh | bash
+export INKY_STUDIO_REPO_SLUG="owner/repository"
+curl -fsSL "https://raw.githubusercontent.com/${INKY_STUDIO_REPO_SLUG}/main/install.sh" | bash
 ```
 
 The installer enables SPI/I²C, installs dependencies, downloads the latest prebuilt release, sets up a `systemd` service, and prints the URL + password. On the **first** install it reboots once (after a 10-second, cancellable countdown) so the SPI changes take effect — set `INKY_STUDIO_NO_REBOOT=1` to skip.
@@ -67,6 +70,12 @@ When it comes back up, open **`http://<pi-ip>:8000`**. The login password is als
 - **In the app:** open **Settings → Update** and click the button. Inky Studio downloads the latest release, swaps it in, and restarts — the page reloads automatically when it's back. Progress is shown live.
 - **From the CLI:** `inky-studio update`
 
+The installer configures `INKY_STUDIO_REPO_SLUG` for the service and its generated
+CLI launcher. For an older or custom launcher, pass the same repository explicitly:
+`INKY_STUDIO_REPO_SLUG="owner/repository" inky-studio update`.
+Without a valid repository, the status reports no available update, and an update
+command fails before changing the installation. No update request is sent.
+
 ## Configuration
 
 Pass these as environment variables to the installer:
@@ -74,6 +83,7 @@ Pass these as environment variables to the installer:
 | Variable | Default | Purpose |
 |---|---|---|
 | `INKY_STUDIO_CHANNEL` | `release` | `release` (prebuilt) or `source` (build from `main`) |
+| `INKY_STUDIO_REPO_SLUG` | Required by the installer | GitHub `owner/repository` for releases and updates; no built-in account |
 | `INKY_STUDIO_USER` | current user | Service user (auto-detected; override only for a different account) |
 | `INKY_STUDIO_INSTALL_DIR` | `/home/<user>/inky-studio` | Install directory |
 | `INKY_STUDIO_DATA_DIR` | `/var/lib/inky-studio` | Photos + credentials |
@@ -133,4 +143,5 @@ The September 2026 stabilization audit and its validation are recorded in
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Successor to [inky-photo-frame](https://github.com/mehdi7129/inky-photo-frame).
+MIT — see [LICENSE](LICENSE). Successor to inky-photo-frame. Copyright and licence
+notices are retained in distributed copies.
