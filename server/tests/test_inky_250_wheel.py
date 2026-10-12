@@ -17,6 +17,7 @@ import json
 import struct
 import sys
 import zipfile
+from contextlib import contextmanager
 from email.parser import Parser
 from enum import Enum
 from pathlib import Path
@@ -110,9 +111,22 @@ def _forbidden(*_args, **_kwargs):
     pytest.fail("Wheel conformance must not open GPIO/SPI or start a hardware refresh")
 
 
-@pytest.fixture
-def upstream(monkeypatch):
+def _legacy_namespace_registry():
+    # The real wheel uses pkg_resources when installed (notably Python 3.11),
+    # and pkgutil otherwise. Do not fabricate or force either upstream branch.
+    try:
+        package = importlib.import_module("pkg_resources")
+    except ImportError:
+        return None
+    return package._namespace_packages
+
+
+@contextmanager
+def _load_upstream(monkeypatch):
     wheel = _verified_wheel()
+    namespaces = _legacy_namespace_registry()
+    namespace_snapshot = ({name: list(children) for name, children in namespaces.items()}
+                          if namespaces is not None else None)
     # Restore any previously imported Inky package when the fixture exits.
     for name in tuple(sys.modules):
         if name == "inky" or name.startswith("inky."):
@@ -146,6 +160,12 @@ def upstream(monkeypatch):
                          ("spidev", spi), ("smbus2", smbus)):
         monkeypatch.setitem(sys.modules, name, module)
     monkeypatch.syspath_prepend(str(wheel))
+    # syspath_prepend repairs registered legacy namespaces. That can synthesize
+    # a ModuleType('inky') without executing the wheel's __init__.py after an
+    # earlier import. Drop it without asking monkeypatch to restore that dummy.
+    for name in tuple(sys.modules):
+        if name == "inky" or name.startswith("inky."):
+            sys.modules.pop(name, None)
     try:
         package = importlib.import_module("inky")
         auto = importlib.import_module("inky.auto")
@@ -171,6 +191,53 @@ def upstream(monkeypatch):
         for name in tuple(sys.modules):
             if name == "inky" or name.startswith("inky."):
                 sys.modules.pop(name, None)
+        if namespaces is not None:
+            namespaces.clear()
+            namespaces.update(namespace_snapshot)
+
+
+@pytest.fixture
+def upstream(monkeypatch):
+    with _load_upstream(monkeypatch) as loaded:
+        yield loaded
+
+
+def test_repeated_wheel_import_restores_prior_package_and_namespace_registry():
+    namespaces = _legacy_namespace_registry()
+    original_namespaces = ({name: list(children) for name, children in namespaces.items()}
+                           if namespaces is not None else None)
+    original_modules = {name: module for name, module in sys.modules.items()
+                        if name == "inky" or name.startswith("inky.")}
+    original_path = list(sys.path)
+    wheel = _verified_wheel()
+
+    with pytest.MonkeyPatch.context() as outer_patch:
+        with _load_upstream(outer_patch) as outer:
+            prior_modules = {name: module for name, module in sys.modules.items()
+                             if name == "inky" or name.startswith("inky.")}
+            prior_namespaces = ({name: list(children) for name, children in namespaces.items()}
+                                if namespaces is not None else None)
+            if namespaces is not None:
+                assert "inky" in namespaces[None]
+            for _ in range(2):
+                with pytest.MonkeyPatch.context() as inner_patch:
+                    with _load_upstream(inner_patch) as inner:
+                        assert inner.package is not outer.package
+                        assert inner.package.__version__ == "2.5.0"
+                        assert inner.package.__file__ == f"{wheel}/inky/__init__.py"
+                        assert inner.display(PANELS[0]).eeprom.display_variant == 25
+                assert {name: module for name, module in sys.modules.items()
+                        if name == "inky" or name.startswith("inky.")} == prior_modules
+                if namespaces is not None:
+                    assert namespaces == prior_namespaces
+            assert importlib.import_module("inky") is outer.package
+            assert outer.package.__version__ == "2.5.0"
+
+    assert {name: module for name, module in sys.modules.items()
+            if name == "inky" or name.startswith("inky.")} == original_modules
+    assert sys.path == original_path
+    if namespaces is not None:
+        assert namespaces == original_namespaces
 
 
 def test_cached_artifact_is_the_official_hash_locked_wheel():
