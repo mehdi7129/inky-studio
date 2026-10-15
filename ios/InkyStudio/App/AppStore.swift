@@ -213,6 +213,7 @@ final class AppStore: ObservableObject {
         do {
             let url = try endpoint ?? FrameAddress.parse(address)
             let normalized = url.absoluteString
+            let credentialAddress = defaults.string(forKey: "frameOwnerID").map { "inky-frame:" + $0 } ?? normalized
             let previousAddress = defaults.string(forKey: "frameAddress")
             let client = try connectionClient(url)
             pendingClient = client
@@ -230,7 +231,7 @@ final class AppStore: ObservableObject {
             }
             if rememberBiometric == true && status.authRequired && !password.isEmpty {
                 do {
-                    try vault.save(password: password, address: defaults.string(forKey: "frameOwnerID").map { "inky-frame:" + $0 } ?? normalized)
+                    try vault.save(password: password, address: credentialAddress)
                     biometricEnabled = true
                 } catch {
                     biometricEnabled = false
@@ -240,7 +241,7 @@ final class AppStore: ObservableObject {
             } else if rememberBiometric == false && biometricEnabled {
                 // An explicit unchecked switch disables the previously opted-in credential.
                 // Biometric login passes nil and preserves the existing Keychain item.
-                try vault.remove(address: credentialAccount)
+                try vault.remove(address: credentialAddress)
                 biometricEnabled = false
                 defaults.set(false, forKey: "biometricEnabled")
             }

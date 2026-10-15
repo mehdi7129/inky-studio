@@ -1,4 +1,5 @@
 import Combine
+import Security
 import XCTest
 @testable import InkyStudio
 
@@ -97,14 +98,17 @@ final class AppStoreTests: XCTestCase {
         XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), fixture.store.address)
     }
 
-    func testSuccessfulLANQRAtSavedAddressDisablesTheOldBiometricCredential() async {
+    func testSuccessfulLANQRAtSavedAddressDisablesTheOldBiometricCredential() async throws {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
         let saved = "http://192.168.1.120:8000"
         fixture.defaults.set(saved, forKey: "frameAddress")
         fixture.defaults.set(true, forKey: "biometricEnabled")
-        fixture.store.address = saved
+        let edited = "http://192.168.1.222:8000"
+        fixture.store.address = edited
         fixture.store.biometricEnabled = true
+        try fixture.seedStoredPassword(account: saved)
+        try fixture.seedStoredPassword(account: edited)
         await fixture.store.loginFromLANQRCode(lanQR)
         XCTAssertTrue(fixture.store.authenticated)
         XCTAssertEqual(fixture.store.address, saved)
@@ -112,6 +116,9 @@ final class AppStoreTests: XCTestCase {
         XCTAssertFalse(fixture.store.biometricEnabled)
         XCTAssertFalse(fixture.defaults.bool(forKey: "biometricEnabled"))
         XCTAssertFalse(fixture.defaults.dictionaryRepresentation().description.contains("DemoPass12345678"))
+        XCTAssertEqual(fixture.storedPasswordStatus(account: saved), errSecItemNotFound)
+        XCTAssertEqual(fixture.storedPasswordStatus(account: edited), errSecSuccess,
+                       "A successful QR must only remove the credential for its authenticated endpoint.")
     }
 
     func testLANQRRejectsInvalidInputBeforeChangingAddressOrMakingRequests() async {
@@ -601,6 +608,7 @@ final class AppStoreTests: XCTestCase {
 private final class StoreFixture {
     let suite = "InkyStoreTests.\(UUID().uuidString)"
     let defaults: UserDefaults
+    let vaultService = "fr.mehdiguiard.inkystudio.tests.\(UUID().uuidString)"
     let stub: StoreStub
     let store: AppStore
 
@@ -611,7 +619,7 @@ private final class StoreFixture {
         self.stub = stub
         store = AppStore(defaults: defaults,
                          makeAPI: { InkyAPI(baseURL: $0, configuration: stub.configuration()) },
-                         vault: BiometricVault(service: "fr.mehdiguiard.inkystudio.tests.\(UUID().uuidString)"))
+                         vault: BiometricVault(service: vaultService))
         // Monitoring is covered by integration tests; protocol tests control every
         // HTTP completion and must not contact a real WebSocket endpoint.
         store.sceneActive(false)
@@ -632,10 +640,26 @@ private final class StoreFixture {
         store.authenticated = authenticated
     }
 
+    func seedStoredPassword(account: String) throws {
+        // Non-biometric synthetic items let this regression verify account
+        // selection without a biometric prompt or a device passcode dependency.
+        let status = SecItemAdd([kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: vaultService, kSecAttrAccount as String: account,
+            kSecValueData as String: Data("SyntheticOldPassword".utf8)] as CFDictionary, nil)
+        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+    }
+
+    func storedPasswordStatus(account: String) -> OSStatus {
+        SecItemCopyMatching([kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: vaultService, kSecAttrAccount as String: account] as CFDictionary, nil)
+    }
+
     func dispose() {
         store.sceneActive(false)
         store.api?.clearSession()
         defaults.removePersistentDomain(forName: suite)
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                       kSecAttrService as String: vaultService] as CFDictionary)
         stub.dispose()
     }
 }
