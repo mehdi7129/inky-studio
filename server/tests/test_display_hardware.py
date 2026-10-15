@@ -104,8 +104,9 @@ def test_unmapped_color_requires_explicit_profile(monkeypatch):
     display.initialize()
     assert display.status()["state"] == "error"
     assert display.status()["driver"]["color_raw"] == 4
+    assert display.info()["width"] == 800  # detected metadata is still readable
     with pytest.raises(DisplayUnavailableError):
-        display.info()
+        _ = display.spec
 
 
 @pytest.mark.parametrize("overrides", [
@@ -176,10 +177,93 @@ def test_refresh_error_503_preserves_queue_and_no_success_event(client, png_fact
     assert [entry.photo.id for entry in queue.list_all()] == [photo.id]
     assert history.current() is None
     assert [call.args[0] for call in app.state.bus.broadcast.call_args_list] == ["display_error"]
-    assert client.get("/api/state").status_code == 503
+    assert client.get("/api/state").status_code == 200
     assert client.post("/api/display/next").status_code == 503
     assert driver.show.call_count == 1  # sticky failure prevents retry
     assert client.get("/api/display/status").json()["error"]["code"] == "display_refresh_failed"
+
+
+@pytest.mark.parametrize(("outcome", "code"), [
+    ("held_high_unverified", "display_busy_unverified"),
+    ("edge_timeout", "display_busy_timeout"),
+    ("driver_error", "display_refresh_failed"),
+])
+def test_authenticated_reads_survive_sticky_display_fault_without_admitting_writes(
+    client, png_factory, monkeypatch, outcome, code,
+):
+    from inky_web.main import app
+
+    # Start with real auto-detected metadata, but an inert driver/observer.
+    driver = ac073_driver(monkeypatch, color=5)
+    driver.set_image = Mock()
+    display = DisplayController(mode="hardware")
+    display.initialize()
+    metadata = display.info()
+    app.state.display = display
+    observations = [
+        {"phase": phase, "timeout": timeout, "outcome": outcome if phase == "refresh" else "edge_received", "sequence": seq}
+        for seq, (phase, timeout) in enumerate(zip(("setup", "power_on", "refresh", "power_off"), (1, .4, 45, .4), strict=True), 1)
+    ]
+    # A real driver exception must remain sanitized, while busy observations
+    # must remain exactly those returned by the completed refresh sequence.
+    run_show = Mock(
+        side_effect=OSError("private device path") if outcome == "driver_error" else None,
+        return_value=observations,
+    )
+    if outcome == "driver_error":
+        observations[2].update(outcome="error", error_type="OSError")
+    display._busy_observer = SimpleNamespace(run_show=run_show, observations=observations)
+    photo, _ = photos.save(content=png_factory(), original_filename="retained.png")
+    queue.add(photo.id)
+    app.state.bus.broadcast = Mock()
+    monkeypatch.setenv("INKY_STUDIO_DISABLE_AUTH", "0")
+
+    # Metadata and diagnostics remain private even when the frame has failed.
+    paths = ("/api/state", "/api/display", "/api/display/status")
+    for path in paths:
+        assert client.get(path).status_code == 401
+    password = app.state.auth_service.credentials.bootstrap_password
+    assert client.post("/api/auth/login", json={"password": password}).status_code == 200
+    failed_refresh = client.post("/api/display/next")
+    assert failed_refresh.status_code == 503
+    assert failed_refresh.json()["code"] == code
+    original_error = display._error
+
+    assert client.get("/api/health").status_code == 200
+    info = client.get("/api/display")
+    assert info.status_code == 200 and info.json() == metadata
+    state = client.get("/api/state")
+    assert state.status_code == 200
+    assert state.json()["display"] == metadata
+    assert state.json()["queue_count"] == 1 and state.json()["current"] is None
+    diagnostic = client.get("/api/display/status")
+    assert diagnostic.status_code == 200
+    assert diagnostic.json()["state"] == "error"
+    assert diagnostic.json()["is_mock"] is False
+    assert diagnostic.json()["error"] == failed_refresh.json()
+    assert diagnostic.json()["observations"] == [dict(item, error_type=item.get("error_type")) for item in observations]
+    assert "private device path" not in diagnostic.text
+    assert display._error is original_error
+
+    # Reads never clear the error or permit a retry, image write or upload.
+    with pytest.raises(DisplayUnavailableError) as spec_error:
+        _ = display.spec
+    with pytest.raises(DisplayUnavailableError) as image_error:
+        display.display_image(photos.path_for(photo.id))
+    assert spec_error.value is image_error.value is original_error
+    for path in ("/api/display/next", "/api/display/previous"):
+        response = client.post(path)
+        assert response.status_code == 503 and response.json() == failed_refresh.json()
+    upload = client.post("/api/queue", files={"file": ("blocked.png", png_factory(color=(0, 1, 0)), "image/png")})
+    assert upload.status_code == 503 and upload.json() == failed_refresh.json()
+    assert [entry.photo.id for entry in queue.list_all()] == [photo.id]
+    assert history.current() is None
+    assert list(photos.path_for(photo.id).parent.glob("*.png")) == [photos.path_for(photo.id)]
+    assert run_show.call_count == driver.set_image.call_count == 1
+    assert [call.args[0] for call in app.state.bus.broadcast.call_args_list] == ["display_error"]
+    client.cookies.clear()
+    for path in paths:
+        assert client.get(path).status_code == 401
 
 
 @pytest.mark.parametrize(("outcome", "code"), [("edge_timeout", "display_busy_timeout"), ("held_high_unverified", "display_busy_unverified")])

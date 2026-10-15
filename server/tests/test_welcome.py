@@ -76,6 +76,9 @@ def test_physical_welcome_file_is_private_and_removed_on_display_failure(data_di
     class FailingDisplay:
         is_mock = False
 
+        def require_available(self):
+            pass
+
         def info(self):
             return {"width": 800, "height": 480}
 
@@ -88,6 +91,28 @@ def test_physical_welcome_file_is_private_and_removed_on_display_failure(data_di
         show_welcome(FailingDisplay())
     assert len(seen) == 1
     assert not seen[0].exists()
+
+
+def test_faulted_welcome_creates_neither_credentials_nor_private_preview(data_dir, monkeypatch):
+    from inky_web import welcome
+    from inky_web.inky.display import DisplayController
+    from inky_web.inky.errors import DisplayUnavailableError
+
+    display = DisplayController(mode="mock")
+    error = DisplayUnavailableError("Refresh not verified", "display_busy_unverified")
+    display._error = error
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Faulted welcome must fail before touching credentials or rendering")
+
+    monkeypatch.setattr(welcome, "load_or_create_credentials", unexpected)
+    monkeypatch.setattr(welcome, "render_welcome_image", unexpected)
+    before = set(data_dir.iterdir())
+    with pytest.raises(DisplayUnavailableError) as rejected:
+        show_welcome(display)
+    assert rejected.value is error
+    assert set(data_dir.iterdir()) == before
+    assert display._error is error
 
 
 @pytest.mark.parametrize("address", ["10.1.2.3", "172.16.0.1", "172.31.255.254", "192.168.1.120"])

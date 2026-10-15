@@ -211,7 +211,14 @@ class DisplayController:
         return self._is_mock
 
     def info(self) -> dict[str, Any]:
-        spec = self.spec
+        # Detected dimensions remain useful when a refresh fails. Reading them
+        # does not assert that the driver is available; spec and display_image
+        # keep the sticky hardware-error gate for operations that need it.
+        spec = self._spec
+        if spec is None:
+            self.require_available()
+            assert self._spec is not None
+            spec = self._spec
         return {
             "model": spec.model,
             "width": spec.width,

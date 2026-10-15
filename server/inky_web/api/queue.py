@@ -31,6 +31,7 @@ async def add_to_queue(
     """
     display = request.app.state.display
     bus = request.app.state.bus
+    display.require_available()
     info = display.info()
     expected_size = (info["width"], info["height"])
 

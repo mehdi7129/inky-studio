@@ -222,6 +222,7 @@ def show_welcome(display: DisplayController | None = None) -> None:
 
 
 def _show_welcome(display: DisplayController) -> None:
+    display.require_available()
     info = display.info()
     creds = load_or_create_credentials(default_data_dir())
     url = f"http://{_detect_ip()}:8000"
