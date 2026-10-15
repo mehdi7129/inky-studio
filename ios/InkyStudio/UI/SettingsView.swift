@@ -69,8 +69,8 @@ struct SettingsView: View {
                             if enabled { enableBiometric = true } else { store.disableBiometrics() }
                         })) {
                             Label("Connexion avec \(store.biometricName)", systemImage: store.biometricName == "Face ID" ? "faceid" : "touchid")
-                        }.tint(Bento.blue).disabled(store.vault.capability == nil && !store.biometricEnabled).accessibilityIdentifier("settings.biometric")
-                        Text(store.vault.capability == nil ? "Configurez Face ID ou Touch ID dans les réglages de votre iPhone pour l’activer." : "Utiliser le mot de passe enregistré.")
+                        }.tint(Bento.blue).disabled(store.availableBiometrics == nil && !store.biometricEnabled).accessibilityIdentifier("settings.biometric")
+                        Text(store.availableBiometrics == nil ? "Configurez Face ID ou Touch ID dans les réglages de votre iPhone pour l’activer." : "Retrouver votre cadre avec la biométrie de cet iPhone.")
                             .font(.caption).foregroundStyle(Bento.secondaryInk)
                         if store.bluetoothSupported || !store.connected {
                             Divider()
@@ -169,14 +169,22 @@ private struct BiometricSetupView: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 24) {
                 Label("Activer \(store.biometricName)", systemImage: "faceid").font(.title2.weight(.bold))
-                Text("Confirmez le mot de passe du cadre pour l’enregistrer dans le trousseau de cet iPhone.").foregroundStyle(Bento.secondaryInk)
-                SecureField("Mot de passe du cadre", text: $password).textContentType(.password).textFieldStyle(.roundedBorder)
-                Button {
-                    Task { await store.enableBiometrics(password: password); if store.biometricEnabled { dismiss() } }
-                } label: { if store.busy { ProgressView().tint(Bento.actionText) } else { Text("Activer") } }
-                    .buttonStyle(PrimaryButtonStyle()).disabled(password.isEmpty || store.busy)
-                    .accessibilityLabel("Activer \(store.biometricName)")
-                    .accessibilityValue(store.busy ? "Activation en cours" : "")
+                if store.hasAdoptedFrame {
+                    Text("Confirmez le mot de passe du cadre pour l’enregistrer dans le trousseau de cet iPhone.").foregroundStyle(Bento.secondaryInk)
+                    SecureField("Mot de passe du cadre", text: $password).textContentType(.password).textFieldStyle(.roundedBorder)
+                    Button {
+                        Task { await store.enableBiometrics(password: password); if store.biometricEnabled { dismiss() } }
+                    } label: { if store.busy { ProgressView().tint(Bento.actionText) } else { Text("Activer") } }
+                        .buttonStyle(PrimaryButtonStyle()).disabled(password.isEmpty || store.busy)
+                        .accessibilityLabel("Activer \(store.biometricName)")
+                        .accessibilityValue(store.busy ? "Activation en cours" : "")
+                } else {
+                    Text("Scannez à nouveau le QR de votre cadre, puis choisissez Activer \(store.biometricName). Aucun mot de passe à saisir.")
+                        .foregroundStyle(Bento.secondaryInk)
+                    Button("Se reconnecter par QR") {
+                        Task { await store.logout(); dismiss() }
+                    }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("settings.biometricRescan")
+                }
                 if let error = store.errorMessage { Text(error).font(.subheadline).foregroundStyle(Bento.danger) }
                 Spacer()
             }.padding(24).background(Bento.background)

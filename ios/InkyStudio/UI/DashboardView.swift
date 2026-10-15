@@ -57,7 +57,7 @@ struct DashboardView: View {
         controlsLayout {
             Button { Task { await store.display(previous: true) } } label: { Label("Précédente", systemImage: "chevron.left") }.accessibilityIdentifier("frame.previous")
             Button { Task { await store.display(previous: false) } } label: { Label("Suivante", systemImage: "chevron.right") }.accessibilityIdentifier("frame.next")
-        }.buttonStyle(OutlineButtonStyle()).disabled(!store.canMutate || store.displayBusy)
+        }.buttonStyle(OutlineButtonStyle()).disabled(!store.canDisplay || store.displayBusy)
     }
     private var summaryLayout: AnyLayout {
         dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12))

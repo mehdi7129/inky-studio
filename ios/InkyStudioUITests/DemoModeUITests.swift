@@ -3,6 +3,17 @@ import XCTest
 /// Runs without the Python fixture, a Raspberry, credentials or hidden demo flags.
 @MainActor
 final class DemoModeUITests: XCTestCase {
+    func testConnectionStartsWithQRWithoutAddressOrPasswordFields() {
+        launch()
+        let scan = app.buttons["connection.scanLANQR"]
+        XCTAssertTrue(scan.waitForExistence(timeout: 10))
+        XCTAssertTrue(scan.isHittable)
+        XCTAssertFalse(app.textFields["connection.address"].exists)
+        XCTAssertFalse(app.secureTextFields["connection.password"].exists)
+        XCTAssertFalse(app.buttons["connection.submit"].exists)
+        capture("00 Connexion par QR")
+    }
+
     private var app: XCUIApplication!
 
     private func launch(largeText: Bool = false) {

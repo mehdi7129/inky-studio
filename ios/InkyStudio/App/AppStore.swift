@@ -13,11 +13,14 @@ final class AppStore: ObservableObject {
     @Published var busy = false
     @Published var displayBusy = false
     @Published var biometricEnabled = false
+    @Published var offeringLANBiometrics = false
     @Published var passwordChangeSupported = false
     @Published var bluetoothSupported = false
     @Published var errorMessage: String?
     @Published var notice: String?
     @Published var state: DisplayState?
+    @Published private(set) var displayDiagnostics: DisplayDiagnostics?
+    private var displayReadError: String?
     @Published var queue: [QueueEntry] = []
     @Published var history: [HistoryEntry] = []
     @Published var settings: FrameSettings?
@@ -37,6 +40,11 @@ final class AppStore: ObservableObject {
     let vault: BiometricVault
     private let defaults: UserDefaults
     private let makeAPI: @MainActor (URL) -> InkyAPI
+    private let biometricCapability: @MainActor () -> String?
+    private let saveBiometricPassword: @MainActor (String, String) throws -> Void
+    private let monitorsEvents: Bool
+    // A scanned credential survives only long enough for this session's explicit opt-in.
+    private var pendingLANBiometricCredential: (password: String, account: String)?
     private let imageCache = NSCache<NSString, UIImage>()
     private var eventsTask: Task<Void, Never>?
     private var pollingTask: Task<Void, Never>?
@@ -54,10 +62,16 @@ final class AppStore: ObservableObject {
 
     init(defaults: UserDefaults = .standard,
          makeAPI: @escaping @MainActor (URL) -> InkyAPI = { InkyAPI(baseURL: $0) },
-         vault: BiometricVault = BiometricVault()) {
+         vault: BiometricVault = BiometricVault(),
+         biometricCapability: (@MainActor () -> String?)? = nil,
+         saveBiometricPassword: (@MainActor (String, String) throws -> Void)? = nil,
+         monitorsEvents: Bool = true) {
         self.defaults = defaults
         self.makeAPI = makeAPI
         self.vault = vault
+        self.biometricCapability = biometricCapability ?? { vault.capability }
+        self.saveBiometricPassword = saveBiometricPassword ?? { try vault.save(password: $0, address: $1) }
+        self.monitorsEvents = monitorsEvents
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--uitesting") {
             defaults.removeObject(forKey: "frameAddress")
@@ -75,10 +89,14 @@ final class AppStore: ObservableObject {
     }
 
     var hasSavedFrame: Bool { defaults.string(forKey: "frameAddress") != nil }
-    var biometricName: String { vault.capability ?? "Face ID" }
+    var biometricName: String { biometricCapability() ?? "Face ID" }
+    var availableBiometrics: String? { biometricCapability() }
+    var hasAdoptedFrame: Bool { defaults.string(forKey: "frameOwnerID") != nil }
     var panelWidth: Int { state?.display.width ?? 800 }
     var panelHeight: Int { state?.display.height ?? 480 }
     var canMutate: Bool { authenticated && connected && !busy && !updating }
+    var displayIssue: String? { displayDiagnostics?.issue ?? displayReadError }
+    var canDisplay: Bool { canMutate && state != nil && displayIssue == nil }
 
     /// The demo never changes the real address, preferences or credentials.
     /// Enter only from the signed-out screen, with no login in flight.
@@ -183,7 +201,7 @@ final class AppStore: ObservableObject {
             // Keep the saved/manual locator intact until authentication succeeds.
             // A QR password also replaces any old biometric opt-in after success,
             // without ever saving the scanned password itself.
-            await login(password: code.password, rememberBiometric: false, at: code.endpoint)
+            await login(password: code.password, rememberBiometric: false, at: code.endpoint, offerBiometrics: true)
         } catch {
             errorMessage = LANLoginCodeError.invalidCode.localizedDescription
         }
@@ -198,7 +216,7 @@ final class AppStore: ObservableObject {
         await login(password: password, rememberBiometric: rememberBiometric, at: nil)
     }
 
-    private func login(password: String, rememberBiometric: Bool?, at endpoint: URL?) async {
+    private func login(password: String, rememberBiometric: Bool?, at endpoint: URL?, offerBiometrics: Bool = false) async {
         guard !isDemo, !connecting else { return }
         resetSession()
         let epoch = generation
@@ -256,11 +274,49 @@ final class AppStore: ObservableObject {
             connected = false
             imageCache.removeAllObjects()
             await refresh()
+            guard epoch == generation else { return }
+            guard !Task.isCancelled else { resetSession(); return }
+            guard connected else {
+                let message = errorMessage
+                resetSession()
+                errorMessage = message
+                return
+            }
             let supportsBluetooth = await client.bluetoothSupported()
-            if epoch == generation { bluetoothSupported = supportsBluetooth }
-            if epoch == generation { startMonitoring() }
+            guard epoch == generation else { return }
+            guard !Task.isCancelled else { resetSession(); return }
+            bluetoothSupported = supportsBluetooth
+            if offerBiometrics, active, connected, status.authRequired, availableBiometrics != nil {
+                pendingLANBiometricCredential = (password, credentialAddress)
+                offeringLANBiometrics = true
+            }
+            startMonitoring()
         } catch {
             if epoch == generation { handle(error) }
+        }
+    }
+
+    func declineLANBiometrics() {
+        pendingLANBiometricCredential = nil
+        offeringLANBiometrics = false
+    }
+
+    /// Called only by the consent button after successful QR authentication.
+    /// The validated QR password is never requested from the user again.
+    func acceptLANBiometrics() {
+        guard !isDemo, active, authenticated, connected, !busy, availableBiometrics != nil,
+              let credential = pendingLANBiometricCredential,
+              credential.account == credentialAccount else { declineLANBiometrics(); return }
+        declineLANBiometrics()
+        do {
+            try saveBiometricPassword(credential.password, credential.account)
+            biometricEnabled = true
+            defaults.set(true, forKey: "biometricEnabled")
+            notice = "La connexion avec \(biometricName) est activée."
+        } catch {
+            biometricEnabled = false
+            defaults.set(false, forKey: "biometricEnabled")
+            notice = "L’enregistrement sécurisé n’a pas abouti. Vous pourrez scanner à nouveau le QR du cadre."
         }
     }
 
@@ -285,7 +341,9 @@ final class AppStore: ObservableObject {
                 biometricEnabled = false
                 defaults.set(false, forKey: "biometricEnabled")
             }
-            handle(error)
+            if error is VaultError, !hasAdoptedFrame {
+                errorMessage = "La connexion biométrique n’a pas abouti. Vous pouvez scanner à nouveau le QR du cadre."
+            } else { handle(error) }
         }
     }
 
@@ -309,6 +367,7 @@ final class AppStore: ObservableObject {
 
     func disableBiometrics() {
         guard !isDemo else { return }
+        declineLANBiometrics()
         do {
             try vault.remove(address: credentialAccount)
             biometricEnabled = false
@@ -322,6 +381,7 @@ final class AppStore: ObservableObject {
         guard !isDemo, canMutate, !displayBusy, passwordChangeSupported, let api else {
             return .failure("Reconnectez-vous au cadre avant de modifier son mot de passe.")
         }
+        declineLANBiometrics()
         stopMonitoring()
         // Retire in-flight refreshes and thumbnails using the previous session.
         generation = UUID()
@@ -408,6 +468,7 @@ final class AppStore: ObservableObject {
     }
 
     private func resetSession(clearClient: Bool = true) {
+        declineLANBiometrics()
         stopMonitoring()
         generation = UUID()
         demoClient?.clear()
@@ -433,6 +494,8 @@ final class AppStore: ObservableObject {
         busy = false
         displayBusy = false
         state = nil
+        displayDiagnostics = nil
+        displayReadError = nil
         queue = []
         history = []
         settings = nil
@@ -477,43 +540,63 @@ final class AppStore: ObservableObject {
         }
         repeat {
             requestedRefresh = false
-            do {
-                async let s = api.state()
-                async let q = api.queue()
-                async let h = historySnapshot(api: api, count: max(history.count, 100))
-                async let f = api.settings()
-                async let v = api.health()
-                let result = try await (s, q, h, f, v)
-                guard epoch == generation else { return }
-                if isDemo { imageCache.removeAllObjects() }
-                state = result.0
-                queue = result.1
-                history = result.2.entries
+            async let s = snapshotResult { try await api.state() }
+            async let q = snapshotResult { try await api.queue() }
+            async let h = snapshotResult { try await historySnapshot(api: api, count: max(history.count, 100)) }
+            async let f = snapshotResult { try await api.settings() }
+            async let v = snapshotResult { try await api.health() }
+            async let d = snapshotResult { try await self.api?.displayStatus() }
+            let result = await (s, q, h, f, v, d)
+            guard epoch == generation else { return }
+            let failures: [Error] = [result.0.failure, result.1.failure, result.2.failure,
+                                      result.3.failure, result.4.failure, result.5.failure].compactMap { $0 }
+            if let unauthorized = failures.first(where: { ($0 as? APIError)?.isUnauthorized == true }) {
+                handle(unauthorized)
+                return
+            }
+            guard !Task.isCancelled, !failures.contains(where: {
+                $0 is CancellationError || ($0 as? URLError)?.code == .cancelled
+            }) else {
+                retryAfterCancellation = true
+                return
+            }
+            if isDemo { imageCache.removeAllObjects() }
+            if case .success(let value) = result.0 { state = value; displayReadError = nil }
+            else if let error = result.0.failure, !(error is URLError) {
+                displayReadError = error.localizedDescription
+            }
+            if case .success(let value) = result.1 { queue = value }
+            if case .success(let value) = result.2 {
+                history = value.entries
                 historyRevision = UUID()
-                settings = result.3
-                version = result.4.version
-                hasMoreHistory = result.2.hasMore
-                connected = true
-                if connectionError { errorMessage = nil; connectionError = false }
-                if updating, let expected = availableUpdate?.latest, version == expected {
-                    updating = false
-                    updateMessage = "Mise à jour terminée."
-                }
-            } catch {
-                guard epoch == generation else { return }
-                // Cancellation says nothing about the frame's reachability.
-                guard !Task.isCancelled, !(error is CancellationError),
-                      (error as? URLError)?.code != .cancelled else {
-                    retryAfterCancellation = true
-                    return
-                }
-                connected = false
-                handle(error)
+                hasMoreHistory = value.hasMore
+            }
+            if case .success(let value) = result.3 { settings = value }
+            if case .success(let value) = result.4 { version = value.version }
+            if case .success(let value) = result.5 { displayDiagnostics = value }
+            else if let error = result.5.failure, !(error is URLError) {
+                displayReadError = error.localizedDescription
+            }
+            // A server-side display error is still an HTTP response from a
+            // reachable frame. Keep its other data and diagnostics usable.
+            let reachable = failures.count < 6 || failures.contains { !($0 is URLError) }
+            let otherFailures = [result.1.failure, result.2.failure, result.3.failure, result.4.failure]
+                .compactMap { $0 }
+            if let failure = otherFailures.first ?? (reachable ? nil : failures.first) {
+                handle(failure)
                 if epoch == generation { connectionError = true }
-                // Honor a foreground refresh or explicit retry that arrived
-                // while this request was still in flight, including on failure.
+            } else if connectionError { errorMessage = nil; connectionError = false }
+            connected = reachable
+            if updating, let expected = availableUpdate?.latest, version == expected {
+                updating = false
+                updateMessage = "Mise à jour terminée."
             }
         } while requestedRefresh && authenticated && epoch == generation
+    }
+
+    private func snapshotResult<Value>(_ operation: () async throws -> Value) async -> Result<Value, Error> {
+        do { return .success(try await operation()) }
+        catch { return .failure(error) }
     }
 
     private func historySnapshot(api: any FramePhotoClient, count: Int) async throws -> (entries: [HistoryEntry], hasMore: Bool) {
@@ -550,11 +633,11 @@ final class AppStore: ObservableObject {
         if isActive, authenticated {
             startMonitoring()
             Task { await refresh() }
-        } else if !isActive { stopMonitoring() }
+        } else if !isActive { stopMonitoring(); declineLANBiometrics() }
     }
 
     private func startMonitoring() {
-        guard !isDemo, active, authenticated, !passwordRotating, let api, monitoringID == nil else { return }
+        guard monitorsEvents, !isDemo, active, authenticated, !passwordRotating, let api, monitoringID == nil else { return }
         let epoch = generation
         let identifier = UUID()
         monitoringID = identifier
@@ -563,24 +646,17 @@ final class AppStore: ObservableObject {
                 for try await event in api.events() {
                     guard let self, !Task.isCancelled, self.generation == epoch,
                           self.monitoringID == identifier else { return }
-                    if event.type == "connection_lost" || event.type == "reconnecting" {
-                        self.connected = false
-                    } else if event.type == "system_update" {
-                        if case let .string(message)? = event.payload["message"] { self.updateMessage = message }
-                        if case .string("error")? = event.payload["stage"] { self.updating = false }
-                    } else { await self.refresh() }
+                    await self.receiveServerEvent(event)
                 }
             } catch {
                 guard let self, !Task.isCancelled, self.generation == epoch,
                       self.monitoringID == identifier else { return }
-                self.connected = false
-                self.handle(error)
+                if (error as? APIError)?.isUnauthorized == true { self.handle(error) }
+                else { await self.refresh() }
             }
             if let self, self.generation == epoch, self.monitoringID == identifier {
-                self.monitoringID = nil
                 self.eventsTask = nil
-                self.pollingTask?.cancel()
-                self.pollingTask = nil
+                // HTTP polling remains available if the event stream alone ends.
             }
         }
         pollingTask = Task { [weak self] in
@@ -590,6 +666,16 @@ final class AppStore: ObservableObject {
                       self.monitoringID == identifier else { return }
                 await self.refresh()
             }
+        }
+    }
+
+    func receiveServerEvent(_ event: ServerEvent) async {
+        if event.type == "system_update" {
+            if case let .string(message)? = event.payload["message"] { updateMessage = message }
+            if case .string("error")? = event.payload["stage"] { updating = false }
+        } else {
+            // Loss of WebSocket is not proof that the HTTP API is offline.
+            await refresh()
         }
     }
 
@@ -616,7 +702,7 @@ final class AppStore: ObservableObject {
     }
 
     func display(previous: Bool) async {
-        guard canMutate, !displayBusy, let api = photoClient else { return }
+        guard canDisplay, !displayBusy, let api = photoClient else { return }
         let epoch = generation
         displayBusy = true
         defer { if epoch == generation { displayBusy = false } }
@@ -747,4 +833,11 @@ final class AppStore: ObservableObject {
 enum PasswordChangeResult: Equatable {
     case success(String)
     case failure(String)
+}
+
+private extension Result {
+    var failure: Failure? {
+        guard case .failure(let error) = self else { return nil }
+        return error
+    }
 }

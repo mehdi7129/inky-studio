@@ -47,6 +47,10 @@ final class InkyAPI: FramePhotoClient {
     func authStatus() async throws -> AuthStatus { try await get("/api/auth/status", timeout: 12) }
     func health() async throws -> HealthResponse { try await get("/api/health", timeout: 12) }
     func state() async throws -> DisplayState { try await get("/api/state") }
+    func displayStatus() async throws -> DisplayDiagnostics? {
+        do { return try await get("/api/display/status") }
+        catch APIError.http(statusCode: 404, message: _) { return nil }
+    }
     func queue() async throws -> [QueueEntry] { try await get("/api/queue") }
     func settings() async throws -> FrameSettings { try await get("/api/settings") }
 

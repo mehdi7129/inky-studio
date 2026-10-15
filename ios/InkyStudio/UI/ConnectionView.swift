@@ -10,6 +10,16 @@ struct ConnectionView: View {
     @State private var scanningLANQR = false
     @FocusState private var passwordFocused: Bool
     private var biometric: Bool { store.hasSavedFrame && store.biometricEnabled && !showPassword }
+    // Keep the old loopback E2E protocol fixture usable without exposing manual
+    // LAN credentials in the product or relaxing the production QR parser.
+    private var legacyLoginFixture: Bool {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("--uitesting") && arguments.contains("--legacy-login-fixture")
+        #else
+        return false
+        #endif
+    }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -17,12 +27,6 @@ struct ConnectionView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(store.hasSavedFrame ? "Retrouver mon cadre" : "Bonjour, Inky.").font(.largeTitle.weight(.bold)).tracking(-1)
                     Text(store.hasSavedFrame ? "Votre cadre vous attend." : "Vos photos, sur votre cadre.").font(.title3).foregroundStyle(Bento.secondaryInk)
-                }
-                if !store.hasSavedFrame { discoveryActions }
-                if store.canScanLANLoginCode {
-                    Button { passwordFocused = false; scanningLANQR = true } label: {
-                        Label("Scanner le QR du cadre", systemImage: "qrcode.viewfinder")
-                    }.buttonStyle(OutlineButtonStyle()).accessibilityIdentifier("connection.scanLANQR")
                 }
                 if store.hasSavedFrame {
                     HStack(spacing: 16) {
@@ -33,15 +37,6 @@ struct ConnectionView: View {
                         }
                         Spacer(minLength: 0)
                     }.bentoCard()
-                } else {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Adresse du Raspberry").font(.subheadline.weight(.medium))
-                        TextField("inky.local:8000", text: $store.address).keyboardType(.URL).textContentType(.URL)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .padding(12).background(Bento.background, in: RoundedRectangle(cornerRadius: 10))
-                            .accessibilityIdentifier("connection.address")
-                        Text("Saisissez son nom local ou son adresse IP.").font(.caption).foregroundStyle(Bento.secondaryInk)
-                    }.bentoCard()
                 }
                 if biometric {
                     Image(systemName: store.biometricName == "Face ID" ? "faceid" : "touchid")
@@ -51,15 +46,17 @@ struct ConnectionView: View {
                         if store.connecting { ProgressView().tint(Bento.actionText) }
                         else { Label("Se connecter avec \(store.biometricName)", systemImage: store.biometricName == "Face ID" ? "faceid" : "touchid") }
                     }.buttonStyle(PrimaryButtonStyle()).disabled(store.connecting).accessibilityIdentifier("connection.biometric")
-                    Button("Utiliser le mot de passe") { showPassword = true; passwordFocused = true }
-                        .buttonStyle(OutlineButtonStyle()).disabled(store.connecting)
-                } else {
+                    if store.hasAdoptedFrame || legacyLoginFixture {
+                        Button("Utiliser le mot de passe") { showPassword = true; passwordFocused = true }
+                            .buttonStyle(OutlineButtonStyle()).disabled(store.connecting)
+                    }
+                } else if store.hasAdoptedFrame || legacyLoginFixture {
                     VStack(alignment: .leading, spacing: 14) {
                         SecureField("Mot de passe du cadre", text: $password).textContentType(.password)
                             .padding(14).background(Bento.background, in: RoundedRectangle(cornerRadius: 10))
                             .focused($passwordFocused).submitLabel(.go).onSubmit { connect() }
                             .accessibilityIdentifier("connection.password")
-                        if let capability = store.vault.capability {
+                        if let capability = store.availableBiometrics {
                             Toggle("Activer \(capability)", isOn: $remember).font(.subheadline).tint(Bento.blue)
                             Text("Autorise l’utilisation du mot de passe enregistré sur cet iPhone.").font(.caption).foregroundStyle(Bento.secondaryInk)
                         }
@@ -73,7 +70,15 @@ struct ConnectionView: View {
                         Button("Utiliser \(store.biometricName)") { showPassword = false }.frame(maxWidth: .infinity, minHeight: 44)
                     }
                 }
+                if store.canScanLANLoginCode {
+                    Button { passwordFocused = false; scanningLANQR = true } label: {
+                        Label("Scanner le QR du cadre", systemImage: "qrcode.viewfinder")
+                    }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("connection.scanLANQR")
+                    Text("Scannez le code affiché sur votre cadre. La connexion se fait automatiquement, sans saisie.")
+                        .font(.subheadline).foregroundStyle(Bento.secondaryInk)
+                }
                 if store.connecting {
+                    HStack(spacing: 12) { ProgressView(); Text("Connexion au cadre…") }
                     Button("Annuler la connexion") { store.cancelLogin() }
                         .frame(maxWidth: .infinity, minHeight: 44).accessibilityIdentifier("connection.cancel")
                 }
@@ -95,7 +100,7 @@ struct ConnectionView: View {
                     Button("Changer de cadre") { Task { await store.logout(forget: true); showPassword = false; password = ""; remember = false } }
                         .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 8).disabled(store.connecting)
                 }
-                if store.hasSavedFrame { discoveryActions }
+                discoveryActions
                 SupportPrivacyLinks(identifierPrefix: "connection")
             }.padding(20).frame(maxWidth: 540)
                 .frame(maxWidth: .infinity)
@@ -148,6 +153,31 @@ struct ConnectionView: View {
     }
 
     private func connect() { passwordFocused = false; Task { await store.login(password: password, rememberBiometric: remember) } }
+}
+
+struct LANBiometricConsentView: View {
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 24) {
+                Image(systemName: store.biometricName == "Face ID" ? "faceid" : "touchid")
+                    .font(.system(size: 64, weight: .light)).accessibilityHidden(true)
+                Text("Votre cadre est connecté").font(.title2.weight(.bold))
+                Text("Activer \(store.biometricName) pour les prochaines connexions ?")
+                    .font(.title3.weight(.medium))
+                Text("Le mot de passe lu dans le QR sera conservé dans le trousseau sécurisé de cet iPhone, protégé par votre biométrie. Vous pourrez toujours scanner à nouveau le QR du cadre.")
+                    .font(.body).foregroundStyle(Bento.secondaryInk)
+                Button { store.acceptLANBiometrics() } label: {
+                    Text("Activer \(store.biometricName)")
+                }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("connection.enableLANBiometrics")
+                Button("Plus tard") { store.declineLANBiometrics() }
+                    .buttonStyle(OutlineButtonStyle()).accessibilityIdentifier("connection.skipLANBiometrics")
+                Spacer(minLength: 0)
+            }.padding(24).screenBackground().navigationTitle("Connexion simplifiée")
+                .navigationBarTitleDisplayMode(.inline)
+        }.presentationDetents([.large])
+    }
 }
 
 struct SupportPrivacyLinks: View {

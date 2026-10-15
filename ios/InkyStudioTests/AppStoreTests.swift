@@ -7,6 +7,160 @@ import XCTest
 final class AppStoreTests: XCTestCase {
     private let lanQR = "{\"v\":1,\"p\":\"lan-login\",\"url\":\"http://192.168.1.120:8000\",\"password\":\"DemoPass12345678\"}"
 
+    func testQRBiometricCredentialRequiresExplicitConsentAndIsSavedOnlyForThisFrame() async {
+        var saved: [(String, String)] = []
+        let fixture = StoreFixture(biometricCapability: { "Face ID" },
+                                   saveBiometricPassword: { saved.append(($0, $1)) })
+        defer { fixture.dispose() }
+        fixture.enterForegroundWithoutMonitoring()
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(fixture.store.offeringLANBiometrics)
+        XCTAssertFalse(fixture.store.biometricEnabled)
+        XCTAssertTrue(saved.isEmpty, "A successful scan is not consent to Keychain storage.")
+        fixture.store.acceptLANBiometrics()
+        XCTAssertEqual(saved.count, 1)
+        XCTAssertEqual(saved.first?.0, "DemoPass12345678")
+        XCTAssertEqual(saved.first?.1, "http://192.168.1.120:8000")
+        XCTAssertTrue(fixture.store.biometricEnabled)
+        XCTAssertFalse(fixture.store.offeringLANBiometrics)
+        fixture.store.acceptLANBiometrics()
+        XCTAssertEqual(saved.count, 1, "Consent cannot consume the same credential twice.")
+        XCTAssertFalse(fixture.defaults.dictionaryRepresentation().description.contains("DemoPass12345678"))
+    }
+
+    func testQRBiometricConsentIsDiscardedOnDismissBackgroundAndSessionChange() async {
+        var saved = 0
+        let fixture = StoreFixture(biometricCapability: { "Touch ID" },
+                                   saveBiometricPassword: { _, _ in saved += 1 })
+        defer { fixture.dispose() }
+        fixture.enterForegroundWithoutMonitoring()
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertEqual(fixture.store.biometricName, "Touch ID")
+        fixture.store.declineLANBiometrics()
+        fixture.store.acceptLANBiometrics()
+        XCTAssertEqual(saved, 0)
+        await fixture.store.logout()
+        fixture.enterForegroundWithoutMonitoring()
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(fixture.store.offeringLANBiometrics)
+        fixture.store.sceneActive(false)
+        fixture.store.acceptLANBiometrics()
+        XCTAssertEqual(saved, 0)
+        await fixture.store.logout()
+        fixture.enterForegroundWithoutMonitoring()
+        await fixture.store.loginFromLANQRCode(lanQR)
+        await fixture.store.logout()
+        await fixture.login("other-frame.local")
+        fixture.store.acceptLANBiometrics()
+        XCTAssertEqual(saved, 0)
+    }
+
+    func testSlowQRReplyAfterBackgroundCannotRetainOrOfferBiometricCredential() async {
+        var saved = 0
+        let fixture = StoreFixture(biometricCapability: { "Face ID" },
+                                   saveBiometricPassword: { _, _ in saved += 1 })
+        defer { fixture.dispose() }
+        fixture.enterForegroundWithoutMonitoring()
+        let gate = fixture.stub.hold(host: "192.168.1.120", path: "/api/state")
+        let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        fixture.store.sceneActive(false)
+        gate.release()
+        await login.value
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.offeringLANBiometrics)
+        fixture.enterForegroundWithoutMonitoring()
+        fixture.store.acceptLANBiometrics()
+        XCTAssertEqual(saved, 0, "The late response must not retain a hidden QR credential for later consent.")
+    }
+
+    func testCancelledQRTaskDuringInitialRefreshDoesNotPublishPartialSession() async {
+        for path in ["/api/state", "/api/provisioning/capabilities"] {
+            let fixture = StoreFixture(biometricCapability: { "Face ID" })
+            defer { fixture.dispose() }
+            fixture.enterForegroundWithoutMonitoring()
+            let gate = fixture.stub.hold(host: "192.168.1.120", path: path)
+            let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
+            await fulfillment(of: [gate.started], timeout: 3)
+            login.cancel()
+            gate.release()
+            await login.value
+            XCTAssertFalse(fixture.store.authenticated)
+            XCTAssertFalse(fixture.store.connected)
+            XCTAssertFalse(fixture.store.connecting)
+            XCTAssertFalse(fixture.store.offeringLANBiometrics)
+            XCTAssertTrue(fixture.store.canScanLANLoginCode)
+        }
+    }
+
+    func testQRWithoutAvailableBiometricsDoesNotOfferToSave() async {
+        let fixture = StoreFixture(biometricCapability: { nil })
+        defer { fixture.dispose() }
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(fixture.store.connected)
+        XCTAssertFalse(fixture.store.offeringLANBiometrics)
+        XCTAssertFalse(fixture.store.biometricEnabled)
+    }
+
+    func testDisplayState503KeepsOtherFrameDataAvailableWithoutClaimingScreenReady() async {
+        let fixture = StoreFixture(totals: ["192.168.1.120": 2])
+        defer { fixture.dispose() }
+        let gate = fixture.stub.hold(host: "192.168.1.120", path: "/api/state")
+        let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        gate.release(status: 503)
+        await login.value
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.connected, "An HTTP 503 display response is not loss of network access.")
+        XCTAssertEqual(fixture.store.history.count, 2)
+        XCTAssertNotNil(fixture.store.settings)
+        XCTAssertNil(fixture.store.state)
+        XCTAssertNotNil(fixture.store.displayIssue)
+        XCTAssertFalse(fixture.store.canDisplay)
+        XCTAssertTrue(fixture.store.canMutate, "Queue/settings access is independent of display readiness.")
+        let writes = fixture.stub.requests.filter { $0.httpMethod == "POST" }.count
+        await fixture.store.display(previous: false)
+        XCTAssertEqual(fixture.stub.requests.filter { $0.httpMethod == "POST" }.count, writes)
+        await fixture.store.refresh()
+        XCTAssertTrue(fixture.store.connected)
+        XCTAssertNil(fixture.store.displayIssue)
+        XCTAssertTrue(fixture.store.canDisplay, "Legacy diagnostics 404 falls back to a successful state snapshot.")
+    }
+
+    func testDisplayDiagnosticsErrorAndBusyBlockScreenCommandsEvenWithState200() async {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        fixture.stub.setDisplayStatus(state: "error", error: "display_busy_unverified")
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(fixture.store.connected)
+        XCTAssertNotNil(fixture.store.state)
+        XCTAssertEqual(fixture.store.displayDiagnostics?.error?.code, "display_busy_unverified")
+        XCTAssertNotNil(fixture.store.displayIssue)
+        XCTAssertFalse(fixture.store.canDisplay)
+        fixture.stub.setDisplayStatus(state: "busy")
+        await fixture.store.refresh()
+        XCTAssertFalse(fixture.store.canDisplay)
+        fixture.stub.setDisplayStatus(state: "ready")
+        await fixture.store.refresh()
+        XCTAssertTrue(fixture.store.canDisplay)
+        XCTAssertNil(fixture.store.displayIssue)
+    }
+
+    func testEventStreamFailureUsesHTTPReachabilityInsteadOfMarkingFrameOffline() async {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.store.loginFromLANQRCode(lanQR)
+        await fixture.store.receiveServerEvent(ServerEvent(type: "connection_lost"))
+        XCTAssertTrue(fixture.store.connected)
+        await fixture.store.receiveServerEvent(ServerEvent(type: "reconnecting"))
+        XCTAssertTrue(fixture.store.connected)
+        for path in ["/api/state", "/api/queue", "/api/history", "/api/settings", "/api/health", "/api/display/status"] {
+            fixture.stub.failNext(host: "192.168.1.120", path: path, error: URLError(.cannotConnectToHost))
+        }
+        await fixture.store.receiveServerEvent(ServerEvent(type: "connection_lost"))
+        XCTAssertFalse(fixture.store.connected, "Actual HTTP transport failure must still show offline.")
+    }
+
     func testLANQRUsesExistingLoginWithoutPersistingItsPassword() async throws {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
@@ -223,8 +377,8 @@ final class AppStoreTests: XCTestCase {
         await fulfillment(of: [refreshGate.started], timeout: 3)
         refreshGate.release(status: 503)
         await refresh.value
-        XCTAssertFalse(store.connected)
-        XCTAssertNotNil(store.errorMessage)
+        XCTAssertTrue(store.connected)
+        XCTAssertNotNil(store.displayIssue)
 
         updateGate.release(status: 422)
         await update.value
@@ -612,14 +766,18 @@ private final class StoreFixture {
     let stub: StoreStub
     let store: AppStore
 
-    init(totals: [String: Int] = [:]) {
+    init(totals: [String: Int] = [:], biometricCapability: (@MainActor () -> String?)? = nil,
+         saveBiometricPassword: (@MainActor (String, String) throws -> Void)? = nil) {
         let defaults = UserDefaults(suiteName: suite)!
         self.defaults = defaults
         let stub = StoreStub(totals: totals)
         self.stub = stub
         store = AppStore(defaults: defaults,
                          makeAPI: { InkyAPI(baseURL: $0, configuration: stub.configuration()) },
-                         vault: BiometricVault(service: vaultService))
+                         vault: BiometricVault(service: vaultService),
+                         biometricCapability: biometricCapability,
+                         saveBiometricPassword: saveBiometricPassword,
+                         monitorsEvents: false)
         // Monitoring is covered by integration tests; protocol tests control every
         // HTTP completion and must not contact a real WebSocket endpoint.
         store.sceneActive(false)
@@ -684,8 +842,21 @@ private final class StoreStub: @unchecked Sendable {
     private let totals: [String: Int]
     private var gates: [String: StoreGate] = [:]
     private var calls: [URLRequest] = []
+    private var responseErrors: [String: URLError] = [:]
+    private var displayStatus: [String: Any]?
     var requests: [URLRequest] { lock.withLock { calls } }
     init(totals: [String: Int]) { self.totals = totals }
+
+    func failNext(host: String, path: String, error: URLError) {
+        lock.withLock { responseErrors["\(host)|GET|\(path)"] = error }
+    }
+
+    func setDisplayStatus(state: String, error: String? = nil) {
+        lock.withLock {
+            displayStatus = ["mode": "hardware", "profile": "ac073-800x480", "state": state, "is_mock": false,
+                "error": error.map { ["code": $0, "detail": "Synthetic display diagnostic"] } as Any? ?? NSNull()]
+        }
+    }
 
     func hold(host: String, path: String, method: String = "GET") -> StoreGate {
         let gate = StoreGate()
@@ -704,17 +875,26 @@ private final class StoreStub: @unchecked Sendable {
 
     func dispose() { StoreURLProtocol.remove(id: id) }
 
-    func respond(_ request: URLRequest, completion: @escaping (Data, Int) -> Void) {
+    func respond(_ request: URLRequest, completion: @escaping (Data, Int, URLError?) -> Void) {
         let host = request.url!.host!
         let path = request.url!.path
         let key = "\(host)|\(request.httpMethod ?? "GET")|\(path)"
         let gate = lock.withLock { calls.append(request); return gates.removeValue(forKey: key) }
+        if let error = lock.withLock({ responseErrors.removeValue(forKey: key) }) {
+            completion(Data(), 0, error)
+            return
+        }
         let body: Any
+        var defaultStatus = 200
         switch path {
         case "/api/auth/status", "/api/auth/logout": body = ["authenticated": false, "auth_required": true, "password_change_supported": host != "legacy-frame.local"]
         case "/api/auth/login", "/api/auth/password": body = ["authenticated": true, "auth_required": true, "password_change_supported": host != "legacy-frame.local"]
         case "/api/health": body = ["status": "ok", "version": "0.4.2"]
         case "/api/state": body = ["display": ["model": host, "width": 800, "height": 480, "colors": 6, "is_mock": true], "current": NSNull(), "queue_count": 0, "next_change_at": NSNull()]
+        case "/api/display/status":
+            let diagnostics = lock.withLock { displayStatus }
+            body = diagnostics ?? [:]
+            if diagnostics == nil { defaultStatus = 404 }
         case "/api/settings": body = ["change_mode": "daily", "change_hour": 5, "change_interval_minutes": 60, "saturation": 1]
         case "/api/system/update": body = ["current": "0.4.2", "latest": "0.4.3", "update_available": true]
         case "/api/history":
@@ -732,8 +912,8 @@ private final class StoreStub: @unchecked Sendable {
         default: body = []
         }
         let data = try! JSONSerialization.data(withJSONObject: body)
-        if let gate { gate.hold { status in completion(data, status ?? 200) } }
-        else { completion(data, 200) }
+        if let gate { gate.hold { status in completion(data, status ?? defaultStatus, nil) } }
+        else { completion(data, defaultStatus, nil) }
     }
 }
 
@@ -753,8 +933,9 @@ private final class StoreURLProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable))
             return
         }
-        stub.respond(request) { [weak self] data, status in
+        stub.respond(request) { [weak self] data, status, error in
             guard let self, !self.responseLock.withLock({ self.stopped }) else { return }
+            if let error { self.client?.urlProtocol(self, didFailWithError: error); return }
             let response = HTTPURLResponse(url: self.request.url!, statusCode: status, httpVersion: "HTTP/1.1",
                                            headerFields: ["Content-Type": "application/json"])!
             self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

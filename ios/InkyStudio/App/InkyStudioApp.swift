@@ -18,7 +18,7 @@ struct RootView: View {
     @State private var selection = 0
     var body: some View {
         Group {
-            if store.authenticated {
+            if store.authenticated && !store.connecting {
                 VStack(spacing: 0) {
                     if store.isDemo { demoBanner }
                     connectionBanners
@@ -38,6 +38,9 @@ struct RootView: View {
                     }
                 }
             } else { ConnectionView() }
+        }
+        .sheet(isPresented: $store.offeringLANBiometrics, onDismiss: store.declineLANBiometrics) {
+            LANBiometricConsentView().environmentObject(store)
         }
         .onChange(of: phase) { _, value in store.sceneActive(value == .active) }
         .onChange(of: store.authenticated) { _, _ in selection = 0 }
@@ -64,6 +67,14 @@ struct RootView: View {
                     }
                 }.padding(12).background(Color.orange.opacity(0.12))
                 .accessibilityIdentifier("connection.offline")
+            }
+            if let message = store.displayIssue {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle")
+                    Text(message).font(.caption).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }.padding(12).background(Color.orange.opacity(0.12))
+                    .accessibilityIdentifier("connection.displayIssue")
             }
             if let message = store.errorMessage {
                 HStack(alignment: .top) {

@@ -33,7 +33,7 @@ struct BiometricVault: Sendable {
     func load(address: String) async throws -> String {
         try await Task.detached(priority: .userInitiated) {
             let context = LAContext()
-            context.localizedCancelTitle = "Utiliser le mot de passe"
+            context.localizedCancelTitle = "Annuler"
             context.localizedReason = "Se connecter à votre cadre Inky Studio"
             let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service, kSecAttrAccount as String: address,
