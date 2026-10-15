@@ -180,8 +180,10 @@ final class AppStore: ObservableObject {
         }
         do {
             let code = try FrameLANLoginCode.parse(text)
-            address = code.endpoint.absoluteString
-            await login(password: code.password)
+            // Keep the saved/manual locator intact until authentication succeeds.
+            // A QR password also replaces any old biometric opt-in after success,
+            // without ever saving the scanned password itself.
+            await login(password: code.password, rememberBiometric: false, at: code.endpoint)
         } catch {
             errorMessage = LANLoginCodeError.invalidCode.localizedDescription
         }
@@ -193,6 +195,10 @@ final class AppStore: ObservableObject {
     }
 
     func login(password: String, rememberBiometric: Bool? = nil) async {
+        await login(password: password, rememberBiometric: rememberBiometric, at: nil)
+    }
+
+    private func login(password: String, rememberBiometric: Bool?, at endpoint: URL?) async {
         guard !isDemo, !connecting else { return }
         resetSession()
         let epoch = generation
@@ -205,7 +211,7 @@ final class AppStore: ObservableObject {
             }
         }
         do {
-            let url = try FrameAddress.parse(address)
+            let url = try endpoint ?? FrameAddress.parse(address)
             let normalized = url.absoluteString
             let previousAddress = defaults.string(forKey: "frameAddress")
             let client = try connectionClient(url)

@@ -40,12 +40,77 @@ final class AppStoreTests: XCTestCase {
         let count = fixture.stub.requests.count
         await fixture.store.loginFromLANQRCode(lanQR.replacingOccurrences(of: "192.168.1.120", with: "10.0.0.2"))
         XCTAssertEqual(fixture.stub.requests.count, count)
-        XCTAssertEqual(fixture.store.address, "http://192.168.1.120:8000")
+        XCTAssertEqual(fixture.store.address, "")
         gate.release(status: 401)
         await login.value
         XCTAssertFalse(fixture.store.authenticated)
         XCTAssertFalse(fixture.store.connecting)
         XCTAssertNil(fixture.defaults.string(forKey: "frameAddress"))
+        XCTAssertFalse(fixture.defaults.dictionaryRepresentation().description.contains("DemoPass12345678"))
+    }
+
+    func testFailedLANQRPreservesSavedFrameAddressAndBiometricOptIn() async {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let saved = "http://192.168.1.100:8000"
+        fixture.defaults.set(saved, forKey: "frameAddress")
+        fixture.defaults.set(true, forKey: "biometricEnabled")
+        fixture.store.address = saved
+        fixture.store.biometricEnabled = true
+        let gate = fixture.stub.hold(host: "192.168.1.120", path: "/api/auth/login", method: "POST")
+        let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        XCTAssertEqual(fixture.store.address, saved)
+        XCTAssertTrue(fixture.store.biometricEnabled)
+        gate.release(status: 401)
+        await login.value
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertEqual(fixture.store.address, saved)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), saved)
+        XCTAssertTrue(fixture.store.biometricEnabled)
+        XCTAssertTrue(fixture.defaults.bool(forKey: "biometricEnabled"))
+    }
+
+    func testCancelledLANQRPreservesSavedFrameAndCannotOverwriteANewerLogin() async {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let saved = "http://192.168.1.100:8000"
+        fixture.defaults.set(saved, forKey: "frameAddress")
+        fixture.defaults.set(true, forKey: "biometricEnabled")
+        fixture.store.address = saved
+        fixture.store.biometricEnabled = true
+        let gate = fixture.stub.hold(host: "192.168.1.120", path: "/api/auth/login", method: "POST")
+        let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        fixture.store.cancelLogin()
+        XCTAssertFalse(fixture.store.connecting)
+        XCTAssertEqual(fixture.store.address, saved)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), saved)
+        XCTAssertTrue(fixture.store.biometricEnabled)
+        XCTAssertTrue(fixture.defaults.bool(forKey: "biometricEnabled"))
+        // A late response from B must not roll a subsequent manual login back.
+        await fixture.login("new-frame.local")
+        gate.release()
+        await login.value
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertEqual(fixture.store.address, "http://new-frame.local:8000")
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), fixture.store.address)
+    }
+
+    func testSuccessfulLANQRAtSavedAddressDisablesTheOldBiometricCredential() async {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let saved = "http://192.168.1.120:8000"
+        fixture.defaults.set(saved, forKey: "frameAddress")
+        fixture.defaults.set(true, forKey: "biometricEnabled")
+        fixture.store.address = saved
+        fixture.store.biometricEnabled = true
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertEqual(fixture.store.address, saved)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), saved)
+        XCTAssertFalse(fixture.store.biometricEnabled)
+        XCTAssertFalse(fixture.defaults.bool(forKey: "biometricEnabled"))
         XCTAssertFalse(fixture.defaults.dictionaryRepresentation().description.contains("DemoPass12345678"))
     }
 
