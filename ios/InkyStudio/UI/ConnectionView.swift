@@ -7,6 +7,7 @@ struct ConnectionView: View {
     @State private var remember = false
     @State private var bluetoothSetup = false
     @State private var gettingStarted = false
+    @State private var scanningLANQR = false
     @FocusState private var passwordFocused: Bool
     private var biometric: Bool { store.hasSavedFrame && store.biometricEnabled && !showPassword }
     var body: some View {
@@ -18,6 +19,11 @@ struct ConnectionView: View {
                     Text(store.hasSavedFrame ? "Votre cadre vous attend." : "Vos photos, sur votre cadre.").font(.title3).foregroundStyle(Bento.secondaryInk)
                 }
                 if !store.hasSavedFrame { discoveryActions }
+                if store.canScanLANLoginCode {
+                    Button { passwordFocused = false; scanningLANQR = true } label: {
+                        Label("Scanner le QR du cadre", systemImage: "qrcode.viewfinder")
+                    }.buttonStyle(OutlineButtonStyle()).accessibilityIdentifier("connection.scanLANQR")
+                }
                 if store.hasSavedFrame {
                     HStack(spacing: 16) {
                         Image(systemName: "photo").font(.largeTitle).foregroundStyle(Bento.secondaryInk)
@@ -98,12 +104,33 @@ struct ConnectionView: View {
             .onAppear { remember = store.biometricEnabled }
             .onChange(of: store.biometricEnabled) { _, enabled in remember = enabled }
             .sheet(isPresented: $gettingStarted) { GettingStartedView() }
+            .sheet(isPresented: $scanningLANQR) { lanScanner }
             .sheet(isPresented: $bluetoothSetup) {
                 BluetoothSetupView { endpoint, owner in
                     await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
                 }
             }
     }
+    private var lanScanner: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                Text("Scannez le QR de l’écran d’accueil du cadre. Votre iPhone doit être sur le même Wi-Fi.")
+                    .font(.subheadline).foregroundStyle(Bento.secondaryInk)
+                QRScannerView { result in
+                    scanningLANQR = false
+                    switch result {
+                    case .success(let text):
+                        password = ""
+                        Task { await store.loginFromLANQRCode(text) }
+                    case .failure(let error): store.errorMessage = error.localizedDescription
+                    }
+                }.clipShape(RoundedRectangle(cornerRadius: 20)).frame(minHeight: 280)
+            }.padding(20).background(Bento.background)
+                .navigationTitle("Scanner le cadre").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annuler") { scanningLANQR = false } } }
+        }
+    }
+
     private var discoveryActions: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button { Task { password = ""; await store.enterDemo() } } label: {

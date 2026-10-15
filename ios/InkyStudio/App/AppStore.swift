@@ -166,6 +166,27 @@ final class AppStore: ObservableObject {
         } catch { handle(error) }
     }
 
+    var canScanLANLoginCode: Bool {
+        !isDemo && !authenticated && !connecting && !busy && defaults.string(forKey: "frameOwnerID") == nil
+    }
+
+    /// A welcome QR supplies only a legacy LAN password. It never changes trust,
+    /// reads an existing Keychain credential, or opts into saving this password.
+    func loginFromLANQRCode(_ text: String) async {
+        guard !isDemo, !authenticated, !connecting, !busy else { return }
+        guard defaults.string(forKey: "frameOwnerID") == nil else {
+            errorMessage = LANLoginCodeError.adoptedFrame.localizedDescription
+            return
+        }
+        do {
+            let code = try FrameLANLoginCode.parse(text)
+            address = code.endpoint.absoluteString
+            await login(password: code.password)
+        } catch {
+            errorMessage = LANLoginCodeError.invalidCode.localizedDescription
+        }
+    }
+
     func cancelLogin() {
         guard connecting else { return }
         resetSession()

@@ -4,6 +4,97 @@ import XCTest
 
 @MainActor
 final class AppStoreTests: XCTestCase {
+    private let lanQR = "{\"v\":1,\"p\":\"lan-login\",\"url\":\"http://192.168.1.120:8000\",\"password\":\"DemoPass12345678\"}"
+
+    func testLANQRUsesExistingLoginWithoutPersistingItsPassword() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let store = fixture.store
+        await store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(store.authenticated)
+        XCTAssertTrue(store.connected)
+        XCTAssertEqual(store.address, "http://192.168.1.120:8000")
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), store.address)
+        XCTAssertNil(fixture.defaults.string(forKey: "frameOwnerID"))
+        XCTAssertFalse(store.biometricEnabled)
+        XCTAssertFalse(fixture.defaults.dictionaryRepresentation().description.contains("DemoPass12345678"))
+        let request = try XCTUnwrap(fixture.stub.requests.first { $0.url?.path == "/api/auth/login" })
+        XCTAssertEqual(request.url?.host, "192.168.1.120")
+        // A QR never opts into Keychain persistence, even on a biometric device.
+        do {
+            _ = try await store.vault.load(address: store.address)
+            XCTFail("The QR password must remain ephemeral")
+        } catch { XCTAssertTrue(error is VaultError) }
+    }
+
+    func testLANQRDoesNotPersistBeforeAuthenticationAndFailureKeepsItEphemeral() async {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let gate = fixture.stub.hold(host: "192.168.1.120", path: "/api/auth/login", method: "POST")
+        let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        XCTAssertTrue(fixture.store.connecting)
+        XCTAssertNil(fixture.defaults.string(forKey: "frameAddress"))
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.canScanLANLoginCode)
+        let count = fixture.stub.requests.count
+        await fixture.store.loginFromLANQRCode(lanQR.replacingOccurrences(of: "192.168.1.120", with: "10.0.0.2"))
+        XCTAssertEqual(fixture.stub.requests.count, count)
+        XCTAssertEqual(fixture.store.address, "http://192.168.1.120:8000")
+        gate.release(status: 401)
+        await login.value
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.connecting)
+        XCTAssertNil(fixture.defaults.string(forKey: "frameAddress"))
+        XCTAssertFalse(fixture.defaults.dictionaryRepresentation().description.contains("DemoPass12345678"))
+    }
+
+    func testLANQRRejectsInvalidInputBeforeChangingAddressOrMakingRequests() async {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        fixture.store.address = "previous.local"
+        await fixture.store.loginFromLANQRCode(lanQR.replacingOccurrences(of: "192.168.1.120", with: "8.8.8.8"))
+        XCTAssertEqual(fixture.store.address, "previous.local")
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.hasSavedFrame)
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+        XCTAssertNotNil(fixture.store.errorMessage)
+    }
+
+    func testLANQRNeverReplacesAdoptedTrustOrUsesItsSavedPassword() async {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let ownerID = UUID().uuidString.lowercased()
+        fixture.defaults.set(ownerID, forKey: "frameOwnerID")
+        fixture.defaults.set("https://192.168.1.120:8443", forKey: "frameAddress")
+        fixture.store.address = "https://192.168.1.120:8443"
+        fixture.store.biometricEnabled = true
+        XCTAssertFalse(fixture.store.canScanLANLoginCode)
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameOwnerID"), ownerID)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), "https://192.168.1.120:8443")
+        XCTAssertEqual(fixture.store.address, "https://192.168.1.120:8443")
+        XCTAssertTrue(fixture.store.biometricEnabled)
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+        XCTAssertEqual(fixture.store.errorMessage, LANLoginCodeError.adoptedFrame.localizedDescription)
+    }
+
+    func testLANQRDoesNotInterruptAnExistingSessionOrDemo() async {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("frame.local")
+        let count = fixture.stub.requests.count
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertEqual(fixture.store.address, "http://frame.local:8000")
+        XCTAssertEqual(fixture.stub.requests.count, count)
+        await fixture.store.logout(forget: false)
+        await fixture.store.enterDemo()
+        let demoID = fixture.store.sessionIdentity
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(fixture.store.isDemo)
+        XCTAssertEqual(fixture.store.sessionIdentity, demoID)
+    }
+
     func testCancelledRefreshPreservesConnectionAndLoadedState() async throws {
         let fixture = StoreFixture(totals: ["frame.local": 1])
         defer { fixture.dispose() }

@@ -57,6 +57,8 @@
 		F42B2C151B9E2437D32F442D /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EA7C41FE711F5C10D48C074 /* QRScannerView.swift */; };
 		F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */; };
 		F5694A3C7477B58FC87E90EF /* BiometricVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FF7DADE10BCADD5C93B141 /* BiometricVault.swift */; };
+		AE1C8A9A622F45E3ACFD7502 /* FrameLANLoginCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1C8A9A622F45E3ACFD7501 /* FrameLANLoginCode.swift */; };
+		AE1C8A9A622F45E3ACFD7504 /* FrameLANLoginCodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1C8A9A622F45E3ACFD7503 /* FrameLANLoginCodeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -131,6 +133,8 @@
 		EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCaptureTests.swift; sourceTree = "<group>"; };
 		F25D621270EA7DC64346B744 /* DemoModeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoModeUITests.swift; sourceTree = "<group>"; };
 		F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapFrameTrustTests.swift; sourceTree = "<group>"; };
+		AE1C8A9A622F45E3ACFD7501 /* FrameLANLoginCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameLANLoginCode.swift; sourceTree = "<group>"; };
+		AE1C8A9A622F45E3ACFD7503 /* FrameLANLoginCodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameLANLoginCodeTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -212,6 +216,7 @@
 				EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */,
 				552034F90D6327744B4F46D4 /* DemoModeTests.swift */,
 				705B77096599A912B708C7FF /* FrameIdentityTests.swift */,
+				AE1C8A9A622F45E3ACFD7503 /* FrameLANLoginCodeTests.swift */,
 				ABDD49EB7DC85A967681D04E /* FrameTrustTestFixtures.swift */,
 				CA4BC623B018F1BD03AECD32 /* OwnershipVaultTests.swift */,
 				803409E6940A2CDA8D8B108A /* PhotoPipelineTests.swift */,
@@ -293,6 +298,7 @@
 				D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */,
 				068B726917984500D0CF71DC /* BootstrapFrameTrust.swift */,
 				0C1AD736F7DF35F699D1E2AF /* FrameIdentity.swift */,
+				AE1C8A9A622F45E3ACFD7501 /* FrameLANLoginCode.swift */,
 				1CB6FE548F76B8089B50EA4F /* OwnershipVault.swift */,
 				AD1DDCCB56C35BA702C6413F /* PinnedFrameTrust.swift */,
 				1EA7C41FE711F5C10D48C074 /* QRScannerView.swift */,
@@ -442,6 +448,7 @@
 				F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */,
 				F3E9195ACE29CCCB03DD8CBE /* DemoModeTests.swift in Sources */,
 				E883895084BA3ED85261A5FD /* FrameIdentityTests.swift in Sources */,
+				AE1C8A9A622F45E3ACFD7504 /* FrameLANLoginCodeTests.swift in Sources */,
 				F36892B63C1B13F1A00D3BD7 /* FrameTrustTestFixtures.swift in Sources */,
 				4964887E4D9053F0AAADA934 /* OwnershipVaultTests.swift in Sources */,
 				959307E4C6B9A8E0D8EC3439 /* PhotoPipelineTests.swift in Sources */,
@@ -468,6 +475,7 @@
 				104401CC72CE2A47017B0C21 /* DemoFrameClient.swift in Sources */,
 				8A4E908BD023391144DC44FD /* FrameAddress.swift in Sources */,
 				9493AB0361A4E54558813731 /* FrameIdentity.swift in Sources */,
+				AE1C8A9A622F45E3ACFD7502 /* FrameLANLoginCode.swift in Sources */,
 				303C97AA771D6E8566655491 /* FramePhotoClient.swift in Sources */,
 				159AC507D94E065759D83164 /* GettingStartedView.swift in Sources */,
 				CB37F0565CDD0759B962195C /* HistoryView.swift in Sources */,
