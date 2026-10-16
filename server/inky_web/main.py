@@ -16,10 +16,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import MutableHeaders
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from inky_web import __version__, auth
 from inky_web.api import router as api_router
+from inky_web.api.legacy_tls_proof import PROOF_PATH
 from inky_web.api.photo_access import require_https
 from inky_web.db import data_dir, init_db, resolve_data_dir
 from inky_web.events import EventBus
@@ -37,11 +39,32 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 CLIENT_DIST = resolve_client_dist(__file__)
 
 
+class ProofCORSMiddleware(CORSMiddleware):
+    """Keep the public proof path uncacheable even on early CORS responses."""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["path"] != PROOF_PATH:
+            return await super().__call__(scope, receive, send)
+
+        async def send_no_store(message):
+            if message["type"] == "http.response.start":
+                MutableHeaders(scope=message)["Cache-Control"] = "no-store"
+            await send(message)
+
+        return await super().__call__(scope, receive, send_no_store)
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     """Block unauthenticated requests to /api/* (with a few public exceptions)."""
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
+        if path == PROOF_PATH:
+            # The nonce-only probe bypasses application cookie/session authority.
+            # FastAPI may still parse cookies internally; they are never used.
+            response = await call_next(request)
+            response.headers["Cache-Control"] = "no-store"
+            return response
         individual = (path == "/api/auth/device-session" or path == "/api/auth/devices"
                       or path.startswith("/api/auth/devices/")
                       or path == "/api/auth/invitations" or path.startswith("/api/auth/invitations/"))
@@ -322,7 +345,7 @@ async def validation_error(request: Request, exc: RequestValidationError):
 
 app.add_middleware(AuthMiddleware)
 app.add_middleware(
-    CORSMiddleware,
+    ProofCORSMiddleware,
     allow_origins=[
         "http://localhost:5273",
         "http://127.0.0.1:5273",

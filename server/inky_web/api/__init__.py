@@ -5,6 +5,7 @@ from inky_web.api import (
     auth,
     display,
     history,
+    legacy_tls_proof,
     photo_access,
     photos,
     queue,
@@ -16,6 +17,7 @@ from inky_web.api import (
 
 router = APIRouter()
 router.include_router(auth.router)
+router.include_router(legacy_tls_proof.router)
 router.include_router(photo_access.router)
 router.include_router(state.router)
 router.include_router(queue.router)
