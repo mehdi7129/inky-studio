@@ -14,7 +14,9 @@ from typing import Any
 
 from PIL import Image, ImageEnhance
 
-from inky_web.inky.errors import DisplayUnavailableError
+from inky_web.db import data_dir
+from inky_web.inky.confirmation import ConfirmationBarrier
+from inky_web.inky.errors import DisplayConfirmationPending, DisplayUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,9 @@ class DisplayController:
         self._is_mock = self._mode == "mock"
         self._spec: DisplaySpec | None = MOCK_SPEC if self._is_mock else None
         self._error: DisplayUnavailableError | None = None
+        self._pending_confirmation: DisplayConfirmationPending | None = None
+        self._confirmation = "not_observed"
+        self._confirmation_barrier: ConfirmationBarrier | None = None
         self._initialized = False
         self._refreshing = False
         self._busy_observer: Any | None = None
@@ -129,6 +134,8 @@ class DisplayController:
                 )
                 self._configure_hardware()
                 logger.info("Detected display: %s", self._spec)
+            except DisplayUnavailableError as exc:
+                self._error = exc
             except (Exception, SystemExit):
                 # gpiodevice can use SystemExit for unavailable pins. Keep the
                 # diagnostic API alive, but do not invent a working display.
@@ -177,6 +184,16 @@ class DisplayController:
                 raise ValueError("Impression BUSY observer requires inky 2.5.0")
             from inky_web.inky.busy import BusyObserver
             self._busy_observer = BusyObserver(impl, family)
+            if family == "ac073":
+                self._confirmation_barrier = ConfirmationBarrier(data_dir())
+                barrier = self._confirmation_barrier.load()
+                if barrier == "pending":
+                    self._pending_confirmation = DisplayConfirmationPending()
+                elif barrier == "in_progress":
+                    raise DisplayUnavailableError(
+                        "Un affichage précédent a été interrompu ou n’a pas de résultat enregistré. Aucune reprise automatique n’a été lancée.",
+                        "display_confirmation_interrupted",
+                    )
             for dependency in ("gpiod", "gpiodevice", "spidev"):
                 try:
                     self._driver_info[f"{dependency}_version"] = version(dependency)
@@ -189,6 +206,15 @@ class DisplayController:
         if self._spec is None or (not self._is_mock and self._impl is None):
             raise DisplayUnavailableError("Écran indisponible. Redémarre le service après vérification du matériel.")
 
+    @property
+    def pending_confirmation(self) -> DisplayConfirmationPending | None:
+        """Capture before queuing a manual operation; only this result may be retried."""
+        return self._pending_confirmation
+
+    @property
+    def automatic_rotation_paused(self) -> bool:
+        return self._pending_confirmation is not None
+
     def status(self) -> dict[str, Any]:
         # Do not acquire the SPI lock: operator diagnostics must remain readable
         # while the owner is blocked inside a long hardware refresh.
@@ -199,6 +225,11 @@ class DisplayController:
             "state": state,
             "is_mock": self._is_mock,
             "error": self._error.payload() if self._error else None,
+            # Availability is separate from observation of the last refresh.
+            # Older clients understand ready/error=null and can retry manually.
+            "confirmation": "pending" if self._pending_confirmation else "mock" if self._is_mock else self._confirmation,
+            "warning": self._pending_confirmation.payload() if self._pending_confirmation else None,
+            "automatic_rotation_paused": self.automatic_rotation_paused,
             "driver": dict(self._driver_info),
             "busy_monitor": f"{self._busy_observer.family}_2.5.0" if self._busy_observer is not None else "not_monitored",
             "observations": [dict(item) for item in self._observations],
@@ -210,6 +241,7 @@ class DisplayController:
         with self._lock:
             self._busy_observer = None
             self._impl = None
+            self._pending_confirmation = None
             self._error = DisplayUnavailableError("Le service d’affichage est arrêté.")
 
     @property
@@ -223,7 +255,14 @@ class DisplayController:
         return self._is_mock
 
     def info(self) -> dict[str, Any]:
-        spec = self.spec
+        # Detected dimensions remain useful when a refresh fails. Reading them
+        # does not assert that the driver is available; spec and display_image
+        # keep the sticky hardware-error gate for operations that need it.
+        spec = self._spec
+        if spec is None:
+            self.require_available()
+            assert self._spec is not None
+            spec = self._spec
         return {
             "model": spec.model,
             "width": spec.width,
@@ -232,7 +271,10 @@ class DisplayController:
             "is_mock": self._is_mock,
         }
 
-    def display_image(self, path: Path, saturation: float | None = None) -> None:
+    def display_image(
+        self, path: Path, saturation: float | None = None,
+        *, retry_confirmation: DisplayConfirmationPending | None = None,
+    ) -> None:
         """Push the image at ``path`` to the e-ink display.
 
         ``saturation`` (0..2) drives two stages:
@@ -247,20 +289,31 @@ class DisplayController:
         """
         with self.operation():
             self.require_available()
+            if self._pending_confirmation is not None and retry_confirmation is not self._pending_confirmation:
+                # An automatic caller, or a request queued before this outcome,
+                # must not turn a missing confirmation into a second refresh.
+                raise self._pending_confirmation
             self._refreshing = True
             self._observations = []
             try:
                 self._display_image(path, saturation)
+            except DisplayConfirmationPending as exc:
+                self._pending_confirmation = exc
+                raise
             except DisplayUnavailableError as exc:
+                self._pending_confirmation = None
                 self._error = exc
                 raise
             except (Exception, SystemExit) as exc:
+                self._pending_confirmation = None
                 logger.exception("Display operation failed; automatic retries disabled")
                 self._error = DisplayUnavailableError(
                     "L’affichage a échoué. La photo est conservée. Vérifie le cadre, puis redémarre le service.",
                     "display_refresh_failed",
                 )
                 raise self._error from exc
+            else:
+                self._pending_confirmation = None
             finally:
                 self._refreshing = False
 
@@ -288,15 +341,48 @@ class DisplayController:
 
         if self._busy_observer is None:
             self._impl.show()
+            self._confirmation = "driver_returned"
         else:
+            family = self._busy_observer.family
+            if family == "ac073":
+                # Durable before the first upstream show command. An interruption
+                # keeps in_progress and cannot silently resume on the next process.
+                if self._confirmation_barrier is None:
+                    self._confirmation_barrier = ConfirmationBarrier(data_dir())
+                self._confirmation_barrier.write("in_progress")
             try:
                 observations = self._busy_observer.run_show()
             finally:
                 self._observations = [dict(item) for item in self._busy_observer.observations]
             # Each driver owns its clocks/waits. EL133 refuses an unproved
             # refresh before POF; all other verdicts follow the full show().
-            from inky_web.inky.busy import validate_observations
-            validate_observations(observations, self._busy_observer.family)
+            from inky_web.inky.busy import CONTRACTS, validate_observations
+            try:
+                validate_observations(observations, family)
+            except DisplayUnavailableError as exc:
+                expected = [(phase, timeout, index) for index, (_, phase, timeout)
+                            in enumerate(CONTRACTS["ac073"], 1)]
+                sequence = [(item.get("phase"), item.get("timeout"), item.get("sequence"))
+                            for item in observations]
+                recoverable = (
+                    family == "ac073" and exc.code == "display_busy_unverified"
+                    and sequence == expected
+                    and all(item.get("outcome") in {"edge_received", "held_high_unverified"}
+                            for item in observations)
+                    and observations[2]["outcome"] == "held_high_unverified"
+                )
+                if not recoverable:
+                    raise
+                # AC073 completed its timed fallback and power-off normally.
+                # Preserve uncertainty and require an explicit manual retry.
+                assert self._confirmation_barrier is not None
+                self._confirmation_barrier.write("pending")
+                raise DisplayConfirmationPending() from exc
+            if family == "ac073":
+                assert self._confirmation_barrier is not None
+                self._confirmation_barrier.clear()
+            self._confirmation = next(item["outcome"] for item in observations
+                                      if item["phase"] == "refresh")
         logger.info("Displayed %s (sat=%s, boost=%s)", path, pimoroni_sat, color_factor)
 
 

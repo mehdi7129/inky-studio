@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import os
 import signal
@@ -18,11 +20,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from inky_web import __version__, auth
 from inky_web.api import router as api_router
+from inky_web.api.photo_access import require_https
 from inky_web.db import data_dir, init_db, resolve_data_dir
 from inky_web.events import EventBus
 from inky_web.frontend import resolve_client_dist
 from inky_web.inky.display import DisplayController
 from inky_web.inky.errors import DisplayUnavailableError
+from inky_web.photo_access import PhotoAccessStore
 from inky_web.provisioning.api import CONFIRM_PATH
 from inky_web.provisioning.api import router as provisioning_router
 from inky_web.provisioning.factory_writer import FactoryWriterRefused, main_writer_guard
@@ -37,30 +41,97 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """Block unauthenticated requests to /api/* (with a few public exceptions)."""
 
     async def dispatch(self, request: Request, call_next):
-        if auth.auth_disabled():
-            return await call_next(request)
-
         path = request.url.path
+        individual = (path == "/api/auth/device-session" or path == "/api/auth/devices"
+                      or path.startswith("/api/auth/devices/")
+                      or path == "/api/auth/invitations" or path.startswith("/api/auth/invitations/"))
+        if individual:
+            try:
+                require_https(request)
+            except HTTPException as exc:
+                return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
+                                    headers={"Cache-Control": "no-store"})
+            # Bound chunked bodies too, before FastAPI parses sensitive input.
+            chunks, length = [], 0
+            async for chunk in request.stream():
+                length += len(chunk)
+                if length > 2048:
+                    return JSONResponse({"detail": "Requête trop volumineuse"}, status_code=413,
+                                        headers={"Cache-Control": "no-store"})
+                chunks.append(chunk)
+            request._body = b"".join(chunks)
+
+        async def finish():
+            response = await call_next(request)
+            if individual or getattr(request.state, "photo_principal", None) is not None:
+                response.headers["Cache-Control"] = "no-store"
+            return response
+
+        if auth.auth_disabled():
+            return await finish()
+
         if not path.startswith("/api"):
-            return await call_next(request)
+            return await finish()
+        sessions = request.app.state.sessions
+        token = auth.get_session_token(request)
+        principal = sessions.principal(token)
+        if principal is not None:
+            if request.scope.get("scheme") != "https":
+                return JSONResponse({"detail": "Une connexion HTTPS au cadre est requise"}, status_code=403,
+                                    headers={"Cache-Control": "no-store"})
+            if not sessions.validate(token):
+                return JSONResponse({"detail": "Authentification requise"}, status_code=401,
+                                    headers={"Cache-Control": "no-store"})
+            request.state.photo_principal = principal
+            if principal.role == "media" and not _media_route(request.method, path):
+                return JSONResponse({"detail": "Autorisation du propriétaire requise"}, status_code=403,
+                                    headers={"Cache-Control": "no-store"})
+            if principal.role == "media" and request.method == "POST" and path == "/api/settings":
+                try:
+                    body = await request.body()
+                    patch = json.loads(body) if len(body) <= 2048 else None
+                    if not isinstance(patch, dict) or patch.keys() - {
+                        "change_mode", "change_hour", "change_interval_minutes",
+                    }:
+                        raise ValueError
+                except (ValueError, UnicodeError):
+                    return JSONResponse({"detail": "Réglage non autorisé"}, status_code=403,
+                                        headers={"Cache-Control": "no-store"})
         if path in auth.PUBLIC_PATHS:
-            return await call_next(request)
+            return await finish()
         if path == CONFIRM_PATH:
             # Strict HTTPS + owner authentication is performed inside the route.
-            return await call_next(request)
+            return await finish()
         # WebSocket auth is checked separately inside the route — Starlette doesn't
         # pass WS through HTTP middleware uniformly across versions, so we no-op here.
         if path == "/api/ws":
-            return await call_next(request)
+            return await finish()
 
-        sessions = request.app.state.sessions
-        token = auth.get_session_token(request)
         if not sessions.validate(token):
             return JSONResponse(
                 {"detail": "Authentification requise"},
                 status_code=401,
+                headers={"Cache-Control": "no-store"} if individual else None,
             )
-        return await call_next(request)
+        return await finish()
+
+
+def _media_route(method: str, path: str) -> bool:
+    """Closed capability list: future/admin endpoints are denied by default."""
+    if (method, path) in {
+        ("GET", "/api/health"), ("GET", "/api/auth/status"), ("POST", "/api/auth/logout"),
+        ("GET", "/api/state"), ("GET", "/api/display"), ("GET", "/api/display/status"),
+        ("POST", "/api/display/next"), ("POST", "/api/display/previous"),
+        ("GET", "/api/queue"), ("POST", "/api/queue"), ("POST", "/api/queue/reorder"),
+        ("GET", "/api/history"), ("DELETE", "/api/history"),
+        ("GET", "/api/settings"), ("POST", "/api/settings"),
+        ("POST", "/api/auth/device-session"), ("POST", "/api/auth/invitations/claim"),
+    }:
+        return True
+    parts = path.split("/")
+    return len(parts) == 4 and bool(parts[3]) and (method, parts[2]) in {
+        ("GET", "photos"), ("DELETE", "queue"), ("DELETE", "history"),
+    }
 
 
 async def _select_startup_runtime() -> None:
@@ -128,6 +199,30 @@ async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = 
     )
     app.state.login_limiter = auth.LoginRateLimiter()
     app.state.password_change_limiter = auth.LoginRateLimiter()
+    app.state.photo_access = None
+    app.state.photo_access_limiter = auth.LoginRateLimiter(max_attempts=30)
+    if not auth.auth_disabled():
+        validated_record = app.state.auth_service.credentials.record()
+        validated_credentials = app.state.auth_service.credentials
+        def photo_epoch():
+            nonlocal validated_record, validated_credentials
+            current = app.state.auth_service.credentials
+            try:
+                # Read only; never create, migrate, reset or chmod credentials.
+                record = auth._read_record(current.path)
+                if record != validated_record:
+                    if record.get("version") != 2:
+                        raise ValueError
+                    validated_credentials = auth._parse_record(current.path, record)
+                    validated_record = record
+                verified = validated_credentials
+                return hashlib.sha256(b"inky-photo-epoch-v1\0" + verified.salt + verified.digest).hexdigest()
+            except (ValueError, OSError):
+                raise OSError("Identifiants du cadre indisponibles") from None
+        app.state.photo_access = PhotoAccessStore(
+            data_dir() / "photo-access", photo_epoch, gate=app.state.auth_service._lock,
+        )
+        app.state.sessions.principal_validator = app.state.photo_access.valid
     app.state.bus = EventBus()
     app.state.display = DisplayController()
     if stop_requested is not None and stop_requested.is_set():
@@ -214,7 +309,11 @@ async def display_error(request: Request, exc: DisplayUnavailableError):
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError):
-    if request.url.path in {"/api/auth/login", "/api/auth/password"} or request.url.path.startswith("/api/provisioning/"):
+    if request.url.path.startswith(("/api/auth/devices", "/api/auth/invitations", "/api/auth/device-session")):
+        # Even an extra-field *name* is attacker controlled and can be a secret.
+        return JSONResponse(status_code=422, content={"detail": "Requête invalide"},
+                            headers={"Cache-Control": "no-store"})
+    if request.url.path.startswith(("/api/auth/", "/api/provisioning/")):
         # FastAPI otherwise echoes the supplied secret in the validation input.
         errors = [{key: error[key] for key in ("type", "loc", "msg")} for error in exc.errors()]
         return JSONResponse(status_code=422, content={"detail": errors})
@@ -339,7 +438,8 @@ async def _serve_admitted(*, with_https: bool = False) -> None:
                 return
             # Never cancel an admitted physical operation on a wall-clock timeout.
             # Explicit workers=1 also ignores inherited WEB_CONCURRENCY.
-            common = dict(app=app, host="0.0.0.0", lifespan="off", workers=1, timeout_graceful_shutdown=None)
+            common = dict(app=app, host="0.0.0.0", lifespan="off", workers=1,
+                          timeout_graceful_shutdown=None, proxy_headers=False)
             servers.append(ManagedServer(uvicorn.Config(port=8000, **common)))
             if with_https:
                 https = uvicorn.Config(port=8443, ssl_certfile=str(cert), ssl_keyfile=str(key), **common)

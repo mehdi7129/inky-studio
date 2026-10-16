@@ -45,6 +45,7 @@ def forbid_legacy(monkeypatch):
     monkeypatch.setattr(main, "init_db", forbidden)
     monkeypatch.setattr(main, "DisplayController", forbidden)
     monkeypatch.setattr(main, "Scheduler", forbidden)
+    monkeypatch.setattr(main, "PhotoAccessStore", forbidden)
     monkeypatch.setattr(auth, "load_or_create_credentials", forbidden)
     monkeypatch.setattr(auth, "reset_credentials", forbidden)
     monkeypatch.setattr(auth, "display_password", forbidden)

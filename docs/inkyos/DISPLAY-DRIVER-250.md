@@ -72,7 +72,21 @@ et les drains existants restent inchangés.
 Un niveau initial HIGH avec simple délai ne prouve pas le refresh. Une réponse
 absente, une mauvaise phase, une autre ligne/type d'événement ou un timeout ne
 permet pas d'acquitter la photo. L'erreur reste latched, la file et l'historique
-restent inchangés ; la reprise exige vérification opérateur et redémarrage.
+restent inchangés ; la reprise exige vérification opérateur et redémarrage,
+sauf le résultat AC073 strictement borné décrit ci-dessous.
+
+Le lot d'intégration factory/PHOTO du 16 octobre conserve le correctif de
+confirmation AC073 avec le contrat **2.5.0**, sans réutiliser l'observation GPIO
+2.3.0. Uniquement si les quatre phases/budgets/numéros sont exacts, tous les
+résultats reconnus et le refresh `held_high_unverified`, le retour complet
+upstream devient `display_confirmation_pending` (HTTP 503). Aucun succès photo,
+retrait de file ou historique n'est inventé. La barrière durable AC073 conserve
+`pending` après redémarrage ; les appels implicites et la rotation restent
+bloqués. Seule une nouvelle commande manuelle admise après ce résultat peut
+réessayer. Une commande déjà en attente ou sans photo candidate ne l'acquitte
+pas. Un timeout, une séquence inconnue ou une interruption reste bloquant.
+Ce protocole de barrière et de reprise n'est pas étendu aux autres familles.
+La preuve physique TEST sur Inky 2.3.0 ne qualifie pas ce port 2.5.0.
 
 **Exception EL133UF1 :** l'upstream avertit puis retourne même après un timeout.
 Studio laisse terminer `_refresh_wait`, puis refuse de continuer vers POF si la

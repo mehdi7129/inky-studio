@@ -13,6 +13,7 @@ import pytest
 from PIL import Image
 
 from inky_web.inky.busy import CONTRACTS, BusyObserver, validate_observations
+from inky_web.inky.confirmation import NAME
 from inky_web.inky.display import DisplayController, DisplaySpec
 from inky_web.inky.errors import DisplayUnavailableError
 from tests.fixtures.inky_busy_250 import BUSY_PINS, CONSTANTS, SOURCES
@@ -327,13 +328,17 @@ def test_unrecognized_sequence_never_grants_completed_show(driver_factory, famil
     assert driver._gpio is gpio
 
 
-@pytest.mark.parametrize("family", CONTRACTS)
-@pytest.mark.parametrize("condition", ["healthy", "timeout", "unverified"])
+@pytest.mark.parametrize(("family", "condition"),
+                         [(family, condition) for family in CONTRACTS
+                          for condition in ("healthy", "timeout", "unverified")]
+                         + [(family, "held_high") for family in ("ac073", "uc8159", "e640", "e673")])
 @pytest.mark.filterwarnings("ignore:.*Wait")
-def test_controller_and_display_api_preserve_queue_until_driver_verdict(client, png_factory, driver_factory, family, condition):
+def test_controller_and_display_api_preserve_queue_until_driver_verdict(client, png_factory, driver_factory, data_dir, family, condition):
     scenarios = {}
     if condition == "timeout":
         scenarios["refresh"] = ({"edge": None} if family in {"ac073", "uc8159"} else {"values": [Value.INACTIVE]})
+    elif condition == "held_high":
+        scenarios["refresh"] = {"values": [Value.ACTIVE]}
     elif condition == "unverified":
         scenarios["refresh"] = ({"edge": False} if family in {"ac073", "uc8159"}
                                 else {"values": [object()]} if family == "el133uf1" else {"values": [Value.ACTIVE]})
@@ -347,9 +352,22 @@ def test_controller_and_display_api_preserve_queue_until_driver_verdict(client, 
     original_queue = client.get("/api/queue").json()
     response = client.post("/api/display/next")
     assert driver.show_calls == 1 and driver._gpio is gpio
+    if family != "ac073":
+        assert display._confirmation_barrier is None
+        assert not (data_dir / NAME).exists()
     if condition == "healthy":
         assert response.status_code == 202 and client.get("/api/queue").json() == []
         assert len(client.get("/api/history").json()) == 1 and trace[-1] == ("show_returned",)
+        status = client.get("/api/display/status").json()
+        expected = ("edge_received" if family in {"ac073", "uc8159"}
+                    else "refresh_completed" if family == "el133uf1" else "level_released")
+        assert status["confirmation"] == expected and not status["automatic_rotation_paused"]
+    elif family == "ac073" and condition == "held_high":
+        assert response.status_code == 503 and response.json()["code"] == "display_confirmation_pending"
+        assert client.get("/api/queue").json() == original_queue and client.get("/api/history").json() == []
+        status = client.get("/api/display/status").json()
+        assert status["state"] == "ready" and status["error"] is None
+        assert status["confirmation"] == "pending" and status["automatic_rotation_paused"]
     else:
         code = "display_busy_timeout" if condition == "timeout" else "display_busy_unverified"
         assert response.status_code == 503 and response.json()["code"] == code

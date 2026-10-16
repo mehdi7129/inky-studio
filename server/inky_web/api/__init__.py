@@ -5,6 +5,7 @@ from inky_web.api import (
     auth,
     display,
     history,
+    photo_access,
     photos,
     queue,
     settings,
@@ -15,6 +16,7 @@ from inky_web.api import (
 
 router = APIRouter()
 router.include_router(auth.router)
+router.include_router(photo_access.router)
 router.include_router(state.router)
 router.include_router(queue.router)
 router.include_router(display.router)
