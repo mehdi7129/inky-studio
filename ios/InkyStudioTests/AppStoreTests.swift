@@ -146,6 +146,100 @@ final class AppStoreTests: XCTestCase {
         XCTAssertNil(fixture.store.displayIssue)
     }
 
+    func testUnconfirmedDisplayPreservesPhotoAndRequiresANewManualCommand() async throws {
+        let fixture = StoreFixture(totals: ["192.168.1.120": 2])
+        defer { fixture.dispose() }
+        let host = "192.168.1.120"
+        let photo: [String: Any] = ["id": "pending-photo", "sha256": "pending-digest",
+            "original_filename": "retained-photo.png", "mime": "image/png", "width": 800,
+            "height": 480, "size_bytes": 68, "created_at": 1780000001]
+        let current: [String: Any] = ["id": 1, "displayed_at": 1780000000, "source": "test",
+            "photo": ["id": "photo-0", "sha256": "digest-0", "original_filename": "\(host).png",
+                "mime": "image/png", "width": 800, "height": 480, "size_bytes": 10,
+                "created_at": 1780000000]]
+        fixture.stub.setJSONResponse(host: host, path: "/api/state", body: [
+            "display": ["model": "ac073-800x480", "width": 800, "height": 480, "colors": 7, "is_mock": false],
+            "current": current, "queue_count": 1, "next_change_at": NSNull(),
+        ])
+        fixture.stub.setJSONResponse(host: host, path: "/api/queue", body: [[
+            "id": 9, "position": 0, "added_at": 1780000001, "photo": photo,
+        ]])
+        let photoBytes = try XCTUnwrap(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWWQAAAAASUVORK5CYII="))
+        fixture.stub.setResponse(host: host, path: "/api/photos/pending-photo", data: photoBytes)
+        fixture.stub.setDisplayStatus(state: "ready")
+        await fixture.store.loginFromLANQRCode(lanQR)
+        let api = try XCTUnwrap(fixture.store.api)
+        let stateBefore = try XCTUnwrap(fixture.store.state)
+        let queueBefore = fixture.store.queue
+        let historyBefore = fixture.store.history
+        let bytesBefore = try await api.photoData(id: "pending-photo")
+        XCTAssertEqual(bytesBefore, photoBytes)
+        XCTAssertEqual(queueBefore.count, 1)
+        XCTAssertEqual(historyBefore.count, 2)
+
+        // This is the backend wire contract, including fields unknown to iOS v11.
+        fixture.stub.setPendingDisplayConfirmation()
+        fixture.stub.respondNextJSON(host: host, path: "/api/display/next", method: "POST", status: 503,
+                                     body: StoreStub.pendingDisplayFailure)
+        await fixture.store.display(previous: false)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.connected, "An unconfirmed refresh is still a reachable frame.")
+        XCTAssertEqual(fixture.store.state, stateBefore, "An unconfirmed photo must not replace the confirmed current photo.")
+        XCTAssertEqual(fixture.store.queue, queueBefore)
+        XCTAssertEqual(fixture.store.history, historyBefore)
+        let bytesAfter = try await api.photoData(id: "pending-photo")
+        XCTAssertEqual(bytesAfter, bytesBefore, "The retained queued photo remains readable through the app's HTTP client.")
+        XCTAssertNotEqual(fixture.store.notice, "Le cadre est à jour.")
+        XCTAssertEqual(fixture.store.errorMessage, StoreStub.pendingDisplayDetail)
+        XCTAssertEqual(fixture.store.displayDiagnostics?.state, "ready")
+        XCTAssertNil(fixture.store.displayDiagnostics?.error)
+        XCTAssertTrue(fixture.store.canDisplay, "Ready diagnostics permit another explicit command after the refresh finishes.")
+        XCTAssertFalse(fixture.store.displayBusy)
+        let displayWrites = {
+            fixture.stub.requests.filter { $0.httpMethod == "POST" && $0.url?.path.hasPrefix("/api/display/") == true }
+        }
+        XCTAssertEqual(displayWrites().map { $0.url!.path }, ["/api/display/next"])
+
+        await fixture.store.refresh()
+        await fixture.store.receiveServerEvent(ServerEvent(type: "hello"))
+        XCTAssertEqual(displayWrites().count, 1, "Polling and event-stream reconnection must not replay the failed command.")
+        XCTAssertTrue(fixture.store.canDisplay)
+        XCTAssertNotEqual(fixture.store.notice, "Le cadre est à jour.")
+
+        fixture.stub.respondNextJSON(host: host, path: "/api/display/previous", method: "POST", status: 503,
+                                     body: StoreStub.pendingDisplayFailure)
+        await fixture.store.display(previous: true)
+        XCTAssertEqual(displayWrites().map { $0.url!.path }, ["/api/display/next", "/api/display/previous"],
+                       "A second request is allowed only when the user explicitly makes a new command.")
+        XCTAssertTrue(fixture.store.connected)
+        XCTAssertTrue(fixture.store.canDisplay)
+        XCTAssertEqual(fixture.store.state, stateBefore)
+        XCTAssertEqual(fixture.store.queue, queueBefore)
+        XCTAssertEqual(fixture.store.history, historyBefore)
+        XCTAssertNotEqual(fixture.store.notice, "Le cadre est à jour.")
+    }
+
+    func testPendingConfirmationNeverOverridesBusyOrFailedDisplayDiagnostics() async {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        fixture.stub.setPendingDisplayConfirmation()
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(fixture.store.canDisplay)
+        for (state, error) in [("busy", nil), ("error", "display_busy_timeout"), ("error", "display_refresh_failed")] as [(String, String?)] {
+            fixture.stub.setPendingDisplayConfirmation(state: state, error: error)
+            await fixture.store.refresh()
+            XCTAssertTrue(fixture.store.connected)
+            XCTAssertNotNil(fixture.store.state)
+            XCTAssertNotNil(fixture.store.displayIssue)
+            XCTAssertFalse(fixture.store.canDisplay, "Pending confirmation cannot override \(state)/\(error ?? "no error").")
+            let requestCount = fixture.stub.requests.count
+            await fixture.store.display(previous: false)
+            await fixture.store.display(previous: true)
+            XCTAssertEqual(fixture.stub.requests.count, requestCount, "Unavailable display commands must not reach the server.")
+        }
+    }
+
     func testEventStreamFailureUsesHTTPReachabilityInsteadOfMarkingFrameOffline() async {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
@@ -837,6 +931,10 @@ private final class StoreGate: @unchecked Sendable {
 }
 
 private final class StoreStub: @unchecked Sendable {
+    static let pendingDisplayDetail = "La fin de l’affichage n’a pas pu être confirmée. La photo est conservée. L’affichage automatique est suspendu ; vous pouvez réessayer manuellement."
+    static var pendingDisplayFailure: [String: Any] {
+        ["code": "display_confirmation_pending", "detail": pendingDisplayDetail]
+    }
     private let id = UUID().uuidString
     private let lock = NSLock()
     private let totals: [String: Int]
@@ -844,6 +942,8 @@ private final class StoreStub: @unchecked Sendable {
     private var calls: [URLRequest] = []
     private var responseErrors: [String: URLError] = [:]
     private var displayStatus: [String: Any]?
+    private var customResponses: [String: (Data, Int)] = [:]
+    private var nextResponses: [String: (Data, Int)] = [:]
     var requests: [URLRequest] { lock.withLock { calls } }
     init(totals: [String: Int]) { self.totals = totals }
 
@@ -856,6 +956,33 @@ private final class StoreStub: @unchecked Sendable {
             displayStatus = ["mode": "hardware", "profile": "ac073-800x480", "state": state, "is_mock": false,
                 "error": error.map { ["code": $0, "detail": "Synthetic display diagnostic"] } as Any? ?? NSNull()]
         }
+    }
+
+    func setPendingDisplayConfirmation(state: String = "ready", error: String? = nil) {
+        lock.withLock {
+            displayStatus = ["mode": "hardware", "profile": "ac073-800x480", "state": state, "is_mock": false,
+                "error": error.map { ["code": $0, "detail": "Synthetic display failure"] } as Any? ?? NSNull(),
+                "confirmation": "pending", "warning": Self.pendingDisplayFailure, "automatic_rotation_paused": true,
+                "driver": [String: String](), "busy_monitor": "ac073_2.3.0", "observations": [
+                    ["phase": "setup", "timeout": 1.0, "outcome": "held_high_unverified", "sequence": 1, "error_type": NSNull()],
+                    ["phase": "power_on", "timeout": 0.4, "outcome": "held_high_unverified", "sequence": 2, "error_type": NSNull()],
+                    ["phase": "refresh", "timeout": 45.0, "outcome": "held_high_unverified", "sequence": 3, "error_type": NSNull()],
+                    ["phase": "power_off", "timeout": 0.4, "outcome": "held_high_unverified", "sequence": 4, "error_type": NSNull()],
+                ]]
+        }
+    }
+
+    func setJSONResponse(host: String, path: String, body: Any) {
+        setResponse(host: host, path: path, data: try! JSONSerialization.data(withJSONObject: body))
+    }
+
+    func setResponse(host: String, path: String, data: Data) {
+        lock.withLock { customResponses["\(host)|GET|\(path)"] = (data, 200) }
+    }
+
+    func respondNextJSON(host: String, path: String, method: String, status: Int, body: Any) {
+        let data = try! JSONSerialization.data(withJSONObject: body)
+        lock.withLock { nextResponses["\(host)|\(method)|\(path)"] = (data, status) }
     }
 
     func hold(host: String, path: String, method: String = "GET") -> StoreGate {
@@ -882,6 +1009,11 @@ private final class StoreStub: @unchecked Sendable {
         let gate = lock.withLock { calls.append(request); return gates.removeValue(forKey: key) }
         if let error = lock.withLock({ responseErrors.removeValue(forKey: key) }) {
             completion(Data(), 0, error)
+            return
+        }
+        if let response = lock.withLock({ nextResponses.removeValue(forKey: key) ?? customResponses[key] }) {
+            if let gate { gate.hold { status in completion(response.0, status ?? response.1, nil) } }
+            else { completion(response.0, response.1, nil) }
             return
         }
         let body: Any

@@ -3,7 +3,8 @@
 
 Run: python3 ios/scripts/mock-server.py --port 8765
 Test password: test-password. Never connects to or changes a physical frame.
-Fault controls: POST /__test/availability {"available": false/true},
+Fault controls: POST /__test/availability {"available": false/true,
+"mode": "http"/"transport"} (HTTP503 by default; transport closes without HTTP),
 POST /__test/settings-delay {"seconds": 0..5}; /__test/reset clears both.
 """
 from __future__ import annotations
@@ -66,6 +67,7 @@ class Fixture:
                 self.delay_cancelled.set()
             self.delay_cancelled = threading.Event()
             self.available = True
+            self.outage_mode = "http"
             self.settings_delay = 0.0
             self.sessions: set[str] = set()
             self.password = PASSWORD
@@ -175,6 +177,24 @@ class Handler(BaseHTTPRequestHandler):
     def failure(self, code: int, message: str) -> None:
         self.reply(code, {"detail": message})
 
+    def reject_unavailable_api(self) -> bool:
+        with FIXTURE.lock:
+            if FIXTURE.available:
+                return False
+            mode = FIXTURE.outage_mode
+        if mode == "transport":
+            # A reachable HTTP503 is not an offline frame. End the connection
+            # before any HTTP response while keeping fixture controls reachable.
+            self.close_connection = True
+            try:
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            self.connection.close()
+        else:
+            self.failure(503, "Fixture API temporarily unavailable")
+        return True
+
     def read_body(self) -> bytes:
         length = int(self.headers.get("Content-Length", "0"))
         if length < 0 or length > MAX_UPLOAD + 65536:
@@ -233,11 +253,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/__test/availability" and method == "POST":
             available = body.get("available")
+            mode = body.get("mode", "http")
             if not isinstance(available, bool):
                 self.failure(400, "Expected an available boolean")
                 return
+            if mode not in {"http", "transport"}:
+                self.failure(400, "Expected http or transport outage mode")
+                return
             with FIXTURE.lock:
                 FIXTURE.available = available
+                FIXTURE.outage_mode = "http" if available else mode
                 if not available:
                     FIXTURE.close_sockets()
             self.reply(200, {"available": available})
@@ -251,10 +276,8 @@ class Handler(BaseHTTPRequestHandler):
                 FIXTURE.settings_delay = float(seconds)
             self.reply(200, {"seconds": seconds})
             return
-        with FIXTURE.lock:
-            if path.startswith("/api/") and not FIXTURE.available:
-                self.failure(503, "Fixture API temporarily unavailable")
-                return
+        if path.startswith("/api/") and self.reject_unavailable_api():
+            return
         if path == "/api/health" and method == "GET":
             self.reply(200, {"status": "ok", "version": "0.4.2"})
             return
@@ -393,8 +416,10 @@ class Handler(BaseHTTPRequestHandler):
                         self.reply(422, {"detail": [{"loc": ["body", key], "msg": f"Invalid {key}", "type": "value_error"}]})
                         return
                 with FIXTURE.lock:
-                    if cancelled.is_set() or not FIXTURE.available:
+                    if cancelled.is_set():
                         self.failure(503, "Fixture API temporarily unavailable")
+                        return
+                    if self.reject_unavailable_api():
                         return
                     FIXTURE.settings.update({key: value for key, value in body.items() if key in rules and value is not None})
             self.reply(200, FIXTURE.settings)
@@ -484,8 +509,7 @@ class Handler(BaseHTTPRequestHandler):
         accept = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
         write_lock = threading.Lock()
         with FIXTURE.lock:
-            if not FIXTURE.available:
-                self.failure(503, "Fixture API temporarily unavailable")
+            if self.reject_unavailable_api():
                 return
             self.send_response(101)
             self.send_header("Upgrade", "websocket")

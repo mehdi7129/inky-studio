@@ -245,7 +245,7 @@ final class InkyStudioUITests: XCTestCase {
 
         XCUIDevice.shared.press(.home)
         XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5), "The app must enter the background before the outage.")
-        configureFixture("__test/availability", body: ["available": false])
+        configureFixture("__test/availability", body: ["available": false, "mode": "transport"])
         defer { configureFixture("__test/availability", body: ["available": true]) }
         app.activate()
         let offline = app.staticTexts["Raspberry injoignable · données précédentes"]
