@@ -40,7 +40,7 @@ struct RootView: View {
             if store.recoveringConnection {
                 ConnectionView()
             } else if store.unlocking || (!store.localUnlocked && store.authenticated) ||
-                        ((store.credentialStored || store.hasAdoptedFrame) && !store.authenticated && !store.connecting) {
+                        ((store.credentialStored || store.hasAdoptedFrame || store.hasIndividualPhotoAccess) && !store.authenticated && !store.connecting) {
                 LocalLockView()
             } else if store.authenticated && store.localUnlocked && !store.connecting && !store.unlocking {
                 VStack(spacing: 0) {

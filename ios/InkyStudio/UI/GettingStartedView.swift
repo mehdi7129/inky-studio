@@ -30,6 +30,8 @@ struct GettingStartedView: View {
                             .foregroundStyle(Bento.secondaryInk)
                         Text("Après la connexion, l’accès est conservé dans le trousseau sécurisé. Déverrouillez l’app pour retrouver votre cadre, sans scanner à chaque fois.")
                             .foregroundStyle(Bento.secondaryInk)
+                        Text("Pour partager les photos avec un autre iPhone, le propriétaire peut créer une invitation dans Réglages → Partager l’accès. Scannez ce QR dans les cinq minutes ; il est utilisable une seule fois.")
+                            .foregroundStyle(Bento.secondaryInk)
                     }
                     step("4", title: "Ajouter votre première photo", symbol: "photo.badge.plus") {
                         Text("Prenez une photo ou choisissez-en une dans Photos. Ajustez son cadrage, puis ajoutez-la à la file.")
@@ -43,7 +45,7 @@ struct GettingStartedView: View {
                                 .frame(minHeight: 44).accessibilityIdentifier("guide.iosSettings")
                             help("Le QR n’est plus affiché", "L’accès déjà enregistré sur cet iPhone se retrouve en déverrouillant l’app. Si vous avez oublié le cadre ou changé d’iPhone, suivez l’aide du cadre pour retrouver un QR de connexion.")
                             help("Changer le Wi-Fi du cadre", "Depuis un cadre connecté, ouvrez Réglages → Configurer le Wi-Fi du cadre pour associer cet iPhone par Bluetooth. Un iPhone déjà associé peut ensuite retrouver le cadre à proximité. Les réseaux personnels WPA2 sont pris en charge ; les réseaux d’entreprise et portails d’hôtel ne le sont pas.")
-                            if allowWiFiSetup {
+                            if allowWiFiSetup && !store.isMediaPhotoAccess {
                                 Button {
                                     Task {
                                         if !store.localUnlocked { await store.unlock() }

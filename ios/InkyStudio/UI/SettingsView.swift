@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var confirmUpdate = false
     @State private var confirmForget = false
     @State private var gettingStarted = false
+    @State private var sharingAccess = false
     @State private var loaded = false
     private var dirty: Bool { loaded && store.settings != draft }
     var body: some View {
@@ -35,12 +36,12 @@ struct SettingsView: View {
                             Text("Utilisez Précédente et Suivante dans l’onglet Cadre pour changer de photo.").font(.caption).foregroundStyle(Bento.secondaryInk)
                         }
                     }.bentoCard()
-                    VStack(alignment: .leading, spacing: 12) {
+                    if store.canAdminister { VStack(alignment: .leading, spacing: 12) {
                         Label("Image", systemImage: "photo").font(.headline)
                         HStack { Text("Saturation"); Spacer(); Text(draft.saturation.formatted(.number.precision(.fractionLength(1)))).foregroundStyle(Bento.secondaryInk).monospacedDigit() }
                         Slider(value: $draft.saturation, in: 0...2, step: 0.1).accessibilityLabel("Saturation").accessibilityIdentifier("settings.saturation")
                         Text("Les couleurs sont adaptées à l’écran lors de l’affichage.").font(.caption).foregroundStyle(Bento.secondaryInk)
-                    }.bentoCard()
+                    }.bentoCard() }
                     Button { Task { await store.saveSettings(draft) } } label: {
                         if store.busy { ProgressView().tint(Bento.actionText) } else { Text("Enregistrer les réglages") }
                     }.buttonStyle(PrimaryButtonStyle()).disabled(!dirty || !store.canMutate).accessibilityIdentifier("settings.save")
@@ -54,13 +55,36 @@ struct SettingsView: View {
                             Label("Verrouiller l’app", systemImage: "lock")
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }.accessibilityIdentifier("settings.lock")
-                        if store.bluetoothSupported || store.hasAdoptedFrame {
+                        if store.canAdminister && (store.bluetoothSupported || store.hasAdoptedFrame) {
                             Divider()
                             Button { bluetoothSetup = true } label: {
                                 Label("Configurer le Wi-Fi du cadre", systemImage: "wifi")
                                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                             }.disabled(store.busy || store.displayBusy || store.pairingNeedsCompletion)
                                 .accessibilityIdentifier("settings.bluetooth")
+                        }
+                    }.bentoCard()
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label(store.photoAccessRole == .media ? "Accès partagé" : "Partager le cadre", systemImage: "person.2")
+                            .font(.headline)
+                        if store.photoAccessRole == .media {
+                            Text("Vous pouvez ajouter des photos et choisir leur programmation. Le propriétaire gère les accès et la configuration du cadre.")
+                                .font(.subheadline).foregroundStyle(Bento.secondaryInk)
+                            if let deviceID = store.photoAccessDeviceID {
+                                Text("Identifiant de cet accès : \(deviceID.uuidString.lowercased().prefix(8))")
+                                    .font(.caption.monospaced()).foregroundStyle(Bento.secondaryInk)
+                            }
+                        } else {
+                            Text("Invitez un autre iPhone à envoyer des photos, sans partager votre accès propriétaire.")
+                                .font(.subheadline).foregroundStyle(Bento.secondaryInk)
+                            Button { sharingAccess = true } label: {
+                                Label("Partager l’accès", systemImage: "qrcode")
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }.disabled(!store.canShareAccess).accessibilityIdentifier("settings.shareAccess")
+                            if !store.canShareAccess {
+                                Text("Le partage nécessite une association sécurisée avec le cadre.")
+                                    .font(.caption).foregroundStyle(Bento.secondaryInk)
+                            }
                         }
                     }.bentoCard()
                     VStack(alignment: .leading, spacing: 14) {
@@ -73,7 +97,7 @@ struct SettingsView: View {
                         }
                         Divider()
                         HStack { Text("Version du cadre"); Spacer(); Text(store.version).foregroundStyle(Bento.secondaryInk) }.font(.subheadline)
-                        Button { Task { await store.checkUpdate() } } label: {
+                        if store.canAdminister { Button { Task { await store.checkUpdate() } } label: {
                             HStack { Text("Vérifier les mises à jour"); Spacer(); Image(systemName: "arrow.clockwise") }.font(.subheadline).frame(minHeight: 44)
                         }.disabled(!store.canMutate).accessibilityIdentifier("settings.checkUpdate")
                         if let update = store.availableUpdate {
@@ -83,7 +107,7 @@ struct SettingsView: View {
                                 Text(update.latest == nil ? "La dernière version n’a pas pu être vérifiée." : "Votre cadre est à jour.").font(.caption).foregroundStyle(Bento.secondaryInk)
                             }
                         }
-                        if let message = store.updateMessage { Label(message, systemImage: "arrow.down.circle").font(.caption).foregroundStyle(Bento.blue) }
+                        if let message = store.updateMessage { Label(message, systemImage: "arrow.down.circle").font(.caption).foregroundStyle(Bento.blue) } }
                     }.bentoCard()
                     HStack(spacing: 12) {
                         Image(systemName: "circle.lefthalf.filled").foregroundStyle(Bento.secondaryInk)
@@ -103,7 +127,8 @@ struct SettingsView: View {
                 .navigationTitle("Réglages").screenBackground()
                 .task { if !loaded, let settings = store.settings { draft = settings; loaded = true } }
                 .onChange(of: store.settings) { old, new in if !loaded || draft == old { if let new { draft = new; loaded = true } } }
-                .sheet(isPresented: $gettingStarted) { GettingStartedView(allowWiFiSetup: store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
+                .sheet(isPresented: $gettingStarted) { GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
+                .sheet(isPresented: $sharingAccess) { ShareAccessView() }
                 .sheet(isPresented: $bluetoothSetup) {
                     BluetoothSetupView(beginWindow: store.connected && store.bluetoothSupported ? {
                         try await store.beginBluetoothAdoption()

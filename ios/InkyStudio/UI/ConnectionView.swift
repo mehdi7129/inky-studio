@@ -86,7 +86,7 @@ struct ConnectionView: View {
         }
         .background(Bento.background).foregroundStyle(Bento.ink)
         .sheet(isPresented: $gettingStarted) {
-            GettingStartedView(allowWiFiSetup: store.hasAdoptedFrame && !store.pairingNeedsCompletion)
+            GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion)
         }
         .sheet(isPresented: $scanningLANQR) {
             LANLoginScannerView().interactiveDismissDisabled(store.recoveringConnection)
@@ -128,7 +128,7 @@ struct LANLoginScannerView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                Text("Placez le QR du cadre dans le viseur. Votre iPhone doit être sur le même réseau Wi-Fi.")
+                Text("Placez le QR du cadre ou l’invitation d’un autre iPhone dans le viseur. Pour les photos, rejoignez le même Wi-Fi que le cadre.")
                     .font(.subheadline).foregroundStyle(Bento.secondaryInk)
                 #if DEBUG && targetEnvironment(simulator)
                 if ProcessInfo.processInfo.arguments.contains("--uitesting"),
@@ -140,7 +140,7 @@ struct LANLoginScannerView: View {
                 #endif
                 Spacer(minLength: 0)
             }.padding(24).background(Bento.background)
-                .navigationTitle("Scanner le cadre").navigationBarTitleDisplayMode(.inline)
+                .navigationTitle("Scanner un QR code").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) {
                     Button("Annuler") {
                         if store.recoveringConnection { store.cancelConnectionRecovery() }
@@ -154,7 +154,7 @@ struct LANLoginScannerView: View {
         QRScannerView { result in
             dismiss()
             switch result {
-            case .success(let text): Task { await store.loginFromLANQRCode(text) }
+            case .success(let text): connect(text)
             case .failure(let error): store.errorMessage = error.localizedDescription
             }
         }.clipShape(RoundedRectangle(cornerRadius: 20)).frame(minHeight: 280)
@@ -162,7 +162,17 @@ struct LANLoginScannerView: View {
 
     private func acceptQR(_ text: String) {
         dismiss()
-        Task { await store.loginFromLANQRCode(text) }
+        connect(text)
+    }
+
+    private func connect(_ text: String) {
+        if let invitation = try? FrameInvitationCode.parse(text) {
+            Task { await store.claimInvitation(invitation) }
+        } else if (try? FrameLANLoginCode.parse(text)) != nil {
+            Task { await store.loginFromLANQRCode(text) }
+        } else {
+            store.errorMessage = "Ce QR n’est pas valide. Scannez le QR du cadre ou demandez une nouvelle invitation au propriétaire."
+        }
     }
 
 }
@@ -205,7 +215,7 @@ struct LocalLockView: View {
                         Text(error).font(.subheadline).foregroundStyle(Bento.danger)
                             .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("lock.error")
                     }
-                    if store.hasAdoptedFrame {
+                    if store.hasAdoptedFrame || store.hasIndividualPhotoAccess {
                         Button("Oublier ce cadre…") {
                             Task { confirmingForget = await store.authorizeForgetCurrentFrame() }
                         }
@@ -229,7 +239,7 @@ struct LocalLockView: View {
                     .frame(minHeight: geometry.size.height).frame(maxWidth: .infinity)
             }.accessibilityIdentifier("lock.scroll")
         }.background(Bento.background).foregroundStyle(Bento.ink)
-            .sheet(isPresented: $gettingStarted) { GettingStartedView(allowWiFiSetup: store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
+            .sheet(isPresented: $gettingStarted) { GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
             .confirmationDialog("Oublier ce cadre sur cet iPhone ?", isPresented: $confirmingForget) {
                 Button("Oublier ce cadre", role: .destructive) {
                     Task { await store.forgetCurrentFrameAfterConfirmation() }

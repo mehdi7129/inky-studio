@@ -1243,6 +1243,352 @@ final class AppStoreTests: XCTestCase {
         XCTAssertTrue(store.hasMoreHistory)
         XCTAssertFalse(store.loadingHistory)
     }
+    private func invitationIdentity() throws -> FrameIdentity {
+        try FrameIdentity(id: UUID(uuidString: "11111111-2222-4333-8444-555555555555")!, spkiSHA256: Data(repeating: 0x19, count: 32))
+    }
+    private func invitationCode(id: UUID = UUID()) throws -> FrameInvitationCode {
+        try FrameInvitationCode(identity: invitationIdentity(), endpoint: URL(string: "https://invited-frame.local:8443")!,
+                                invitationID: id, invitationToken: String(repeating: "3", count: 64))
+    }
+    private func requestJSON(_ request: URLRequest) throws -> [String: Any] {
+        try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+    }
+
+    func testInvitationClaimPersistsDeviceBeforePOSTAndPreservesOldClientUntilCommit() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        let previous = try XCTUnwrap(fixture.store.api)
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity)
+        let gate = fixture.stub.hold(host: "invited-frame.local", path: "/api/auth/invitations/claim", method: "POST")
+        let claim = Task { await fixture.store.claimInvitation(code) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        let request = try XCTUnwrap(fixture.stub.requests.last { $0.url?.path == "/api/auth/invitations/claim" })
+        let fields = try requestJSON(request)
+        let savedText = try XCTUnwrap(fixture.photoCredentials.passwords.values.first)
+        let saved = try JSONDecoder().decode(PhotoAccessCredential.self, from: Data(savedText.utf8))
+        XCTAssertEqual(fields["device_id"] as? String, saved.deviceID.uuidString.lowercased())
+        XCTAssertEqual(fields["device_token"] as? String, saved.deviceToken)
+        XCTAssertEqual(saved.state, .pending)
+        XCTAssertFalse(savedText.contains(code.invitationToken), "Recipient invitation token is RAM-only")
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), "http://old-frame.local:8000")
+        XCTAssertFalse(fixture.store.canMutate)
+        gate.release(); await claim.value
+        XCTAssertEqual(fixture.store.photoAccessRole, .media)
+        XCTAssertEqual(fixture.store.address, code.endpoint.absoluteString)
+        XCTAssertFalse(fixture.store.hasAdoptedFrame)
+        XCTAssertFalse(fixture.store.canAdminister)
+        XCTAssertTrue(fixture.store.canMutate)
+    }
+
+    func testInvitationStorageFailureSendsNoCredentialAndKeepsOldAccess() async throws {
+        let fixture = StoreFixture(savePhotoValue: { _, _ in throw VaultError.unavailable })
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        let previous = fixture.store.api
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity)
+        await fixture.store.claimInvitation(code)
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertNil(fixture.defaults.data(forKey: "photoAccessSelection"))
+        XCTAssertFalse(fixture.stub.requests.contains { $0.url?.path == "/api/auth/invitations/claim" })
+        XCTAssertNotNil(fixture.store.photoAccessError)
+    }
+
+    func testRejectedInvitationCannotSignOutExistingIndividualAccess() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let first = try invitationCode()
+        fixture.stub.enablePhotoAccess(first.identity)
+        await fixture.store.claimInvitation(first)
+        XCTAssertEqual(fixture.store.photoAccessRole, .media)
+        let oldClient = fixture.store.api
+        let selected = fixture.defaults.data(forKey: "photoAccessSelection")
+        let before = fixture.stub.requests.count
+        fixture.stub.respondNextJSON(host: "invited-frame.local", path: "/api/auth/invitations/claim", method: "POST", status: 401, body: ["detail": "Expired invitation"])
+        await fixture.store.claimInvitation(try invitationCode())
+        XCTAssertTrue(fixture.store.api === oldClient)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertEqual(fixture.store.photoAccessRole, .media)
+        XCTAssertEqual(fixture.defaults.data(forKey: "photoAccessSelection"), selected)
+        XCTAssertFalse(fixture.stub.requests.dropFirst(before).contains { $0.url?.path == "/api/auth/login" })
+    }
+
+    func testCancelInvitationAndLateReplyKeepOldConnection() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        let previous = fixture.store.api
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity)
+        let gate = fixture.stub.hold(host: "invited-frame.local", path: "/api/auth/invitations/claim", method: "POST")
+        let claim = Task { await fixture.store.claimInvitation(code) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        fixture.store.cancelLogin()
+        gate.release(); await claim.value
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertFalse(fixture.store.connecting)
+        XCTAssertNil(fixture.defaults.data(forKey: "photoAccessSelection"))
+        XCTAssertEqual(fixture.store.address, "http://old-frame.local:8000")
+    }
+
+    func testInvitationRetryUsesPersistedDeviceAndRequestIDs() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity)
+        fixture.stub.respondNextJSON(host: "invited-frame.local", path: "/api/auth/invitations/claim", method: "POST", status: 503, body: ["detail": "Uncertain synthetic response"])
+        await fixture.store.claimInvitation(code)
+        let first = try requestJSON(XCTUnwrap(fixture.stub.requests.last { $0.url?.path == "/api/auth/invitations/claim" }))
+        await fixture.store.claimInvitation(code)
+        let second = try requestJSON(XCTUnwrap(fixture.stub.requests.last { $0.url?.path == "/api/auth/invitations/claim" }))
+        for key in ["device_id", "device_token", "request_id", "invitation_id", "invitation_token"] {
+            XCTAssertEqual(first[key] as? String, second[key] as? String)
+        }
+        XCTAssertEqual(fixture.store.photoAccessRole, .media)
+    }
+
+    func testMediaSettingsSendScheduleOnlyAndAdminEntryPointsSendNothing() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity)
+        await fixture.store.claimInvitation(code)
+        await fixture.store.saveSettings(FrameSettings(changeMode: .interval, changeHour: 6, changeIntervalMinutes: 90, saturation: 2))
+        let settings = try requestJSON(XCTUnwrap(fixture.stub.requests.last { $0.url?.path == "/api/settings" && $0.httpMethod == "POST" }))
+        XCTAssertEqual(Set(settings.keys), ["change_mode", "change_hour", "change_interval_minutes"])
+        let before = fixture.stub.requests.count
+        await fixture.store.createInvitation()
+        await fixture.store.refreshAccessDevices()
+        await fixture.store.checkUpdate()
+        await fixture.store.startUpdate()
+        do { try await fixture.store.beginBluetoothAdoption(); XCTFail("Media cannot administer Wi-Fi") } catch {}
+        XCTAssertEqual(fixture.stub.requests.count, before)
+        XCTAssertTrue(fixture.store.canMutate)
+    }
+
+    func testColdPhotoRestoreUsesDeviceSessionAnd401NeverFallsBackToLegacy() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity)
+        await fixture.store.claimInvitation(code)
+        await fixture.store.logout()
+        fixture.stub.respondNextJSON(host: "invited-frame.local", path: "/api/auth/device-session", method: "POST", status: 401, body: ["detail": "Revoked"])
+        let before = fixture.stub.requests.count
+        await fixture.store.unlock()
+        let requests = Array(fixture.stub.requests.dropFirst(before))
+        XCTAssertEqual(requests.map { $0.url!.path }, ["/api/auth/device-session"])
+        XCTAssertEqual(fixture.store.photoAccessRole, .media)
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertNotNil(fixture.store.localAuthenticationError)
+        XCTAssertTrue(fixture.store.credentialStored)
+    }
+
+    func testOwnerEnrollmentRequiresPinnedHTTPSAndDurableCredential() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        XCTAssertFalse(fixture.store.canShareAccess)
+        let before = fixture.stub.requests.count
+        await fixture.store.enrollPhotoAccess()
+        await fixture.store.createInvitation()
+        XCTAssertEqual(fixture.stub.requests.count, before)
+        XCTAssertTrue(fixture.photoCredentials.passwords.isEmpty)
+    }
+
+    func testOwnerEnrollmentAndInvitationDraftAreProtectedBeforeCreateAndBackgroundCannotPublishQR() async throws {
+        let identity = try invitationIdentity()
+        let fixture = StoreFixture(pin: identity)
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(identity)
+        await fixture.login("https://owner-frame.local:8443")
+        let gate = fixture.stub.hold(host: "owner-frame.local", path: "/api/auth/invitations", method: "POST")
+        let creation = Task { await fixture.store.createInvitation() }
+        await fulfillment(of: [gate.started], timeout: 3)
+        XCTAssertEqual(fixture.store.photoAccessRole, .owner)
+        let draftText = try XCTUnwrap(fixture.photoCredentials.passwords.first { $0.key.hasPrefix("invitation:") }?.value)
+        let draft = try JSONDecoder().decode(PhotoInvitationDraft.self, from: Data(draftText.utf8))
+        let body = try requestJSON(XCTUnwrap(fixture.stub.requests.last { $0.url?.path == "/api/auth/invitations" }))
+        XCTAssertEqual(body["invitation_token"] as? String, draft.invitationToken)
+        XCTAssertEqual(body["request_id"] as? String, draft.requestID.uuidString.lowercased())
+        XCTAssertFalse(String(describing: fixture.defaults.dictionaryRepresentation()).contains(draft.invitationToken))
+        fixture.store.sceneChanged(.background)
+        gate.release(); await creation.value
+        XCTAssertNil(fixture.store.activeInvitation)
+        XCTAssertFalse(fixture.store.photoAccessBusy)
+        XCTAssertTrue(fixture.store.authenticated)
+    }
+
+    func testOwnerInvitationLockPurgesPublishedQRAndReopenRetriesSameDraft() async throws {
+        let identity = try invitationIdentity()
+        let fixture = StoreFixture(pin: identity)
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(identity)
+        await fixture.login("https://owner-frame.local:8443")
+        await fixture.store.createInvitation()
+        let invitation = try XCTUnwrap(fixture.store.activeInvitation)
+        fixture.store.lock()
+        XCTAssertNil(fixture.store.activeInvitation)
+        await fixture.store.unlock()
+        await fixture.store.createInvitation()
+        XCTAssertEqual(fixture.store.activeInvitation?.invitationID, invitation.invitationID)
+        XCTAssertEqual(fixture.store.activeInvitation?.code.invitationToken, invitation.code.invitationToken)
+    }
+
+    func testForgetIndividualAccessDeletesOnlySelectedProtectedCredential() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity)
+        await fixture.store.claimInvitation(code)
+        let selected = try JSONDecoder().decode(PhotoAccessSelection.self, from: XCTUnwrap(fixture.defaults.data(forKey: "photoAccessSelection")))
+        fixture.photoCredentials.passwords["photo:unrelated:owner"] = "unrelated protected value"
+        await fixture.store.logout(forget: true)
+        XCTAssertNil(fixture.photoCredentials.passwords[selected.account])
+        XCTAssertEqual(fixture.photoCredentials.passwords["photo:unrelated:owner"], "unrelated protected value")
+        XCTAssertNil(fixture.defaults.data(forKey: "photoAccessSelection"))
+        XCTAssertNil(fixture.defaults.data(forKey: "photoAccessPending"))
+        XCTAssertFalse(fixture.store.hasSavedFrame)
+    }
+    func testPhotoOwnerWiFiRelocationUsesSameDeviceWithoutLegacyPassword() async throws {
+        let certificate = FrameTrustTestFixtures.certificate
+        let identity = try FrameIdentity(id: FrameTrustTestFixtures.id, spkiSHA256: PinnedFrameTrust.spkiSHA256(certificateDER: certificate))
+        let fixture = StoreFixture(pin: identity)
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(identity)
+        await fixture.login("https://owner-frame.local:8443")
+        await fixture.store.enrollPhotoAccess()
+        let deviceID = fixture.store.photoAccessDeviceID
+        let endpoint = URL(string: "https://relocated-frame.local:8443")!
+        let owner = OwnershipRecord(identity: identity, certificateDER: certificate, ownerID: UUID(), claimRequestID: UUID(),
+            ownerToken: Data(repeating: 0x45, count: 32), endpoints: [endpoint], state: .claimed)
+        let insertion: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: fixture.ownershipService,
+            kSecAttrAccount as String: identity.id.uuidString.lowercased(), kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecValueData as String: try JSONEncoder().encode(owner)]
+        XCTAssertEqual(SecItemAdd(insertion as CFDictionary, nil), errSecSuccess)
+        let before = fixture.stub.requests.count
+        await fixture.store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
+        XCTAssertEqual(fixture.store.address, endpoint.absoluteString)
+        XCTAssertEqual(fixture.store.photoAccessDeviceID, deviceID)
+        XCTAssertEqual(fixture.store.photoAccessRole, .owner)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameOwnerID"), identity.id.uuidString.lowercased())
+        let requests = fixture.stub.requests.dropFirst(before)
+        XCTAssertEqual(requests.filter { $0.url?.path == "/api/auth/device-session" }.count, 1)
+        XCTAssertFalse(requests.contains { ["/api/auth/login", "/api/auth/devices/enroll"].contains($0.url!.path) })
+        XCTAssertTrue(requests.allSatisfy { $0.url?.scheme == "https" })
+        let selection = try JSONDecoder().decode(PhotoAccessSelection.self, from: XCTUnwrap(fixture.defaults.data(forKey: "photoAccessSelection")))
+        let durable = try await fixture.photoVault.loadCredential(account: selection.account)
+        XCTAssertEqual(durable.endpoint, endpoint)
+        XCTAssertTrue(selection.validates(durable))
+    }
+
+    func testPhotoWiFiMismatchedIdentityAndLateSessionCannotReplaceOldAccess() async throws {
+        let identity = try invitationIdentity()
+        let fixture = StoreFixture(pin: identity)
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(identity)
+        await fixture.login("https://owner-frame.local:8443")
+        await fixture.store.enrollPhotoAccess()
+        let previous = fixture.store.api
+        let address = fixture.store.address
+        let endpoint = URL(string: "https://relocated-frame.local:8443")!
+        let wrongIdentity = try FrameIdentity(id: UUID(), spkiSHA256: identity.spkiSHA256)
+        func owner(_ identity: FrameIdentity) -> OwnershipRecord {
+            OwnershipRecord(identity: identity, certificateDER: Data(), ownerID: UUID(), claimRequestID: UUID(),
+                ownerToken: Data(repeating: 5, count: 32), endpoints: [endpoint], state: .claimed)
+        }
+        let before = fixture.stub.requests.count
+        await fixture.store.finishBluetoothSetup(endpoint: endpoint, owner: owner(wrongIdentity))
+        XCTAssertEqual(fixture.stub.requests.count, before)
+        XCTAssertTrue(fixture.store.api === previous)
+        let gate = fixture.stub.hold(host: "relocated-frame.local", path: "/api/auth/device-session", method: "POST")
+        let relocation = Task { await fixture.store.finishBluetoothSetup(endpoint: endpoint, owner: owner(identity)) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        fixture.store.sceneChanged(.background)
+        gate.release(); await relocation.value
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertEqual(fixture.store.address, address)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.localUnlocked)
+    }
+    func testInvitationLocalPromptInactiveWaitsForActiveAndBackgroundCancelsAdmission() async throws {
+        for background in [false, true] {
+            let authentication = LocalAuthGate()
+            let fixture = StoreFixture(authenticateLocal: { try await authentication.wait() })
+            defer { fixture.dispose() }
+            let code = try invitationCode()
+            fixture.stub.enablePhotoAccess(code.identity)
+            let claim = Task { await fixture.store.claimInvitation(code) }
+            await fulfillment(of: [authentication.started], timeout: 3)
+            fixture.store.sceneChanged(.inactive)
+            authentication.release()
+            // Allow the authentication continuation to reach its foreground admission gate.
+            for _ in 0..<8 { await Task.yield() }
+            XCTAssertTrue(fixture.stub.requests.isEmpty)
+            if background {
+                fixture.store.sceneChanged(.background)
+                await claim.value
+                XCTAssertFalse(fixture.store.unlocking)
+                XCTAssertFalse(fixture.store.localUnlocked)
+                XCTAssertFalse(fixture.store.authenticated)
+                XCTAssertTrue(fixture.stub.requests.isEmpty)
+            } else {
+                fixture.store.sceneChanged(.active)
+                await claim.value
+                XCTAssertFalse(fixture.store.unlocking)
+                XCTAssertEqual(fixture.store.photoAccessRole, .media)
+                XCTAssertTrue(fixture.store.authenticated)
+                XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == "/api/auth/invitations/claim" }.count, 1)
+            }
+        }
+    }
+    func testCancelledInvitationNeverReappearsAfterLostDELETEOrProtectedStorageFailure() async throws {
+        for failure in ["delete", "mark", "purge"] {
+            let identity = try invitationIdentity()
+            let fixture = StoreFixture(pin: identity)
+            defer { fixture.dispose() }
+            fixture.stub.enablePhotoAccess(identity)
+            await fixture.login("https://owner-frame.local:8443")
+            await fixture.store.createInvitation()
+            let cancelled = try XCTUnwrap(fixture.store.activeInvitation)
+            let path = "/api/auth/invitations/" + cancelled.invitationID.uuidString.lowercased()
+            if failure == "delete" {
+                fixture.stub.respondNextJSON(host: "owner-frame.local", path: path, method: "DELETE", status: 503,
+                    body: ["detail": "Synthetic lost revocation response"])
+            }
+            fixture.photoCredentials.rejectWrites = failure == "mark"
+            fixture.photoCredentials.rejectRemoval = failure == "purge"
+            await fixture.store.revokeActiveInvitation()
+            XCTAssertNil(fixture.store.activeInvitation)
+            XCTAssertNotNil(fixture.store.photoAccessError)
+            let intent = fixture.defaults.dictionary(forKey: "photoInvitationRevocations") as? [String: String]
+            XCTAssertTrue(intent?.values.contains(cancelled.invitationID.uuidString.lowercased()) == true)
+            if failure != "mark" {
+                let text = try XCTUnwrap(fixture.photoCredentials.passwords.first { $0.key.hasPrefix("invitation:") }?.value)
+                let draft = try JSONDecoder().decode(PhotoInvitationDraft.self, from: Data(text.utf8))
+                XCTAssertTrue(draft.revocationPending)
+            }
+            fixture.photoCredentials.rejectWrites = false
+            fixture.photoCredentials.rejectRemoval = false
+            let before = fixture.stub.requests.count
+            await fixture.store.createInvitation()
+            let replacement = try XCTUnwrap(fixture.store.activeInvitation)
+            XCTAssertNotEqual(replacement.invitationID, cancelled.invitationID)
+            XCTAssertNotEqual(replacement.code.invitationToken, cancelled.code.invitationToken)
+            let calls = Array(fixture.stub.requests.dropFirst(before))
+            XCTAssertEqual(calls.first?.httpMethod, "DELETE")
+            XCTAssertEqual(calls.first?.url?.path, path)
+            XCTAssertEqual(calls.filter { $0.httpMethod == "POST" && $0.url?.path == "/api/auth/invitations" }.count, 1)
+            XCTAssertTrue((fixture.defaults.dictionary(forKey: "photoInvitationRevocations") ?? [:]).isEmpty)
+        }
+    }
 }
 
 @MainActor
@@ -1250,22 +1596,43 @@ private final class StoreFixture {
     let suite = "InkyStoreTests.\(UUID().uuidString)"
     let defaults: UserDefaults
     let vaultService = "fr.mehdiguiard.inkystudio.tests.\(UUID().uuidString)"
+    let ownershipService = "InkyStoreOwnershipTests.\(UUID().uuidString)"
     let stub: StoreStub
     let store: AppStore
 
     let credentials = TestCredentials()
+    let photoCredentials = TestCredentials()
+    let photoVault: PhotoAccessVault
 
     init(totals: [String: Int] = [:], authenticateLocal: (@MainActor () async throws -> Void)? = nil,
          saveCredential: (@MainActor (String, String) throws -> Void)? = nil,
-         loadCredential: (@MainActor (String) async throws -> String)? = nil) {
+         loadCredential: (@MainActor (String) async throws -> String)? = nil,
+         savePhotoValue: (@MainActor (String, String) throws -> Void)? = nil,
+         pin: FrameIdentity? = nil) {
         let defaults = UserDefaults(suiteName: suite)!
         self.defaults = defaults
         let stub = StoreStub(totals: totals)
         self.stub = stub
         let credentialMemory = self.credentials
+        let photoMemory = self.photoCredentials
+        let protectedAccess = PhotoAccessVault(saveValue: { value, account in
+            try savePhotoValue?(value, account)
+            guard !photoMemory.rejectWrites else { throw VaultError.unavailable }
+            photoMemory.passwords[account] = value
+        }, loadValue: { account in
+            guard let value = photoMemory.passwords[account] else { throw VaultError.missing }
+            return value
+        }, containsValue: { photoMemory.passwords[$0] != nil }, removeValue: { account in
+            guard !photoMemory.rejectRemoval else { throw VaultError.unavailable }
+            photoMemory.passwords.removeValue(forKey: account)
+        })
+        photoVault = protectedAccess
         store = AppStore(defaults: defaults,
-                         makeAPI: { InkyAPI(baseURL: $0, configuration: stub.configuration()) },
+                         makeAPI: { InkyAPI(baseURL: $0, configuration: stub.configuration(), trustedIdentity: pin) },
                          vault: BiometricVault(service: vaultService),
+                         photoAccessVault: protectedAccess,
+                         ownershipVault: OwnershipVault(service: ownershipService),
+                         makePinnedAPI: { InkyAPI(baseURL: $0, configuration: stub.configuration(), trustedIdentity: $1) },
                          authenticateLocal: authenticateLocal ?? {},
                          invalidateAuthentication: {},
                          saveCredential: { password, address in
@@ -1305,12 +1672,18 @@ private final class StoreFixture {
         defaults.removePersistentDomain(forName: suite)
         SecItemDelete([kSecClass as String: kSecClassGenericPassword,
                        kSecAttrService as String: vaultService] as CFDictionary)
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                       kSecAttrService as String: ownershipService] as CFDictionary)
         stub.dispose()
     }
 }
 
 @MainActor
-private final class TestCredentials { var passwords: [String: String] = [:] }
+private final class TestCredentials {
+    var passwords: [String: String] = [:]
+    var rejectWrites = false
+    var rejectRemoval = false
+}
 
 @MainActor
 private final class LocalAuthGate {
@@ -1349,12 +1722,16 @@ private final class StoreStub: @unchecked Sendable {
     private let totals: [String: Int]
     private var gates: [String: StoreGate] = [:]
     private var calls: [URLRequest] = []
+    private var accessIdentity: FrameIdentity?
+    private var accessDeviceRoles: [String: String] = [:]
     private var responseErrors: [String: URLError] = [:]
     private var displayStatus: [String: Any]?
     private var customResponses: [String: (Data, Int)] = [:]
     private var nextResponses: [String: (Data, Int)] = [:]
     var requests: [URLRequest] { lock.withLock { calls } }
     init(totals: [String: Int]) { self.totals = totals }
+
+    func enablePhotoAccess(_ identity: FrameIdentity) { lock.withLock { accessIdentity = identity } }
 
     func failNext(host: String, path: String, error: URLError) {
         lock.withLock { responseErrors["\(host)|GET|\(path)"] = error }
@@ -1411,7 +1788,18 @@ private final class StoreStub: @unchecked Sendable {
 
     func dispose() { StoreURLProtocol.remove(id: id) }
 
-    func respond(_ request: URLRequest, completion: @escaping (Data, Int, URLError?) -> Void) {
+    func respond(_ original: URLRequest, completion: @escaping (Data, Int, URLError?) -> Void) {
+        var request = original
+        if request.httpBody == nil, let stream = request.httpBodyStream {
+            stream.open(); defer { stream.close() }
+            var bytes = Data(); var buffer = [UInt8](repeating: 0, count: 2048)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                if count <= 0 { break }
+                bytes.append(contentsOf: buffer.prefix(count))
+            }
+            request.httpBody = bytes
+        }
         let host = request.url!.host!
         let path = request.url!.path
         let key = "\(host)|\(request.httpMethod ?? "GET")|\(path)"
@@ -1428,6 +1816,25 @@ private final class StoreStub: @unchecked Sendable {
         let body: Any
         var defaultStatus = 200
         switch path {
+        case "/api/auth/invitations/claim", "/api/auth/device-session", "/api/auth/devices/enroll":
+            let fields = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any] ?? [:]
+            let identity = lock.withLock { accessIdentity }!
+            let deviceID = fields["device_id"] as? String ?? ""
+            let role: String = lock.withLock {
+                if path == "/api/auth/devices/enroll" { accessDeviceRoles[deviceID] = "owner" }
+                if path == "/api/auth/invitations/claim" { accessDeviceRoles[deviceID] = "media" }
+                return accessDeviceRoles[deviceID] ?? "media"
+            }
+            body = ["authenticated": true, "device_id": deviceID, "role": role,
+                "identity": ["frame_id": identity.id.uuidString.lowercased(), "spki_sha256": identity.spkiSHA256.map { String(format: "%02x", $0) }.joined()]]
+        case "/api/auth/invitations":
+            let fields = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any] ?? [:]
+            let identity = lock.withLock { accessIdentity }!
+            body = ["invitation_id": fields["invitation_id"] ?? "", "expires_at": Date().timeIntervalSince1970 + 300, "role": "media",
+                "identity": ["frame_id": identity.id.uuidString.lowercased(), "spki_sha256": identity.spkiSHA256.map { String(format: "%02x", $0) }.joined(), "url": "https://\(host):8443"]]
+        case "/api/auth/devices": body = ["devices": []]
+        case let value where value.hasPrefix("/api/auth/invitations/") || value.hasPrefix("/api/auth/devices/"):
+            body = ["revoked": true]
         case "/api/auth/status", "/api/auth/logout": body = ["authenticated": false, "auth_required": true, "password_change_supported": host != "legacy-frame.local"]
         case "/api/auth/login", "/api/auth/password": body = ["authenticated": true, "auth_required": true, "password_change_supported": host != "legacy-frame.local"]
         case "/api/health": body = ["status": "ok", "version": "0.4.2"]

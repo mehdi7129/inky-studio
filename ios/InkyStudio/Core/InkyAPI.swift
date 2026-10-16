@@ -6,6 +6,7 @@ import Foundation
 final class InkyAPI: FramePhotoClient {
     let baseURL: URL
     private let owner: OwnershipRecord?
+    let pinnedIdentity: FrameIdentity?
     private let configuration: URLSessionConfiguration
     private let redirectDelegate: OriginRedirectDelegate
     private var session: URLSession
@@ -18,9 +19,10 @@ final class InkyAPI: FramePhotoClient {
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
-    init(baseURL: URL, configuration: URLSessionConfiguration = .ephemeral, owner: OwnershipRecord? = nil) {
+    init(baseURL: URL, configuration: URLSessionConfiguration = .ephemeral, owner: OwnershipRecord? = nil, trustedIdentity: FrameIdentity? = nil) {
         self.baseURL = baseURL
         self.owner = owner
+        pinnedIdentity = trustedIdentity ?? owner?.identity
         let isolated = configuration.copy() as! URLSessionConfiguration
         isolated.httpShouldSetCookies = false
         isolated.httpCookieStorage = nil
@@ -33,7 +35,7 @@ final class InkyAPI: FramePhotoClient {
         isolated.timeoutIntervalForRequest = 30
         isolated.timeoutIntervalForResource = 120
         self.configuration = isolated
-        let delegate = OriginRedirectDelegate(origin: baseURL, trust: owner.map { FrameTrustPolicy(identity: $0.identity) })
+        let delegate = OriginRedirectDelegate(origin: baseURL, trust: pinnedIdentity.map { FrameTrustPolicy(identity: $0) })
         redirectDelegate = delegate
         session = URLSession(configuration: isolated, delegate: delegate, delegateQueue: nil)
         decoder = JSONDecoder()
@@ -284,6 +286,40 @@ final class InkyAPI: FramePhotoClient {
         return result
     }
 
+    /// A candidate inherits only this HTTPS origin's cookie. Its replies cannot overwrite the live session.
+    func photoAccessCandidate() throws -> InkyAPI {
+        guard let pinnedIdentity else { throw PhotoAccessError.trustedHTTPSRequired }
+        try FrameTrustPolicy(identity: pinnedIdentity).validateHTTPS(baseURL)
+        let candidate = InkyAPI(baseURL: baseURL, configuration: configuration, trustedIdentity: pinnedIdentity)
+        candidate.cookies = cookies
+        return candidate
+    }
+
+    /// Commit a validated owner device session without exposing an intermediate cookie to live requests.
+    func commitPhotoAccessSession(from candidate: InkyAPI) throws {
+        guard candidate.pinnedIdentity == pinnedIdentity,
+              OriginRedirectDelegate.sameOrigin(baseURL, candidate.baseURL) else { throw PhotoAccessError.identityMismatch }
+        let saved = candidate.cookies
+        clearSession()
+        cookies = saved
+    }
+
+    /// New PHOTO credentials are sent only on this connection's independently pinned HTTPS origin.
+    func photoAccessRequest(_ method: String, path: String, body: Data? = nil) async throws -> Data {
+        guard let pinnedIdentity else { throw PhotoAccessError.trustedHTTPSRequired }
+        try FrameTrustPolicy(identity: pinnedIdentity).validateHTTPS(baseURL)
+        var call = try request(method, path: path, timeout: 15)
+        call.setValue("1", forHTTPHeaderField: "X-Inky-Direct-Auth")
+        if let body { call.setValue("application/json", forHTTPHeaderField: "Content-Type"); call.httpBody = body }
+        return try await perform(call)
+    }
+
+    func updateSchedule(_ settings: FrameSettings) async throws -> FrameSettings {
+        struct Schedule: Encodable { let changeMode: ChangeMode; let changeHour: Int; let changeIntervalMinutes: Int }
+        return try await send("POST", path: "/api/settings", body: Schedule(changeMode: settings.changeMode,
+            changeHour: settings.changeHour, changeIntervalMinutes: settings.changeIntervalMinutes))
+    }
+
     private func get<T: Decodable>(_ path: String, query: [URLQueryItem] = [], timeout: TimeInterval = 30) async throws -> T {
         let data = try await perform(request("GET", path: path, query: query, timeout: timeout))
         return try decodeResponse(data)
@@ -307,7 +343,8 @@ final class InkyAPI: FramePhotoClient {
     private func request(
         _ method: String, path: String, query: [URLQueryItem] = [], timeout: TimeInterval = 30
     ) throws -> URLRequest {
-        if let owner { try FrameTrustPolicy(identity: owner.identity).validateHTTPS(baseURL) }
+        if let pinnedIdentity { try FrameTrustPolicy(identity: pinnedIdentity).validateHTTPS(baseURL) }
+        if let owner, owner.identity != pinnedIdentity { throw PhotoAccessError.identityMismatch }
         guard var parts = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
               ["http", "https"].contains(parts.scheme?.lowercased() ?? ""),
               parts.user == nil, parts.password == nil else { throw APIError.invalidResponse }
@@ -441,7 +478,8 @@ final class OriginRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked
         newRequest request: URLRequest,
         completionHandler: @escaping @Sendable (URLRequest?) -> Void
     ) {
-        guard let url = request.url, Self.sameOrigin(url, origin), url.user == nil, url.password == nil else {
+        guard task.originalRequest?.value(forHTTPHeaderField: "X-Inky-Direct-Auth") != "1",
+              let url = request.url, Self.sameOrigin(url, origin), url.user == nil, url.password == nil else {
             completionHandler(nil)
             return
         }
