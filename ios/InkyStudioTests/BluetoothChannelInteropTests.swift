@@ -11,18 +11,23 @@ import XCTest
         let maxFrameLength: Int
         let process = Process(), input = Pipe(), output = Pipe()
         let identity: Data
+        let profile: BluetoothProfile
         var exchangeCount = 0
         var cancelled = false
         var badACK = false
         var block = false
         var pending: CheckedContinuation<Data, Error>?
         var directory: URL
-        init(maximum: Int, serverMaximum: Int?, root: String, fixtures: String, delayFirstReply: Bool) throws {
+        init(maximum: Int, serverMaximum: Int?, root: String, fixtures: String, delayFirstReply: Bool,
+             profile: BluetoothProfile = .normalV1, serverALPN: String = "default", certificateLabel: String = "valid") throws {
             maxFrameLength = maximum
+            self.profile = profile
             let fixture = URL(fileURLWithPath: fixtures)
-            identity = try JSONSerialization.data(withJSONObject: ["v": 1,
+            var metadata: [String: Any] = ["v": profile == .bootstrap ? 2 : 1,
                 "id": "00000000-0000-4000-8000-000000000001",
-                "cert": Data(contentsOf: fixture.appendingPathComponent("valid.der")).base64EncodedString()])
+                "cert": try Data(contentsOf: fixture.appendingPathComponent(certificateLabel + ".der")).base64EncodedString()]
+            if profile == .bootstrap { metadata["p"] = "bootstrap" }
+            identity = try JSONSerialization.data(withJSONObject: metadata)
             directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
                                                     attributes: [.posixPermissions: 0o700])
@@ -30,11 +35,17 @@ import XCTest
             try Self.python.write(to: helper, atomically: true, encoding: .utf8)
             let python = ProcessInfo.processInfo.environment["INKY_TLS_TEST_PYTHON"]
             process.executableURL = URL(fileURLWithPath: python ?? "/usr/bin/env")
-            process.arguments = (python == nil ? ["python3"] : []) + ["-u", helper.path, root, fixtures, String((serverMaximum ?? maximum) + 3), delayFirstReply ? "1" : "0"]
+            process.arguments = (python == nil ? ["python3"] : []) + ["-u", helper.path, root, fixtures,
+                String((serverMaximum ?? maximum) + 3), delayFirstReply ? "1" : "0", profile.rawValue, serverALPN, certificateLabel]
             process.standardInput = input; process.standardOutput = output; process.standardError = FileHandle.standardError
             try process.run()
         }
-        func connect(peripheralID: UUID) async throws -> Data { cancelled = false; return identity }
+        func connect(peripheralID: UUID) async throws -> Data { try await connect(peripheralID: peripheralID, profile: .normalV1) }
+        func connect(peripheralID: UUID, profile: BluetoothProfile) async throws -> Data {
+            guard profile == self.profile else { throw BluetoothTransportError.unsupportedFrame }
+            cancelled = false
+            return identity
+        }
         func exchange(_ frame: Data) async throws -> Data {
             if block { return try await withCheckedThrowingContinuation { pending = $0 } }
             exchangeCount += 1
@@ -72,17 +83,32 @@ import XCTest
         import asyncio, base64, importlib.util, ssl, sys
         from pathlib import Path
         root, fixtures, mtu = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
-        spec = importlib.util.spec_from_file_location('inky_transport', root/'server/inky_web/provisioning/transport.py')
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.minimum_version = context.maximum_version = ssl.TLSVersion.TLSv1_3
-        context.num_tickets = 0
-        context.load_cert_chain(fixtures/'valid.pem', fixtures/'server.key')
+        profile, alpn, label = sys.argv[5:8]
+        if profile == 'bootstrap':
+            sys.path.insert(0, str(root/'server'))
+            from inky_web.provisioning import transport as module
+            from inky_web.provisioning.bootstrap_tls import BootstrapTLSContext
+            from inky_web.provisioning.identity import Identity
+            identity = Identity('00000000-0000-4000-8000-000000000001',
+                                (fixtures/(label+'.pem')).read_bytes(), (fixtures/'server.key').read_bytes(), fixtures)
+            context = BootstrapTLSContext(identity)
+            if alpn != 'default':
+                context._context.set_alpn_protocols([] if alpn == 'none' else [alpn])
+            options = {'profile': module.BOOTSTRAP_PROFILE}
+        else:
+            spec = importlib.util.spec_from_file_location('inky_transport', root/'server/inky_web/provisioning/transport.py')
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.minimum_version = context.maximum_version = ssl.TLSVersion.TLSv1_3
+            context.num_tickets = 0
+            context.load_cert_chain(fixtures/(label+'.pem'), fixtures/'server.key')
+            options = {}
         async def echo(message):
             return message
         async def main():
-            transport = module.GATTTransport(context, echo)
+            transport = module.GATTTransport(context, echo, **options)
             delay = sys.argv[4] == '1'
             for line in sys.stdin:
                 if delay:
@@ -95,15 +121,71 @@ import XCTest
         asyncio.run(main())
         """
     }
-    private func setup(maximum: Int = 244, serverMaximum: Int? = nil, delayFirstReply: Bool = false) throws -> (PeerTransport, FrameIdentity) {
+    private func setup(maximum: Int = 244, serverMaximum: Int? = nil, delayFirstReply: Bool = false,
+                       profile: BluetoothProfile = .normalV1, serverALPN: String = "default",
+                       certificateLabel: String = "valid") throws -> (PeerTransport, FrameIdentity) {
         guard let root = ProcessInfo.processInfo.environment["INKY_REPO_ROOT"],
               let fixtures = ProcessInfo.processInfo.environment["INKY_TLS_FIXTURES"] else {
             throw XCTSkip("Set INKY_REPO_ROOT and INKY_TLS_FIXTURES for pipe-only TLS interop")
         }
-        let peer = try PeerTransport(maximum: maximum, serverMaximum: serverMaximum, root: root, fixtures: fixtures, delayFirstReply: delayFirstReply)
+        let peer = try PeerTransport(maximum: maximum, serverMaximum: serverMaximum, root: root, fixtures: fixtures,
+            delayFirstReply: delayFirstReply, profile: profile, serverALPN: serverALPN, certificateLabel: certificateLabel)
         let identity = try FrameIdentity(id: UUID(uuidString: "00000000-0000-4000-8000-000000000001")!,
             spkiSHA256: Data(contentsOf: URL(fileURLWithPath: fixtures).appendingPathComponent("pin.bin")))
         return (peer, identity)
+    }
+
+    func testRealBootstrapTLSAndALPNUseOnlyBootstrapRequestCapability() async throws {
+        for maximum in [20, 244] {
+            let (peer, identity) = try setup(maximum: maximum, profile: .bootstrap)
+            defer { peer.stop() }
+            let channel = SecureBluetoothChannel(transport: peer)
+            let verified = try await channel.connectBootstrap(peripheralID: UUID(), identity: identity)
+            XCTAssertEqual(verified.identity, identity)
+            XCTAssertEqual(channel.bootstrapTrust, verified)
+            XCTAssertNil(channel.trust, "Bootstrap must never manufacture normal pinned trust")
+            let request = Data("{\"echo\":\"synthetic bootstrap only\"}".utf8)
+            let before = peer.exchangeCount
+            do { _ = try await channel.request(request); XCTFail("Normal API admitted a bootstrap request") }
+            catch { XCTAssertEqual(error as? SecureBluetoothError, .notConnected) }
+            XCTAssertEqual(peer.exchangeCount, before)
+            let response = try await channel.requestBootstrap(request)
+            XCTAssertEqual(response, request)
+            channel.disconnect()
+            XCTAssertNil(channel.bootstrapTrust)
+        }
+    }
+
+    func testRealBootstrapRejectsMissingOrIncorrectALPNBeforePlaintext() async throws {
+        for alpn in ["none", "other-protocol/1"] {
+            let (peer, identity) = try setup(profile: .bootstrap, serverALPN: alpn)
+            defer { peer.stop() }
+            let channel = SecureBluetoothChannel(transport: peer)
+            do { _ = try await channel.connectBootstrap(peripheralID: UUID(), identity: identity); XCTFail("Incorrect ALPN accepted") }
+            catch {}
+            XCTAssertNil(channel.bootstrapTrust)
+            XCTAssertNil(channel.trust)
+            XCTAssertTrue(peer.cancelled)
+            do { _ = try await channel.requestBootstrap(Data("{\"claim_token\":\"synthetic-only\"}".utf8)); XCTFail("Secret admitted after failed ALPN") }
+            catch { XCTAssertEqual(error as? SecureBluetoothError, .notConnected) }
+        }
+    }
+
+    func testBootstrapDateExceptionDoesNotCarryIntoFreshNormalTrust() async throws {
+        let (peer, identity) = try setup(profile: .bootstrap, certificateLabel: "expired")
+        defer { peer.stop() }
+        let channel = SecureBluetoothChannel(transport: peer)
+        _ = try await channel.connectBootstrap(peripheralID: UUID(), identity: identity)
+        channel.disconnect()
+        let (normalPeer, normalIdentity) = try setup(certificateLabel: "expired")
+        defer { normalPeer.stop() }
+        XCTAssertEqual(normalIdentity, identity)
+        let normal = SecureBluetoothChannel(transport: normalPeer)
+        do { _ = try await normal.connect(peripheralID: UUID(), identity: identity); XCTFail("Bootstrap date exception leaked into normal TLS") }
+        catch { XCTAssertEqual(error as? FrameIdentityError, .certificateRejected) }
+        XCTAssertEqual(normalPeer.exchangeCount, 0)
+        XCTAssertNil(normal.trust)
+        XCTAssertNil(normal.bootstrapTrust)
     }
 
     func testPipeTransportWaitsBeyondOnePollInterval() async throws {

@@ -10,8 +10,8 @@ import Security
 /// The existing normal trust implementation remains unchanged.
 ///
 /// This is not proof of a completed TLS handshake, negotiated bootstrap ALPN,
-/// possession of the private key, or authorization of an owner. A future separate
-/// bootstrap channel must establish those before transmitting any secret. This
+/// possession of the private key, or authorization of an owner. The separate
+/// SecureBluetoothChannel bootstrap API establishes TLS/ALPN before transmitting any secret. This
 /// type exposes no HTTPS credential, normal trust policy, or conversion to one.
 @available(iOS 18.0, macOS 15.0, *)
 struct BootstrapFrameTrust: Equatable, Sendable {

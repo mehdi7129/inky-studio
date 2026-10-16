@@ -314,6 +314,32 @@ final class InkyAPI: FramePhotoClient {
         return try await perform(call)
     }
 
+    /// Factory enrollment uses BLE authority for this request only. Its PHOTO
+    /// session client must remain free of BLE headers and pre-existing cookies.
+    func factoryPhotoEnrollment(_ body: Data, owner bleOwner: OwnershipRecord) async throws -> Data {
+        guard owner == nil, cookies.isEmpty, pinnedIdentity == bleOwner.identity,
+              bleOwner.state == .claimed, body.count <= 16_384 else { throw PhotoAccessError.identityMismatch }
+        try FrameTrustPolicy(identity: bleOwner.identity).validateHTTPS(baseURL)
+        var call = try request("POST", path: "/api/auth/factory-device-enroll", timeout: 15)
+        call.setValue("1", forHTTPHeaderField: "X-Inky-Direct-Auth")
+        call.httpBody = body
+        call.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        call.setValue(bleOwner.ownerID.uuidString.lowercased(), forHTTPHeaderField: "X-Inky-Owner-Id")
+        call.setValue(bleOwner.ownerTokenHex, forHTTPHeaderField: "X-Inky-Owner-Token")
+        let epoch = sessionGeneration
+        let (data, response) = try await HTTPDeadline.data(for: call, using: session)
+        try Task.checkCancellation()
+        guard epoch == sessionGeneration else { throw CancellationError() }
+        guard let response = response as? HTTPURLResponse, let url = response.url,
+              OriginRedirectDelegate.sameOrigin(url, baseURL), data.count <= 16_384,
+              response.value(forHTTPHeaderField: "Set-Cookie") == nil,
+              response.mimeType?.lowercased() == "application/json" else { throw APIError.invalidResponse }
+        guard (200..<300).contains(response.statusCode) else {
+            throw APIError.response(status: response.statusCode, data: data)
+        }
+        return data
+    }
+
     func updateSchedule(_ settings: FrameSettings) async throws -> FrameSettings {
         struct Schedule: Encodable { let changeMode: ChangeMode; let changeHour: Int; let changeIntervalMinutes: Int }
         return try await send("POST", path: "/api/settings", body: Schedule(changeMode: settings.changeMode,

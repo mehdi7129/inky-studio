@@ -68,10 +68,22 @@ struct RootView: View {
         .overlay {
             if phase != .active { PrivacyCoverView() }
         }
-        .sheet(isPresented: $finishingPairing) { LANLoginScannerView() }
+        .sheet(isPresented: $finishingPairing, onDismiss: { store.presentQueuedFactorySetup() }) { LANLoginScannerView() }
         .sheet(isPresented: $sharingAccess, onDismiss: {
             store.cancelPhotoAccessOperation()
         }) { ShareAccessView() }
+        .sheet(item: $store.factorySetupPresentation, onDismiss: {
+            store.cancelFactorySetup()
+        }) { request in
+            BluetoothSetupView(initialBootstrapCode: request.code, initialFactoryOwner: request.owner,
+                authorize: { await store.authorizeFactorySetup() },
+                onClose: { store.cancelFactorySetup() },
+                didFinishFactory: { endpoint, owner, status in
+                    await store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status)
+                }) { endpoint, owner in
+                    await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
+                }
+        }
         .onChange(of: phase) { _, value in
             store.sceneChanged(value)
             if value == .background { finishingPairing = false; sharingAccess = false }

@@ -3,22 +3,32 @@ import Security
 
 struct OwnershipRecord: Codable, Equatable, Sendable {
     enum State: String, Codable, Sendable { case pending, claimed }
+    enum FactoryProfile: String, Codable, Sendable { case bootstrap, normalV1 }
     let identity: FrameIdentity
-    let certificateDER: Data
+    var certificateDER: Data
     let ownerID: UUID
     let claimRequestID: UUID
     let ownerToken: Data
-    let endpoints: [URL]
-    let state: State
+    var endpoints: [URL]
+    var state: State
     var wifiTransactionID: UUID?
     var wifiSSID: String?
+    // Missing fields decode as nil for existing v1 records; no destructive migration.
+    var factoryProfile: FactoryProfile? = nil
+    var factorySetupOperationID: UUID? = nil
+    var factoryExpectedNormal: Bool? = nil
+    var factoryPhotoAccessComplete: Bool? = nil
+    var isFactory: Bool { factoryProfile != nil }
+    var isFactoryBootstrap: Bool { factoryProfile == .bootstrap }
+    var isFactorySetupPending: Bool { isFactory && factoryPhotoAccessComplete != true }
 
     var id: UUID { identity.id }
     var expectedServerName: String { identity.expectedServerName }
     var ownerTokenHex: String { ownerToken.map { String(format: "%02x", $0) }.joined() }
     var trustPolicy: FrameTrustPolicy { FrameTrustPolicy(identity: identity) }
     func trust() throws -> PinnedFrameTrust {
-        try PinnedFrameTrust(identity: identity, certificateDER: certificateDER)
+        guard factoryProfile != .bootstrap else { throw OwnershipVaultError.invalidRecord }
+        return try PinnedFrameTrust(identity: identity, certificateDER: certificateDER)
     }
 }
 
@@ -38,7 +48,7 @@ struct OwnershipVault: Sendable {
             guard existing.identity == identity else {
                 throw OwnershipVaultError.identityChanged
             }
-            guard existing.state == .pending else { throw OwnershipVaultError.alreadyClaimed }
+            guard existing.factoryProfile == nil, existing.state == .pending else { throw OwnershipVaultError.alreadyClaimed }
             return try refreshPendingCertificate(existing, certificateDER: certificateDER)
         }
         guard try allRecords().count < 8 else { throw OwnershipVaultError.capacityReached }
@@ -67,12 +77,84 @@ struct OwnershipVault: Sendable {
         return record
     }
 
+    /// Bootstrap storage never invokes normal certificate date validation or creates LAN authority.
+    func prepareBootstrap(identity: FrameIdentity, certificateDER: Data) throws -> OwnershipRecord {
+        _ = try BootstrapFrameTrust(identity: identity, certificateDER: certificateDER)
+        if let existing = try load(id: identity.id) {
+            guard existing.identity == identity else { throw OwnershipVaultError.identityChanged }
+            guard existing.factoryProfile == .bootstrap else { throw OwnershipVaultError.alreadyClaimed }
+            return try refreshBootstrapCertificate(id: existing.id, certificateDER: certificateDER)
+        }
+        guard try allRecords().count < 8 else { throw OwnershipVaultError.capacityReached }
+        var token = Data(count: 32)
+        let status = token.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, $0.count, $0.baseAddress!) }
+        guard status == errSecSuccess else { throw OwnershipVaultError.unavailable }
+        let record = OwnershipRecord(identity: identity, certificateDER: certificateDER, ownerID: UUID(),
+            claimRequestID: UUID(), ownerToken: token, endpoints: [], state: .pending, factoryProfile: .bootstrap)
+        var query = baseQuery(id: identity.id)
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        query[kSecValueData as String] = try JSONEncoder().encode(record)
+        let added = SecItemAdd(query as CFDictionary, nil)
+        if added == errSecDuplicateItem {
+            guard let existing = try load(id: identity.id), existing.identity == identity,
+                  existing.factoryProfile == .bootstrap else { throw OwnershipVaultError.identityChanged }
+            return existing
+        }
+        guard added == errSecSuccess else { throw OwnershipVaultError.unavailable }
+        return record
+    }
+
+    func refreshBootstrapCertificate(id: UUID, certificateDER: Data) throws -> OwnershipRecord {
+        guard var record = try load(id: id), record.factoryProfile == .bootstrap else { throw OwnershipVaultError.invalidRecord }
+        _ = try BootstrapFrameTrust(identity: record.identity, certificateDER: certificateDER)
+        record.certificateDER = certificateDER
+        try update(record)
+        return record
+    }
+
+    /// Only call after a fresh, strictly date-valid normal TLS connection on the persisted UUID/SPKI.
+    func promoteFactoryNormal(id: UUID, certificateDER: Data) throws -> OwnershipRecord {
+        guard var record = try load(id: id), record.factoryProfile != nil else { throw OwnershipVaultError.invalidRecord }
+        _ = try PinnedFrameTrust(identity: record.identity, certificateDER: certificateDER)
+        record.certificateDER = certificateDER
+        record.factoryProfile = .normalV1
+        record.factoryExpectedNormal = nil
+        try update(record)
+        return record
+    }
+
+    func setFactoryOperation(id: UUID, operationID: UUID) throws -> OwnershipRecord {
+        guard var record = try load(id: id), record.factoryProfile != nil, record.state == .claimed else {
+            throw OwnershipVaultError.invalidRecord
+        }
+        record.factorySetupOperationID = operationID
+        try update(record)
+        return record
+    }
+
+    func expectFactoryNormal(id: UUID) throws -> OwnershipRecord {
+        guard var record = try load(id: id), record.isFactory else { throw OwnershipVaultError.invalidRecord }
+        record.factoryExpectedNormal = true
+        try update(record)
+        return record
+    }
+
+    func markFactoryPhotoCompleted(id: UUID) throws -> OwnershipRecord {
+        guard var record = try load(id: id), record.factoryProfile == .normalV1 else { throw OwnershipVaultError.invalidRecord }
+        record.factoryPhotoAccessComplete = true
+        try update(record)
+        return record
+    }
+
     /// Call only after an authenticated claim result (or ownership recovery).
     @discardableResult
     func markClaimed(id: UUID, endpoint: URL? = nil) throws -> OwnershipRecord {
         guard let old = try load(id: id) else { throw OwnershipVaultError.missing }
         let trust = old.trustPolicy
-        if let endpoint { try trust.validateHTTPS(endpoint) }
+        if let endpoint {
+            guard old.factoryProfile != .bootstrap else { throw OwnershipVaultError.invalidRecord }
+            try trust.validateHTTPS(endpoint)
+        }
         // Keep the most recent occurrence of each endpoint, oldest first. A
         // new network must not block finishing an authenticated Wi-Fi transaction.
         var endpoints: [URL] = []
@@ -81,10 +163,9 @@ struct OwnershipVault: Sendable {
             endpoints.append(knownEndpoint)
         }
         endpoints = Array(endpoints.suffix(16))
-        let record = OwnershipRecord(identity: old.identity, certificateDER: old.certificateDER,
-                                     ownerID: old.ownerID, claimRequestID: old.claimRequestID,
-                                     ownerToken: old.ownerToken, endpoints: endpoints, state: .claimed,
-                                     wifiTransactionID: old.wifiTransactionID, wifiSSID: old.wifiSSID)
+        var record = old
+        record.endpoints = endpoints
+        record.state = .claimed
         try update(record)
         return record
     }
@@ -92,11 +173,10 @@ struct OwnershipVault: Sendable {
     @discardableResult
     func refreshCertificate(id: UUID, certificateDER: Data) throws -> OwnershipRecord {
         guard let old = try load(id: id) else { throw OwnershipVaultError.missing }
+        guard old.factoryProfile != .bootstrap else { throw OwnershipVaultError.invalidRecord }
         _ = try PinnedFrameTrust(identity: old.identity, certificateDER: certificateDER)
-        let record = OwnershipRecord(identity: old.identity, certificateDER: certificateDER,
-                                     ownerID: old.ownerID, claimRequestID: old.claimRequestID,
-                                     ownerToken: old.ownerToken, endpoints: old.endpoints, state: old.state,
-                                     wifiTransactionID: old.wifiTransactionID, wifiSSID: old.wifiSSID)
+        var record = old
+        record.certificateDER = certificateDER
         try update(record)
         return record
     }
@@ -104,7 +184,7 @@ struct OwnershipVault: Sendable {
     /// Explicit physical re-adoption after the pinned server rejected an existing
     /// owner. Replacing the one Keychain blob preserves all-or-nothing storage.
     func replaceUnauthorizedOwner(id: UUID, certificateDER: Data) throws -> OwnershipRecord {
-        guard let old = try load(id: id) else { throw OwnershipVaultError.invalidRecord }
+        guard let old = try load(id: id), old.factoryProfile == nil else { throw OwnershipVaultError.invalidRecord }
         _ = try PinnedFrameTrust(identity: old.identity, certificateDER: certificateDER)
         var token = Data(count: 32)
         let result = token.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, $0.count, $0.baseAddress!) }
@@ -178,10 +258,8 @@ struct OwnershipVault: Sendable {
     }
     private func refreshPendingCertificate(_ old: OwnershipRecord, certificateDER: Data) throws -> OwnershipRecord {
         guard old.certificateDER != certificateDER else { return old }
-        let refreshed = OwnershipRecord(identity: old.identity, certificateDER: certificateDER,
-                                        ownerID: old.ownerID, claimRequestID: old.claimRequestID,
-                                        ownerToken: old.ownerToken, endpoints: old.endpoints, state: .pending,
-                                        wifiTransactionID: old.wifiTransactionID, wifiSSID: old.wifiSSID)
+        var refreshed = old
+        refreshed.certificateDER = certificateDER
         try update(refreshed)
         return refreshed
     }
@@ -200,6 +278,10 @@ struct OwnershipVault: Sendable {
         // key. Check its pinned identity here; fresh BLE/HTTPS evaluates its dates.
         guard try PinnedFrameTrust.spkiSHA256(certificateDER: record.certificateDER) == record.identity.spkiSHA256 else {
             throw OwnershipVaultError.identityChanged
+        }
+        if record.factoryProfile == .bootstrap {
+            guard record.endpoints.isEmpty else { throw OwnershipVaultError.invalidRecord }
+            _ = try BootstrapFrameTrust(identity: record.identity, certificateDER: record.certificateDER)
         }
         let trust = record.trustPolicy
         for endpoint in record.endpoints { try trust.validateHTTPS(endpoint) }

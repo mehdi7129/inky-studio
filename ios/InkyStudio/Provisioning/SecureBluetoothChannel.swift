@@ -69,13 +69,14 @@ struct BluetoothMessageBuffer {
     }
 }
 
-/// TLS 1.3 over the v1 GATT byte stream, reusable on iOS and macOS. Commands remain
+/// TLS 1.3 over a profile-specific GATT byte stream, reusable on iOS and macOS. Commands remain
 /// opaque JSON bytes: the coordinator owns request IDs, ownership and operations.
 /// Each reconnect verifies a fresh certificate against the persisted physical pin.
 @MainActor final class SecureBluetoothChannel {
     private let transport: any BluetoothExchanging
     private var tls: TLSClient?
     private(set) var trust: PinnedFrameTrust?
+    private(set) var bootstrapTrust: BootstrapFrameTrust?
     private var records = BluetoothRecordState()
     private var operation: UUID?
     private var termination: SecureBluetoothError?
@@ -84,24 +85,59 @@ struct BluetoothMessageBuffer {
     init(transport: any BluetoothExchanging) { self.transport = transport }
 
     func connect(peripheralID: UUID, identity: FrameIdentity) async throws -> PinnedFrameTrust {
+        guard case let .normal(verified) = try await establish(peripheralID: peripheralID, identity: identity, profile: .normalV1) else {
+            throw SecureBluetoothError.invalidIdentity
+        }
+        return verified
+    }
+
+    /// Uses the isolated date-relaxed bootstrap policy. The existing TLS primitive
+    /// refuses plaintext until TLS 1.3, private-key possession and inky-bootstrap/1 ALPN succeed.
+    func connectBootstrap(peripheralID: UUID, identity: FrameIdentity) async throws -> BootstrapFrameTrust {
+        guard case let .bootstrap(verified) = try await establish(peripheralID: peripheralID, identity: identity, profile: .bootstrap) else {
+            throw SecureBluetoothError.invalidIdentity
+        }
+        return verified
+    }
+
+    private enum VerifiedConnection {
+        case normal(PinnedFrameTrust), bootstrap(BootstrapFrameTrust)
+    }
+
+    private func establish(peripheralID: UUID, identity: FrameIdentity, profile: BluetoothProfile) async throws -> VerifiedConnection {
         let id = try begin(timeout: 45)
         tls = nil
         trust = nil
+        bootstrapTrust = nil
         records = BluetoothRecordState()
         defer { finish(id) }
         return try await withTaskCancellationHandler {
             do {
-                let data = try await transport.connect(peripheralID: peripheralID)
+                let data = try await transport.connect(peripheralID: peripheralID, profile: profile)
                 try check(id)
-                struct PublicIdentity: Decodable { let v: Int; let id: UUID; let cert: Data }
-                guard data.count <= 4096, let advertised = try? JSONDecoder().decode(PublicIdentity.self, from: data),
-                      advertised.v == 1, advertised.id == identity.id else { throw SecureBluetoothError.invalidIdentity }
-                // Both SPKI comparison and Security's date/name/usage validation
-                // precede RESET/TLS. The TLS bridge independently validates X509.
-                let verified = try PinnedFrameTrust(identity: identity, certificateDER: advertised.cert)
-                let configuration = try TLSConfiguration(serverName: verified.expectedServerName,
-                    trustedCertificatesDER: [verified.certificateDER], pinnedSPKISHA256: identity.spkiSHA256)
-                let client = try TLSClient(configuration: configuration)
+                let verified: VerifiedConnection
+                let client: TLSClient
+                if profile == .bootstrap {
+                    guard let fields = try? BootstrapFlatObject.parse(data, maximum: 4096, keys: ["v", "p", "id", "cert"]),
+                          case .integer("2") = fields["v"], case .string("bootstrap") = fields["p"],
+                          case let .string(identifier) = fields["id"], BootstrapFlatObject.uuid(identifier) == identity.id,
+                          case let .string(encoded) = fields["cert"], let certificate = Data(base64Encoded: encoded),
+                          (1...960).contains(certificate.count) else { throw SecureBluetoothError.invalidIdentity }
+                    let prevalidation = try BootstrapFrameTrust(identity: identity, certificateDER: certificate)
+                    verified = .bootstrap(prevalidation)
+                    client = try TLSClient(bootstrapConfiguration: BootstrapTLSConfiguration(
+                        serverName: prevalidation.expectedServerName, trustedCertificateDER: prevalidation.certificateDER,
+                        pinnedSPKISHA256: identity.spkiSHA256))
+                } else {
+                    struct PublicIdentity: Decodable { let v: Int; let id: UUID; let cert: Data }
+                    guard data.count <= 4096, let advertised = try? JSONDecoder().decode(PublicIdentity.self, from: data),
+                          advertised.v == 1, advertised.id == identity.id else { throw SecureBluetoothError.invalidIdentity }
+                    // Normal trust still checks the actual current certificate date.
+                    let normal = try PinnedFrameTrust(identity: identity, certificateDER: advertised.cert)
+                    verified = .normal(normal)
+                    client = try TLSClient(configuration: TLSConfiguration(serverName: normal.expectedServerName,
+                        trustedCertificatesDER: [normal.certificateDER], pinnedSPKISHA256: identity.spkiSHA256))
+                }
                 var nonce = Data(count: 16)
                 let result = nonce.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, $0.count, $0.baseAddress!) }
                 guard result == errSecSuccess else { throw SecureBluetoothError.randomUnavailable }
@@ -118,7 +154,13 @@ struct BluetoothMessageBuffer {
                     if progress == .complete, outbound.isEmpty { break }
                     try await transfer(outbound, client: client, operation: id)
                 }
-                trust = verified
+                try check(id)
+                guard await client.state == .open else { throw SecureBluetoothError.notConnected }
+                try check(id)
+                switch verified {
+                case .normal(let normal): trust = normal
+                case .bootstrap(let bootstrap): bootstrapTrust = bootstrap
+                }
                 return verified
             } catch {
                 let result = termination ?? (error as? SecureBluetoothError)
@@ -133,8 +175,18 @@ struct BluetoothMessageBuffer {
     /// Claim may use 90 seconds because its physical e-ink update is slow; other
     /// requests default to 20 seconds. There is no pending-request queue.
     func request(_ data: Data, timeout: TimeInterval = 20) async throws -> Data {
+        try await sendRequest(data, timeout: timeout, profile: .normalV1)
+    }
+
+    func requestBootstrap(_ data: Data, timeout: TimeInterval = 20) async throws -> Data {
+        try await sendRequest(data, timeout: timeout, profile: .bootstrap)
+    }
+
+    private func sendRequest(_ data: Data, timeout: TimeInterval, profile: BluetoothProfile) async throws -> Data {
         let framed = try BluetoothMessageBuffer.encode(data)
-        guard let client = tls, trust != nil else { throw SecureBluetoothError.notConnected }
+        guard let client = tls, (profile == .normalV1 ? trust != nil : bootstrapTrust != nil) else {
+            throw SecureBluetoothError.notConnected
+        }
         let id = try begin(timeout: timeout)
         defer { finish(id) }
         return try await withTaskCancellationHandler {
@@ -228,6 +280,7 @@ struct BluetoothMessageBuffer {
         transport.cancel()
         tls = nil
         trust = nil
+        bootstrapTrust = nil
         records = BluetoothRecordState()
     }
     private func finish(_ id: UUID) {

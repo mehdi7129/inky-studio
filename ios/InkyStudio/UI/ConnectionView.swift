@@ -12,6 +12,10 @@ struct ConnectionView: View {
         let arguments = ProcessInfo.processInfo.arguments
         return arguments.contains("--uitesting") && arguments.contains("--legacy-login-fixture")
     }
+    private var bluetoothFixture: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("--uitesting") && arguments.contains("--bluetooth-fixture")
+    }
     #endif
 
     var body: some View {
@@ -40,6 +44,12 @@ struct ConnectionView: View {
                     .buttonStyle(PrimaryButtonStyle()).padding(.top, 20)
                     .disabled(store.connecting || store.unlocking)
                     .accessibilityIdentifier("connection.scanLANQR")
+                    if store.hasPendingFactorySetup {
+                        Button("Reprendre la configuration") { store.resumeFactorySetup() }
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .disabled(store.connecting || store.unlocking)
+                            .accessibilityIdentifier("connection.resumeFactory")
+                    }
                     if store.recoveringConnection {
                         Text("Votre accès enregistré est conservé jusqu’à la validation du nouveau QR.")
                             .font(.footnote).foregroundStyle(Bento.secondaryInk).padding(.top, 16)
@@ -61,6 +71,10 @@ struct ConnectionView: View {
                     }
                     #if DEBUG
                     if legacyLoginFixture { fixtureLogin.padding(.top, 20) }
+                    else if bluetoothFixture {
+                        Button("Ouvrir la fixture Wi-Fi") { bluetoothSetup = true }
+                            .accessibilityIdentifier("connection.bluetooth").padding(.top, 20)
+                    }
                     #endif
                     Spacer(minLength: 44)
                     VStack(spacing: 12) {
@@ -85,10 +99,10 @@ struct ConnectionView: View {
             }.accessibilityIdentifier("connection.scroll")
         }
         .background(Bento.background).foregroundStyle(Bento.ink)
-        .sheet(isPresented: $gettingStarted) {
+        .sheet(isPresented: $gettingStarted, onDismiss: { store.presentQueuedFactorySetup() }) {
             GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion)
         }
-        .sheet(isPresented: $scanningLANQR) {
+        .sheet(isPresented: $scanningLANQR, onDismiss: { store.presentQueuedFactorySetup() }) {
             LANLoginScannerView().interactiveDismissDisabled(store.recoveringConnection)
         }
         #if DEBUG
@@ -166,7 +180,9 @@ struct LANLoginScannerView: View {
     }
 
     private func connect(_ text: String) {
-        if let invitation = try? FrameInvitationCode.parse(text) {
+        if let bootstrap = try? FrameBootstrapCode.parse(text) {
+            store.queueFactorySetup(bootstrap)
+        } else if let invitation = try? FrameInvitationCode.parse(text) {
             Task { await store.claimInvitation(invitation) }
         } else if (try? FrameLANLoginCode.parse(text)) != nil {
             Task { await store.loginFromLANQRCode(text) }
@@ -239,7 +255,7 @@ struct LocalLockView: View {
                     .frame(minHeight: geometry.size.height).frame(maxWidth: .infinity)
             }.accessibilityIdentifier("lock.scroll")
         }.background(Bento.background).foregroundStyle(Bento.ink)
-            .sheet(isPresented: $gettingStarted) { GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
+            .sheet(isPresented: $gettingStarted, onDismiss: { store.presentQueuedFactorySetup() }) { GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
             .confirmationDialog("Oublier ce cadre sur cet iPhone ?", isPresented: $confirmingForget) {
                 Button("Oublier ce cadre", role: .destructive) {
                     Task { await store.forgetCurrentFrameAfterConfirmation() }

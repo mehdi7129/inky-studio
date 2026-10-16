@@ -11,8 +11,21 @@ struct BluetoothSetupView: View {
     @State private var password = ""
     @State private var confirmClose = false
     private let beginWindow: (() async throws -> Void)?
+    private let authorize: (() async -> Bool)?
+    private let onClose: (() -> Void)?
+    private let routeFactoryCode: ((FrameBootstrapCode) -> Void)?
+    private let routeFactoryOwner: ((OwnershipRecord) -> Void)?
+    @State private var initialBootstrapCode: FrameBootstrapCode?
+    @State private var initialFactoryOwner: OwnershipRecord?
 
     init(beginWindow: (() async throws -> Void)? = nil,
+         initialBootstrapCode: FrameBootstrapCode? = nil,
+         initialFactoryOwner: OwnershipRecord? = nil,
+         authorize: (() async -> Bool)? = nil,
+         onClose: (() -> Void)? = nil,
+         routeFactoryCode: ((FrameBootstrapCode) -> Void)? = nil,
+         routeFactoryOwner: ((OwnershipRecord) -> Void)? = nil,
+         didFinishFactory: ((URL, OwnershipRecord, FactorySetupStatus) async -> Bool)? = nil,
          didFinish: @escaping (URL, OwnershipRecord) async -> Void) {
         let transport = BluetoothTransport()
         let channel = SecureBluetoothChannel(transport: transport)
@@ -20,8 +33,14 @@ struct BluetoothSetupView: View {
         _coordinator = StateObject(wrappedValue: BluetoothSetupCoordinator(channel: channel, vault: OwnershipVault(),
             confirmHTTPS: { endpoint, owner, transaction in
                 try await InkyAPI.confirmProvisionedWiFi(endpoint: endpoint, owner: owner, transactionID: transaction)
-            }, didFinish: didFinish))
+            }, authorizeFactory: authorize, didFinishFactory: didFinishFactory, didFinish: didFinish))
         self.beginWindow = beginWindow
+        self.authorize = authorize
+        self.onClose = onClose
+        self.routeFactoryCode = routeFactoryCode
+        self.routeFactoryOwner = routeFactoryOwner
+        _initialBootstrapCode = State(initialValue: initialBootstrapCode)
+        _initialFactoryOwner = State(initialValue: initialFactoryOwner)
     }
 
     var body: some View {
@@ -40,18 +59,18 @@ struct BluetoothSetupView: View {
                     }
                 }.padding(20).frame(maxWidth: 540).frame(maxWidth: .infinity)
             }
-            .navigationTitle("Wi-Fi du cadre").screenBackground()
+            .navigationTitle(coordinator.isFactory ? "Configurer le cadre" : "Wi-Fi du cadre").screenBackground()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(coordinator.stage == .completed ? "Terminer" : "Fermer") {
                         if coordinator.hasTransaction { confirmClose = true }
-                        else { coordinator.close(); dismiss() }
+                        else { onClose?(); coordinator.close(); dismiss() }
                     }.accessibilityIdentifier("bluetooth.close")
                 }
             }
             .sheet(isPresented: $scanningQR) { scanner }
             .confirmationDialog("Quitter la vérification Wi-Fi ?", isPresented: $confirmClose) {
-                Button("Quitter et reprendre plus tard") { coordinator.close(); dismiss() }
+                Button("Quitter et reprendre plus tard") { onClose?(); coordinator.close(); dismiss() }
                 Button("Continuer la vérification", role: .cancel) {}
             } message: {
                 Text("Le cadre annulera l’essai s’il n’est pas confirmé à temps. Vous pourrez retrouver son état par Bluetooth.")
@@ -64,18 +83,31 @@ struct BluetoothSetupView: View {
                    coordinator.installUITestFixture(named: arguments[index + 1]) { return }
                 #endif
                 coordinator.loadSavedFrames()
+                if initialBootstrapCode != nil || initialFactoryOwner != nil {
+                    guard await authorize?() == true else { return }
+                    if let code = initialBootstrapCode {
+                        initialBootstrapCode = nil
+                        coordinator.acceptBootstrapCode(code)
+                    } else if let owner = initialFactoryOwner {
+                        initialFactoryOwner = nil
+                        coordinator.selectSavedFrame(owner)
+                    }
+                }
             }
             .onChange(of: coordinator.stage) { _, stage in
-                if stage == .nearby && !coordinator.isUITestFixture { transport.startScan() }
+                if stage == .nearby && !coordinator.isUITestFixture { transport.startScan(profile: coordinator.discoveryProfile) }
                 else { transport.stopScan() }
                 if stage == .credentials { ssid = coordinator.selectedSSID }
                 if stage == .suspended || stage == .completed { password = "" }
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase != .active { transport.stopScan(); coordinator.suspend(); password = "" }
+                if phase == .background {
+                    transport.stopScan(); onClose?(); coordinator.suspend(); password = ""
+                    initialBootstrapCode = nil
+                } else if phase == .inactive { transport.stopScan() }
                 else if coordinator.stage == .suspended { Task { await coordinator.resume() } }
             }
-            .onDisappear { transport.stopScan(); coordinator.close(); password = "" }
+            .onDisappear { transport.stopScan(); onClose?(); coordinator.close(); password = ""; initialBootstrapCode = nil }
         }
         .preferredColorScheme(uiTestColorScheme)
     }
@@ -107,6 +139,13 @@ struct BluetoothSetupView: View {
         case .suspended: return "Reprendre la configuration"
         case .completed: return "Votre cadre est connecté"
         case .rolledBack: return "L’essai Wi-Fi est terminé"
+        case .factoryCountry: return "Dans quel pays est le cadre ?"
+        case .factoryApplying: return "Préparation du cadre"
+        case .factoryContinue: return "Continuer la configuration"
+        case .factoryHandoff: return "Vérification de la connexion sécurisée"
+        case .factoryWaitingOrigin: return "Retrouver le cadre sur le réseau"
+        case .factoryRecovery: return "Reprendre cette étape"
+        case .factoryPhotoAccess: return "Votre cadre est prêt"
         }
     }
     private var message: String {
@@ -123,6 +162,13 @@ struct BluetoothSetupView: View {
         case .suspended: return "Restez près du cadre pour retrouver l’état de la configuration par Bluetooth."
         case .completed: return "L’accès au cadre a été vérifié sur le nouveau réseau. Vous pouvez retrouver vos photos."
         case .rolledBack: return "Le nouveau réseau n’a pas été confirmé. Le cadre conserve ses anciens réglages Wi-Fi."
+        case .factoryCountry: return "Choisissez le pays où le cadre sera utilisé. L’heure sera fournie automatiquement par cet iPhone."
+        case .factoryApplying: return "Le cadre vérifie ses réglages. Une étape déjà envoyée ne sera pas relancée automatiquement."
+        case .factoryContinue: return "Poursuivez pour vérifier les étapes enregistrées sur le cadre."
+        case .factoryHandoff: return "L’identité du même cadre est vérifiée sur sa connexion normale."
+        case .factoryWaitingOrigin: return "Le cadre doit confirmer son adresse réseau avant d’ouvrir l’accès aux photos. Vous pouvez configurer son Wi-Fi en Bluetooth."
+        case .factoryRecovery: return "Le résultat précédent est conservé. Pour une nouvelle tentative, confirmez le pays puis relancez explicitement cette étape."
+        case .factoryPhotoAccess: return "Terminez l’association pour accéder aux photos depuis cet iPhone."
         }
     }
 
@@ -148,12 +194,20 @@ struct BluetoothSetupView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Cadres enregistrés").font(.headline)
                     ForEach(coordinator.savedFrames, id: \.id) { record in
-                        Button { coordinator.selectSavedFrame(record) } label: {
+                        Button {
+                            Task {
+                                if record.isFactory {
+                                    if let routeFactoryOwner { routeFactoryOwner(record); dismiss(); return }
+                                    guard await authorize?() == true else { return }
+                                }
+                                coordinator.selectSavedFrame(record)
+                            }
+                        } label: {
                             HStack {
                                 Image(systemName: "photo.artframe")
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("Cadre · \(record.id.uuidString.prefix(6))").font(.subheadline.weight(.medium))
-                                    Text(record.wifiTransactionID == nil ? "Changer le Wi-Fi" : "Reprendre la vérification Wi-Fi")
+                                    Text(record.isFactorySetupPending ? "Reprendre la configuration" : (record.wifiTransactionID == nil ? "Changer le Wi-Fi" : "Reprendre la vérification Wi-Fi"))
                                         .font(.caption).foregroundStyle(Bento.secondaryInk)
                                 }
                                 Spacer()
@@ -185,12 +239,29 @@ struct BluetoothSetupView: View {
                         }.frame(minHeight: 48)
                     }.buttonStyle(.plain).accessibilityIdentifier("bluetooth.frame")
                 }
-                Button("Relancer la recherche") { transport.startScan() }.frame(minHeight: 44)
+                Button("Relancer la recherche") { transport.startScan(profile: coordinator.discoveryProfile) }.frame(minHeight: 44)
             }.bentoCard()
             settingsLink
-        case .preparingQR, .connecting, .claiming, .applying:
+        case .preparingQR, .connecting, .claiming, .applying, .factoryApplying, .factoryHandoff:
             HStack(spacing: 14) { ProgressView(); Text(coordinator.stage == .preparingQR ? "Préparation de l’écran du cadre…" : "Un instant…").font(.subheadline) }
                 .frame(maxWidth: .infinity, alignment: .leading).bentoCard()
+        case .factoryCountry, .factoryRecovery:
+            countrySelection
+            Button(coordinator.stage == .factoryRecovery ? "Lancer une nouvelle tentative" : "Préparer le cadre") {
+                Task { await coordinator.beginFactorySystemSetup() }
+            }.buttonStyle(PrimaryButtonStyle()).disabled(!FactorySetupValidation.country(coordinator.selectedCountry))
+                .accessibilityIdentifier("factory.apply")
+        case .factoryContinue:
+            Button("Continuer") { Task { await coordinator.continueFactorySetup() } }
+                .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("factory.continue")
+        case .factoryWaitingOrigin:
+            HStack { ProgressView(); Text("Vérification de l’adresse du cadre…") }.bentoCard()
+            Button("Configurer le Wi-Fi") { Task { await coordinator.configureFactoryWiFi() } }
+                .buttonStyle(OutlineButtonStyle()).accessibilityIdentifier("factory.configureWiFi")
+        case .factoryPhotoAccess:
+            Label("La configuration du cadre est confirmée.", systemImage: "checkmark.shield").bentoCard()
+            Button("Ouvrir mon cadre") { Task { await coordinator.finishFactoryPhotoAccess() } }
+                .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("factory.finish")
         case .networks:
             VStack(alignment: .leading, spacing: 12) {
                 if coordinator.scanningNetworks { ProgressView("Recherche des réseaux…") }
@@ -211,6 +282,11 @@ struct BluetoothSetupView: View {
                 Button("Actualiser les réseaux") { Task { await coordinator.scanNetworks() } }.frame(minHeight: 44).disabled(coordinator.scanningNetworks)
                 Button("Saisir un autre réseau") { coordinator.chooseNetwork(nil) }.frame(minHeight: 44).disabled(coordinator.scanningNetworks)
             }.bentoCard()
+            if coordinator.isFactory, coordinator.owner?.isFactorySetupPending == true {
+                Button("Vérifier la fin de la configuration") { Task { await coordinator.continueFactorySetup() } }
+                    .buttonStyle(OutlineButtonStyle()).disabled(coordinator.scanningNetworks)
+                    .accessibilityIdentifier("factory.verifyCompletion")
+            }
         case .credentials:
             VStack(alignment: .leading, spacing: 14) {
                 TextField("Nom du réseau Wi-Fi", text: $ssid).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -249,6 +325,31 @@ struct BluetoothSetupView: View {
         }
     }
 
+    private var countrySelection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("Pays du cadre", selection: Binding(get: { coordinator.selectedCountry }, set: { coordinator.chooseCountry($0) })) {
+                Text("Choisir un pays").tag("")
+                ForEach(countryOptions, id: \.code) { country in Text(country.name).tag(country.code) }
+            }.accessibilityIdentifier("factory.country")
+            Text("L’heure est automatique. Le pays reste votre choix et sera vérifié par le cadre.")
+                .font(.caption).foregroundStyle(Bento.secondaryInk)
+        }.bentoCard()
+    }
+    private var countryOptions: [(code: String, name: String)] {
+        Locale.Region.isoRegions.map(\.identifier).filter { FactorySetupValidation.country($0) }
+            .map { (code: $0, name: Locale.current.localizedString(forRegionCode: $0) ?? $0) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+    private func acceptScannedCode(_ text: String) {
+        Task {
+            if let code = try? FrameBootstrapCode.parse(text) {
+                if let routeFactoryCode { routeFactoryCode(code); scanningQR = false; dismiss(); return }
+                guard await authorize?() == true else { return }
+            }
+            coordinator.acceptQRCode(text)
+        }
+    }
+
     private var settingsLink: some View {
         Link("Ouvrir les réglages d’Inky Studio", destination: URL(string: UIApplication.openSettingsURLString)!)
             .font(.subheadline).frame(minHeight: 44)
@@ -260,7 +361,7 @@ struct BluetoothSetupView: View {
                 Text("Placez le QR affiché sur le cadre dans le viseur.").font(.subheadline).foregroundStyle(Bento.secondaryInk)
                 #if DEBUG && targetEnvironment(simulator)
                 if ProcessInfo.processInfo.arguments.contains("--uitesting") {
-                    QRTestInput { text in scanningQR = false; coordinator.acceptQRCode(text) }
+                    QRTestInput { text in scanningQR = false; acceptScannedCode(text) }
                 } else { cameraScanner }
                 #else
                 cameraScanner
@@ -274,7 +375,7 @@ struct BluetoothSetupView: View {
         QRScannerView { result in
             scanningQR = false
             switch result {
-            case .success(let text): coordinator.acceptQRCode(text)
+            case .success(let text): acceptScannedCode(text)
             case .failure(let error): coordinator.scannerFailed(error)
             }
         }.clipShape(RoundedRectangle(cornerRadius: 20)).frame(minHeight: 280)

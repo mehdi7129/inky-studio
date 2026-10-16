@@ -74,7 +74,13 @@ struct GettingStartedView: View {
                     }
                 }
                 .sheet(isPresented: $bluetoothSetup) {
-                    BluetoothSetupView { endpoint, owner in
+                    BluetoothSetupView(authorize: { await store.authorizeFactorySetup() },
+                        onClose: { store.cancelFactorySetup() },
+                        routeFactoryCode: { store.queueFactorySetup($0); dismiss() },
+                        routeFactoryOwner: { store.queueFactoryOwner($0); dismiss() },
+                        didFinishFactory: { endpoint, owner, status in
+                            await store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status)
+                        }) { endpoint, owner in
                         await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
                     }
                 }

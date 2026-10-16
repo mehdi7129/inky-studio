@@ -127,11 +127,17 @@ struct SettingsView: View {
                 .navigationTitle("Réglages").screenBackground()
                 .task { if !loaded, let settings = store.settings { draft = settings; loaded = true } }
                 .onChange(of: store.settings) { old, new in if !loaded || draft == old { if let new { draft = new; loaded = true } } }
-                .sheet(isPresented: $gettingStarted) { GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
-                .sheet(isPresented: $bluetoothSetup) {
+                .sheet(isPresented: $gettingStarted, onDismiss: { store.presentQueuedFactorySetup() }) { GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
+                .sheet(isPresented: $bluetoothSetup, onDismiss: { store.presentQueuedFactorySetup() }) {
                     BluetoothSetupView(beginWindow: store.connected && store.bluetoothSupported ? {
                         try await store.beginBluetoothAdoption()
-                    } : nil) { endpoint, owner in
+                    } : nil, authorize: { await store.authorizeFactorySetup() },
+                        onClose: { store.cancelFactorySetup() },
+                        routeFactoryCode: { store.queueFactorySetup($0) },
+                        routeFactoryOwner: { store.queueFactoryOwner($0) },
+                        didFinishFactory: { endpoint, owner, status in
+                            await store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status)
+                        }) { endpoint, owner in
                         await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
                     }
                 }

@@ -18,6 +18,90 @@ final class PhotoAccessClientTests: XCTestCase {
         get throws { try FrameIdentity(id: frameID, spkiSHA256: Data(repeating: 0x17, count: 32)) }
     }
 
+    private func factoryCredential() throws -> (OwnershipRecord, PhotoAccessCredential, URL) {
+        let origin = URL(string: "https://inky-0123456789abcdef0123456789abcdef.local:8443")!
+        let credential = try PhotoAccessCredential(identity: identity, endpoint: origin, deviceID: deviceID,
+            deviceToken: deviceToken, requestID: requestID, expectedRole: .owner)
+        var owner = OwnershipRecord(identity: try identity, certificateDER: Data(), ownerID: UUID(),
+            claimRequestID: requestID, ownerToken: Data(repeating: 0x73, count: 32), endpoints: [], state: .claimed)
+        owner.factoryProfile = .normalV1
+        return (owner, credential, origin)
+    }
+
+    func testFactoryEnrollmentScopesBLEAuthorityToOneExactRequestAndThenUsesPHOTOOnly() async throws {
+        let (owner, credential, origin) = try factoryCredential()
+        let operation = UUID()
+        let stub = PhotoAccessWireStub { request in
+            if request.url?.path == "/api/auth/factory-device-enroll" {
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "X-Inky-Direct-Auth"), "1")
+                XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
+                XCTAssertTrue(request.value(forHTTPHeaderField: "X-Inky-Owner-Token") == owner.ownerTokenHex)
+                XCTAssertEqual(request.value(forHTTPHeaderField: "X-Inky-Owner-Id"), owner.ownerID.uuidString.lowercased())
+                let body = try JSONSerialization.jsonObject(with: request.photoAccessBodyData) as! [String: Any]
+                XCTAssertEqual(Set(body.keys), ["device_id", "device_token", "request_id", "claim_request_id", "setup_op_id"])
+                XCTAssertTrue(body["device_token"] as? String == credential.deviceToken)
+                XCTAssertEqual(body["request_id"] as? String, owner.claimRequestID.uuidString.lowercased())
+                XCTAssertEqual(body["setup_op_id"] as? String, operation.uuidString.lowercased())
+                return try .json(["device_id": credential.deviceID.uuidString.lowercased(), "role": "owner",
+                    "identity": ["frame_id": owner.id.uuidString.lowercased(), "spki_sha256": owner.identity.spkiSHA256.map { String(format: "%02x", $0) }.joined()]])
+            }
+            XCTAssertEqual(request.url?.path, "/api/auth/device-session")
+            XCTAssertNil(request.value(forHTTPHeaderField: "X-Inky-Owner-Id"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "X-Inky-Owner-Token"))
+            return try .json(wireSessionReply(credential), headers: ["Set-Cookie": "inky_session=factory-photo-fixture; Path=/; Secure; HttpOnly"])
+        }
+        let api = InkyAPI(baseURL: origin, configuration: stub.configuration(), trustedIdentity: try identity)
+        defer { api.clearSession(); stub.dispose() }
+        try await FactoryPhotoEnrollment.enroll(credential, api: api, owner: owner, setupOperationID: operation)
+        XCTAssertNil(try api.eventRequest().value(forHTTPHeaderField: "Cookie"))
+        _ = try await PhotoAccessClient(api: api, identity: identity).openSession(credential)
+        XCTAssertEqual(try api.eventRequest().value(forHTTPHeaderField: "Cookie"), "inky_session=factory-photo-fixture")
+        XCTAssertNil(try api.eventRequest().value(forHTTPHeaderField: "X-Inky-Owner-Token"))
+    }
+
+    func testFactoryEnrollmentRefusesBLECredentialReuseBeforeNetworking() async throws {
+        let (owner, credential, origin) = try factoryCredential()
+        let reusedDevice = try PhotoAccessCredential(identity: identity, endpoint: origin, deviceID: owner.ownerID,
+            deviceToken: deviceToken, requestID: requestID, expectedRole: .owner)
+        let reusedToken = try PhotoAccessCredential(identity: identity, endpoint: origin, deviceID: deviceID,
+            deviceToken: owner.ownerTokenHex, requestID: requestID, expectedRole: .owner)
+        let wrongRequest = try PhotoAccessCredential(identity: identity, endpoint: origin, deviceID: deviceID,
+            deviceToken: deviceToken, requestID: UUID(), expectedRole: .owner)
+        let stub = PhotoAccessWireStub { _ in XCTFail("Invalid factory authority must fail before sending any secret."); return try .json([:]) }
+        let api = InkyAPI(baseURL: origin, configuration: stub.configuration(), trustedIdentity: try identity)
+        defer { api.clearSession(); stub.dispose() }
+        for invalid in [reusedDevice, reusedToken, wrongRequest] {
+            do { try await FactoryPhotoEnrollment.enroll(invalid, api: api, owner: owner, setupOperationID: UUID()); XCTFail("Invalid authority accepted.") }
+            catch { XCTAssertEqual(error as? PhotoAccessError, .identityMismatch) }
+        }
+        var bootstrap = owner
+        bootstrap.factoryProfile = .bootstrap
+        do { try await FactoryPhotoEnrollment.enroll(credential, api: api, owner: bootstrap, setupOperationID: UUID()); XCTFail("Bootstrap authority cannot enroll PHOTO before normal TLS.") }
+        catch { XCTAssertEqual(error as? PhotoAccessError, .identityMismatch) }
+        XCTAssertTrue(stub.requests.isEmpty)
+    }
+
+    func testFactoryEnrollmentRejectsOpenOrDuplicateRepliesAndUnexpectedCookies() async throws {
+        let (owner, credential, origin) = try factoryCredential()
+        let pin = owner.identity.spkiSHA256.map { String(format: "%02x", $0) }.joined()
+        let valid = "{\"device_id\":\"\(credential.deviceID.uuidString.lowercased())\",\"role\":\"owner\",\"identity\":{\"frame_id\":\"\(owner.id.uuidString.lowercased())\",\"spki_sha256\":\"\(pin)\"}}"
+        let variants: [(String, [String: String])] = [
+            (valid.replacingOccurrences(of: "\"role\":\"owner\"", with: "\"role\":\"owner\",\"role\":\"owner\""), [:]),
+            (valid.replacingOccurrences(of: "\"role\":\"owner\"", with: "\"role\":\"owner\",\"unexpected\":true"), [:]),
+            (valid.replacingOccurrences(of: "\"role\":\"owner\"", with: "\"role\":\"media\""), [:]),
+            (valid, ["Set-Cookie": "inky_session=unexpected; Path=/; Secure"]),
+        ]
+        for (text, headers) in variants {
+            let stub = PhotoAccessWireStub { _ in .init(headers: headers.merging(["Content-Type": "application/json"]) { a, _ in a }, data: Data(text.utf8)) }
+            let api = InkyAPI(baseURL: origin, configuration: stub.configuration(), trustedIdentity: try identity)
+            defer { api.clearSession(); stub.dispose() }
+            do { try await FactoryPhotoEnrollment.enroll(credential, api: api, owner: owner, setupOperationID: UUID()); XCTFail("Invalid factory response accepted.") }
+            catch { }
+            XCTAssertNil(try api.eventRequest().value(forHTTPHeaderField: "Cookie"))
+        }
+    }
+
     func testRejectsHTTPBeforeCredentialRequests() throws {
         let stub = PhotoAccessWireStub { _ in
             XCTFail("An HTTP origin must be rejected before sending any request or secret.")

@@ -8,6 +8,19 @@ struct BluetoothFrame: Identifiable, Equatable, Sendable {
     let rssi: Int?
 }
 
+enum BluetoothProfile: String, Equatable, Sendable {
+    case normalV1 = "normal-v1", bootstrap
+
+    var serviceUUID: CBUUID { uuid(1) }
+    var identityUUID: CBUUID { uuid(2) }
+    var streamUUID: CBUUID { uuid(3) }
+    var certificateUUIDs: [CBUUID] { [uuid(4), uuid(5)] }
+    private func uuid(_ attribute: Int) -> CBUUID {
+        let value = (self == .bootstrap ? 0x10 : 0) + attribute
+        return CBUUID(string: String(format: "713b%04x-8890-4cc9-a2bf-26f32c43db22", value))
+    }
+}
+
 enum BluetoothTransportError: Error, LocalizedError, Equatable {
     case unavailable, unauthorized, poweredOff, busy, disconnected, timeout
     case invalidFrame, unsupportedFrame, operationFailed, cancelled
@@ -31,18 +44,24 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
 @MainActor protocol BluetoothExchanging: AnyObject {
     var maxFrameLength: Int { get }
     func connect(peripheralID: UUID) async throws -> Data
+    func connect(peripheralID: UUID, profile: BluetoothProfile) async throws -> Data
     func exchange(_ frame: Data) async throws -> Data
     func cancel()
+}
+
+extension BluetoothExchanging {
+    /// Existing normal-only adapters must never silently carry bootstrap secrets.
+    func connect(peripheralID: UUID, profile: BluetoothProfile) async throws -> Data {
+        guard profile == .normalV1 else { throw BluetoothTransportError.unsupportedFrame }
+        return try await connect(peripheralID: peripheralID)
+    }
 }
 
 @MainActor final class BluetoothTransport: NSObject, ObservableObject, BluetoothExchanging,
     @preconcurrency CBCentralManagerDelegate {
     enum State: Equatable { case idle, unavailable, scanning, connecting, connected }
-    static let serviceUUID = CBUUID(string: "713b0001-8890-4cc9-a2bf-26f32c43db22")
-    private static let identityUUID = CBUUID(string: "713b0002-8890-4cc9-a2bf-26f32c43db22")
-    private static let streamUUID = CBUUID(string: "713b0003-8890-4cc9-a2bf-26f32c43db22")
-    private static let certificate0UUID = CBUUID(string: "713b0004-8890-4cc9-a2bf-26f32c43db22")
-    private static let certificate1UUID = CBUUID(string: "713b0005-8890-4cc9-a2bf-26f32c43db22")
+    static let serviceUUID = BluetoothProfile.normalV1.serviceUUID
+    private(set) var profile: BluetoothProfile = .normalV1
 
     @Published private(set) var discoveredFrames: [BluetoothFrame] = []
     @Published private(set) var isScanning = false
@@ -79,8 +98,12 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
     private var deadline: Task<Void, Never>?
     private var generation = UUID()
 
-    func startScan() {
+    func startScan() { startScan(profile: .normalV1) }
+
+    func startScan(profile: BluetoothProfile) {
         guard continuation == nil, peripheral == nil else { return }
+        if self.profile != profile { retireConnection() }
+        self.profile = profile
         error = nil
         lastFailure = nil
         wantsScan = true
@@ -96,9 +119,15 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
     }
 
     func connect(peripheralID: UUID) async throws -> Data {
+        try await connect(peripheralID: peripheralID, profile: .normalV1)
+    }
+
+    func connect(peripheralID: UUID, profile: BluetoothProfile) async throws -> Data {
         guard continuation == nil else { throw BluetoothTransportError.busy }
         try Task.checkCancellation()
-        if peripheral != nil { retireConnection() }
+        if peripheral != nil || self.profile != profile { retireConnection() }
+        self.profile = profile
+        identityAssembly = BluetoothIdentityAssembly(profile: profile)
         stopScan()
         error = nil
         lastFailure = nil
@@ -163,7 +192,7 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
                 phase = .connecting
                 manager.connect(found, options: nil)
             } else if wantsScan, continuation == nil, peripheral == nil {
-                manager.scanForPeripherals(withServices: [Self.serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+                manager.scanForPeripherals(withServices: [profile.serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
                 isScanning = true
                 state = .scanning
             }
@@ -202,7 +231,7 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
         initialMaxFrameLength = maximum
         diagnose("connected")
         phase = .services
-        peripheral.discoverServices([Self.serviceUUID])
+        peripheral.discoverServices([profile.serviceUUID])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -217,22 +246,22 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
 
     fileprivate func discoveredServices(_ peripheral: CBPeripheral, error: Error?, generation: UUID) {
         guard accepts(peripheral, generation), phase == .services else { return }
-        guard error == nil, let service = peripheral.services?.first(where: { $0.uuid == Self.serviceUUID }) else {
+        guard error == nil, let service = peripheral.services?.first(where: { $0.uuid == profile.serviceUUID }) else {
             fail(.unsupportedFrame); return
         }
         phase = .characteristics
-        peripheral.discoverCharacteristics([Self.identityUUID, Self.streamUUID, Self.certificate0UUID, Self.certificate1UUID], for: service)
+        peripheral.discoverCharacteristics([profile.identityUUID, profile.streamUUID] + profile.certificateUUIDs, for: service)
     }
 
     fileprivate func discoveredCharacteristics(_ peripheral: CBPeripheral, service: CBService,
                                                 error: Error?, generation: UUID) {
-        guard accepts(peripheral, generation), phase == .characteristics, service.uuid == Self.serviceUUID else { return }
+        guard accepts(peripheral, generation), phase == .characteristics, service.uuid == profile.serviceUUID else { return }
         guard error == nil,
-              let identity = service.characteristics?.first(where: { $0.uuid == Self.identityUUID }), identity.properties.contains(.read),
-              let stream = service.characteristics?.first(where: { $0.uuid == Self.streamUUID }),
+              let identity = service.characteristics?.first(where: { $0.uuid == profile.identityUUID }), identity.properties.contains(.read),
+              let stream = service.characteristics?.first(where: { $0.uuid == profile.streamUUID }),
               stream.properties.contains(.read), stream.properties.contains(.write),
-              let certificate0 = service.characteristics?.first(where: { $0.uuid == Self.certificate0UUID }), certificate0.properties.contains(.read),
-              let certificate1 = service.characteristics?.first(where: { $0.uuid == Self.certificate1UUID }), certificate1.properties.contains(.read)
+              let certificate0 = service.characteristics?.first(where: { $0.uuid == profile.certificateUUIDs[0] }), certificate0.properties.contains(.read),
+              let certificate1 = service.characteristics?.first(where: { $0.uuid == profile.certificateUUIDs[1] }), certificate1.properties.contains(.read)
         else { fail(.unsupportedFrame); return }
         self.identity = identity
         self.stream = stream
@@ -352,7 +381,7 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
         identity = nil
         certificate0 = nil
         certificate1 = nil
-        identityAssembly = BluetoothIdentityAssembly()
+        identityAssembly = BluetoothIdentityAssembly(profile: profile)
         stream = nil
         phase = nil
         targetID = nil
@@ -389,7 +418,20 @@ struct BluetoothIdentityAssembly {
     private struct Metadata: Decodable { let v: Int; let id: UUID; let cert_length: Int }
     private var metadata: Metadata?
     private var first: Data?
+    let profile: BluetoothProfile
+    init(profile: BluetoothProfile = .normalV1) { self.profile = profile }
     mutating func readMetadata(_ data: Data) throws {
+        if profile == .bootstrap {
+            guard metadata == nil else { throw BluetoothTransportError.invalidFrame }
+            let fields = try BootstrapFlatObject.parse(data, maximum: 128, keys: ["v", "p", "id", "cert_length"])
+            guard case .integer("2") = fields["v"], case .string("bootstrap") = fields["p"],
+                  case let .string(identifier) = fields["id"], let id = BootstrapFlatObject.uuid(identifier),
+                  case let .integer(length) = fields["cert_length"], let count = Int(length), (1...960).contains(count) else {
+                throw BluetoothTransportError.invalidFrame
+            }
+            metadata = Metadata(v: 2, id: id, cert_length: count)
+            return
+        }
         guard metadata == nil, !data.isEmpty, data.count <= 128,
               let decoded = try? JSONDecoder().decode(Metadata.self, from: data),
               decoded.v == 1, (1...960).contains(decoded.cert_length) else { throw BluetoothTransportError.invalidFrame }
@@ -406,7 +448,9 @@ struct BluetoothIdentityAssembly {
               secondCertificatePart.count == max(0, metadata.cert_length - 480) else {
             throw BluetoothTransportError.invalidFrame
         }
-        return try JSONSerialization.data(withJSONObject: ["v": 1, "id": metadata.id.uuidString.lowercased(),
-            "cert": (first + secondCertificatePart).base64EncodedString()])
+        var value: [String: Any] = ["v": metadata.v, "id": metadata.id.uuidString.lowercased(),
+                                  "cert": (first + secondCertificatePart).base64EncodedString()]
+        if profile == .bootstrap { value["p"] = "bootstrap" }
+        return try JSONSerialization.data(withJSONObject: value)
     }
 }

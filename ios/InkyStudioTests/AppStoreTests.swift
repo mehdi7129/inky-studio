@@ -1849,6 +1849,193 @@ final class AppStoreTests: XCTestCase {
         XCTAssertNil(fixture.defaults.data(forKey: "photoAccessPending"))
         XCTAssertFalse(fixture.stub.requests.contains { $0.url?.host == "inky-fixture.local" })
     }
+
+    private func factoryCompletion() throws -> (OwnershipRecord, FactorySetupStatus, URL) {
+        let identity = try FrameIdentity(id: UUID(uuidString: "aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb")!,
+                                         spkiSHA256: Data(repeating: 0x42, count: 32))
+        let endpoint = URL(string: "https://inky-0123456789abcdef0123456789abcdef.local:8443")!
+        var owner = OwnershipRecord(identity: identity, certificateDER: Data(), ownerID: UUID(),
+            claimRequestID: UUID(), ownerToken: Data(repeating: 0x73, count: 32), endpoints: [], state: .claimed)
+        owner.factoryProfile = .normalV1
+        let operation = UUID()
+        owner.factorySetupOperationID = operation
+        let status = FactorySetupStatus(operationID: operation, state: .complete, frameID: identity.id,
+            ownerID: owner.ownerID, claimRequestID: owner.claimRequestID,
+            normalIdentity: FactorySetupNormalIdentity(identity: identity, publicationOperationID: UUID()),
+            httpsOrigin: endpoint, completionID: UUID(), nextStep: .photoEnroll)
+        return (owner, status, endpoint)
+    }
+
+    func testFactoryEnrollmentRequiresItsLocalAuthenticationGrant() async throws {
+        let fixture = StoreFixture(authenticateLocal: { throw VaultError.cancelled })
+        defer { fixture.dispose() }
+        let (owner, status, endpoint) = try factoryCompletion()
+        let unauthorized = await fixture.store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status)
+        XCTAssertFalse(unauthorized)
+        let authorized = await fixture.store.authorizeFactorySetup()
+        XCTAssertFalse(authorized)
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+        XCTAssertTrue(fixture.photoCredentials.passwords.isEmpty)
+    }
+
+    func testFactoryClosedDuringLocalAuthenticationCannotGrantLateAuthority() async throws {
+        let gate = LocalAuthGate()
+        let fixture = StoreFixture(authenticateLocal: { try await gate.wait() })
+        defer { fixture.dispose() }
+        let pending = Task { await fixture.store.authorizeFactorySetup() }
+        await fulfillment(of: [gate.started], timeout: 3)
+        fixture.store.cancelFactorySetup()
+        gate.release()
+        let authorized = await pending.value
+        XCTAssertFalse(authorized)
+        let (owner, status, endpoint) = try factoryCompletion()
+        let completed = await fixture.store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status)
+        XCTAssertFalse(completed)
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+        XCTAssertTrue(fixture.photoCredentials.passwords.isEmpty)
+    }
+
+    func testFactoryPreservesOldCredentialUntilEnrollmentAndDeviceSessionThenCommits() async throws {
+        var checks = 0
+        let fixture = StoreFixture(authenticateLocal: { checks += 1 })
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        fixture.credentials.passwords[fixture.store.address] = "factory-previous-protected"
+        let old = try XCTUnwrap(fixture.store.api)
+        let oldAddress = fixture.store.address
+        let (owner, status, endpoint) = try factoryCompletion()
+        fixture.stub.enablePhotoAccess(owner.identity)
+        let canonical = PhotoAccessSelection.account(identity: owner.identity, invitationID: nil)
+        let previousCredential = try PhotoAccessCredential.make(identity: owner.identity, endpoint: endpoint, role: .owner)
+        try fixture.photoVault.save(previousCredential, account: canonical)
+        let canonicalBefore = fixture.photoCredentials.passwords[canonical]
+        let authorized = await fixture.store.authorizeFactorySetup()
+        XCTAssertTrue(authorized)
+        XCTAssertEqual(checks, 2, "The existing app unlock is followed by a factory-specific local authorization.")
+        let before = fixture.stub.requests.count
+        let gate = fixture.stub.hold(host: endpoint.host!, path: "/api/auth/factory-device-enroll", method: "POST")
+        let task = Task { await fixture.store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        XCTAssertTrue(fixture.store.api === old)
+        XCTAssertEqual(fixture.store.address, oldAddress)
+        XCTAssertEqual(fixture.photoCredentials.passwords[canonical], canonicalBefore)
+        XCTAssertFalse(fixture.store.connecting)
+        XCTAssertTrue(fixture.store.photoAccessBusy)
+        let draftText = try XCTUnwrap(fixture.photoCredentials.passwords.first { $0.key.hasPrefix("factory:") }?.value)
+        let draft = try JSONDecoder().decode(PhotoAccessCredential.self, from: Data(draftText.utf8))
+        XCTAssertEqual(draft.requestID, owner.claimRequestID)
+        XCTAssertNotEqual(draft.deviceID, owner.ownerID)
+        XCTAssertFalse(draft.deviceToken == owner.ownerTokenHex, "PHOTO and BLE tokens must be independent.")
+        gate.release()
+        let completed = await task.value
+        XCTAssertTrue(completed)
+        XCTAssertFalse(fixture.store.api === old)
+        XCTAssertEqual(fixture.store.address, endpoint.absoluteString)
+        XCTAssertEqual(fixture.store.api?.pinnedIdentity, owner.identity)
+        XCTAssertEqual(fixture.store.photoAccessRole, .owner)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameOwnerID"), owner.id.uuidString.lowercased())
+        XCTAssertEqual(fixture.credentials.passwords[oldAddress], "factory-previous-protected")
+        XCTAssertFalse(fixture.photoCredentials.passwords.keys.contains { $0.hasPrefix("factory:") })
+        let calls = Array(fixture.stub.requests.dropFirst(before))
+        XCTAssertFalse(calls.contains { $0.url?.path == "/api/auth/login" })
+        let enrollment = try XCTUnwrap(calls.first { $0.url?.path == "/api/auth/factory-device-enroll" })
+        let body = try requestJSON(enrollment)
+        XCTAssertEqual(Set(body.keys), ["device_id", "device_token", "request_id", "claim_request_id", "setup_op_id"])
+        XCTAssertEqual(body["request_id"] as? String, owner.claimRequestID.uuidString.lowercased())
+        XCTAssertEqual(body["claim_request_id"] as? String, owner.claimRequestID.uuidString.lowercased())
+        XCTAssertEqual(body["setup_op_id"] as? String, status.operationID.uuidString.lowercased())
+        XCTAssertTrue(enrollment.value(forHTTPHeaderField: "X-Inky-Owner-Token") == owner.ownerTokenHex)
+        XCTAssertNil(enrollment.value(forHTTPHeaderField: "Cookie"))
+        for call in calls where call.url?.path != "/api/auth/factory-device-enroll" {
+            XCTAssertNil(call.value(forHTTPHeaderField: "X-Inky-Owner-Token"))
+            XCTAssertNil(call.value(forHTTPHeaderField: "X-Inky-Owner-Id"))
+        }
+    }
+
+    func testFactoryFailuresAtProtectedStorageEnrollmentOrSessionKeepPreviousSelection() async throws {
+        for stage in ["draft-save", "enroll", "session", "final-save", "reply"] {
+            let fixture = StoreFixture(savePhotoValue: { _, account in
+                if stage == "draft-save" && account.hasPrefix("factory:") { throw VaultError.unavailable }
+                if stage == "final-save" && account.hasPrefix("photo:") { throw VaultError.unavailable }
+            })
+            defer { fixture.dispose() }
+            await fixture.login("old-frame.local")
+        fixture.credentials.passwords[fixture.store.address] = "factory-previous-protected"
+            let old = fixture.store.api
+            let oldAddress = fixture.store.address
+            let (owner, status, endpoint) = try factoryCompletion()
+            fixture.stub.enablePhotoAccess(owner.identity)
+            if stage == "enroll" || stage == "reply" {
+                fixture.stub.respondNextJSON(host: endpoint.host!, path: "/api/auth/factory-device-enroll", method: "POST",
+                    status: stage == "enroll" ? 503 : 200, body: ["unexpected": "fixture"])
+            } else if stage == "session" {
+                fixture.stub.respondNextJSON(host: endpoint.host!, path: "/api/auth/device-session", method: "POST",
+                    status: 401, body: ["detail": "Synthetic removal"])
+            }
+            let authorized = await fixture.store.authorizeFactorySetup()
+            XCTAssertTrue(authorized)
+            let completed = await fixture.store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status)
+            XCTAssertFalse(completed, stage)
+            XCTAssertTrue(fixture.store.api === old, stage)
+            XCTAssertTrue(fixture.store.authenticated, stage)
+            XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), oldAddress, stage)
+            XCTAssertNil(fixture.defaults.string(forKey: "photoAccessSelection"), stage)
+            XCTAssertEqual(fixture.credentials.passwords[oldAddress], "factory-previous-protected", stage)
+        }
+    }
+
+    func testFactoryCancellationOrBackgroundRejectsLateEnrollmentAndSession() async throws {
+        for route in ["/api/auth/factory-device-enroll", "/api/auth/device-session"] {
+            for background in [false, true] {
+                let fixture = StoreFixture()
+                defer { fixture.dispose() }
+                await fixture.login("old-frame.local")
+        fixture.credentials.passwords[fixture.store.address] = "factory-previous-protected"
+                let old = fixture.store.api
+                let oldAddress = fixture.store.address
+                let (owner, status, endpoint) = try factoryCompletion()
+                fixture.stub.enablePhotoAccess(owner.identity)
+                let authorized = await fixture.store.authorizeFactorySetup()
+                XCTAssertTrue(authorized)
+                let gate = fixture.stub.hold(host: endpoint.host!, path: route, method: "POST")
+                let task = Task { await fixture.store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status) }
+                await fulfillment(of: [gate.started], timeout: 3)
+                if background { fixture.store.sceneChanged(.background) }
+                else { fixture.store.cancelPhotoAccessOperation() }
+                gate.release()
+                let completed = await task.value
+                XCTAssertFalse(completed)
+                XCTAssertTrue(fixture.store.api === old)
+                XCTAssertEqual(fixture.store.address, oldAddress)
+                XCTAssertNil(fixture.defaults.string(forKey: "photoAccessSelection"))
+            }
+        }
+    }
+
+    func testFactoryUncertainEnrollmentRetryKeepsProtectedDeviceAndClaimRequest() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        fixture.credentials.passwords[fixture.store.address] = "factory-previous-protected"
+        let (owner, status, endpoint) = try factoryCompletion()
+        fixture.stub.enablePhotoAccess(owner.identity)
+        let authorized = await fixture.store.authorizeFactorySetup()
+        XCTAssertTrue(authorized)
+        fixture.stub.respondNextJSON(host: endpoint.host!, path: "/api/auth/factory-device-enroll", method: "POST",
+                                    status: 503, body: ["detail": "Synthetic response lost"])
+        let first = await fixture.store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status)
+        XCTAssertFalse(first)
+        let second = await fixture.store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status)
+        XCTAssertTrue(second)
+        let calls = fixture.stub.requests.filter { $0.url?.path == "/api/auth/factory-device-enroll" }
+        XCTAssertEqual(calls.count, 2)
+        let firstBody = try requestJSON(XCTUnwrap(calls.first))
+        let secondBody = try requestJSON(XCTUnwrap(calls.last))
+        for key in ["device_id", "device_token", "request_id", "claim_request_id", "setup_op_id"] {
+            XCTAssertTrue(firstBody[key] as? String == secondBody[key] as? String, "Exact enrollment intent must survive a lost response.")
+        }
+    }
+
 }
 
 @MainActor
@@ -2079,17 +2266,19 @@ private final class StoreStub: @unchecked Sendable {
         let body: Any
         var defaultStatus = 200
         switch path {
-        case "/api/auth/invitations/claim", "/api/auth/device-session", "/api/auth/devices/enroll":
+        case "/api/auth/invitations/claim", "/api/auth/device-session", "/api/auth/devices/enroll", "/api/auth/factory-device-enroll":
             let fields = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any] ?? [:]
             let identity = lock.withLock { accessIdentity }!
             let deviceID = fields["device_id"] as? String ?? ""
             let role: String = lock.withLock {
-                if path == "/api/auth/devices/enroll" { accessDeviceRoles[deviceID] = "owner" }
+                if path == "/api/auth/devices/enroll" || path == "/api/auth/factory-device-enroll" { accessDeviceRoles[deviceID] = "owner" }
                 if path == "/api/auth/invitations/claim" { accessDeviceRoles[deviceID] = "media" }
                 return accessDeviceRoles[deviceID] ?? "media"
             }
-            body = ["authenticated": true, "device_id": deviceID, "role": role,
+            var reply: [String: Any] = ["device_id": deviceID, "role": role,
                 "identity": ["frame_id": identity.id.uuidString.lowercased(), "spki_sha256": identity.spkiSHA256.map { String(format: "%02x", $0) }.joined()]]
+            if path != "/api/auth/factory-device-enroll" { reply["authenticated"] = true }
+            body = reply
         case "/api/auth/invitations":
             let fields = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any] ?? [:]
             let identity = lock.withLock { accessIdentity }!

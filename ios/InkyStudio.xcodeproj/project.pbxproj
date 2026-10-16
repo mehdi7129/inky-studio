@@ -9,11 +9,15 @@
 /* Begin PBXBuildFile section */
 		0989724E668DF98501F3C34A /* APITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F0845EFD539104F9AFDB591 /* APITests.swift */; };
 		0CAE38FB30219486A9361511 /* PhotoAccessClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 521D68F5511F1421798A1AFC /* PhotoAccessClient.swift */; };
+		0F01F5CE480DEF46C9B26777 /* FactorySetupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 079D8294EDCBA1CD47B94A7F /* FactorySetupUITests.swift */; };
+		0F435CB4FFCBB6456CC26CF1 /* FactoryPhotoBackendInteropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 792F3DA6C59AD661247C7879 /* FactoryPhotoBackendInteropTests.swift */; };
 		1006BC8D40E57ADA2432DC39 /* OwnershipVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CB6FE548F76B8089B50EA4F /* OwnershipVault.swift */; };
+		113F42024C451CA922B3A6E6 /* FactoryBootstrapTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C249006E3FDDA363D235E38 /* FactoryBootstrapTransportTests.swift */; };
 		159AC507D94E065759D83164 /* GettingStartedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A161B88E1099CFF8F0F85884 /* GettingStartedView.swift */; };
 		15FB4F08AC6270798050824A /* QueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E93EF9A28792AD9A812ED7 /* QueueView.swift */; };
 		17CD43BAAB9443573CCC5A30 /* InkyStudioUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715F2C31B5B7575A987628A5 /* InkyStudioUITests.swift */; };
 		186FAAADBE0460E7C2BE3C37 /* BluetoothSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49B1DDA6CD675954525687AE /* BluetoothSetupView.swift */; };
+		1D11E7215311A6138FC1BCA7 /* FactorySetupModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3B8E8548D7A2F13F9D4388 /* FactorySetupModels.swift */; };
 		20F6786F93563A852473726C /* SecureBluetoothChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF3D11F5A6E0F44A610709CC /* SecureBluetoothChannel.swift */; };
 		21432DAAEF7B5BC7457F7A35 /* PhotoAccessBackendInteropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46C2790BC45731DD11C8F334 /* PhotoAccessBackendInteropTests.swift */; };
 		21841F1B618C6413AFEC2FD0 /* CameraCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1402A8E3BA91BF9537C24A /* CameraCaptureView.swift */; };
@@ -21,12 +25,17 @@
 		2F7AC99D1BA003EFA4DB94FC /* InkyAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D591853F3004F95469F34EA /* InkyAPI.swift */; };
 		303C97AA771D6E8566655491 /* FramePhotoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA86EF4F893A75D7FFB8E8EA /* FramePhotoClient.swift */; };
 		324AC1EBE0B647C8B19018D9 /* LegacyTLSProofModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE676C7D1F7BBFEC4E1A19C /* LegacyTLSProofModelsTests.swift */; };
+		37FCF49A4D81234EEB126984 /* FactorySetupCheckpointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C51051C9C3E5F9FBDE68A35 /* FactorySetupCheckpointTests.swift */; };
 		39374A0640F3E0777B82E833 /* BootstrapFrameTrustTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */; };
 		3B2FA8B8345A13890D0C1722 /* LegacyTLSProofClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F462EF641F8A3166DE01E969 /* LegacyTLSProofClient.swift */; };
+		3B667FB641D8A1000CF17505 /* FactorySetupWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04EA53A1A916DDFC4DA995D5 /* FactorySetupWire.swift */; };
+		41311E7054405394CB82199E /* FrameBootstrapCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 513BB9A8F8C1BE7D7A9A6FF6 /* FrameBootstrapCode.swift */; };
 		42766EFA47788DD300F4CC2C /* LegacyTLSProofModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F2042323A90DDDC684EBA4 /* LegacyTLSProofModels.swift */; };
+		46AE316874B933FFBC1976C9 /* FactorySetupPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D55B0CD2F2C07BEFD75AA4E /* FactorySetupPresentation.swift */; };
 		4964887E4D9053F0AAADA934 /* OwnershipVaultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4BC623B018F1BD03AECD32 /* OwnershipVaultTests.swift */; };
 		5DA5EACB32570669F29B66A8 /* InkyStudioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908ED9879C756D9FD754E54A /* InkyStudioApp.swift */; };
 		5E0735A767035D2E7F09E1B6 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94A820224492220A3DA35B5 /* AppStore.swift */; };
+		5F37F1531CD05CF098CB9CCE /* FactoryPhotoEnrollment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30A9004EA7755E4BA2D27456 /* FactoryPhotoEnrollment.swift */; };
 		5FAB3E4A3344A8589C1056F6 /* BluetoothSetupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CFBE17AACB997A4E14D675B /* BluetoothSetupUITests.swift */; };
 		6315C6AAC9CCE221CDBB7C3E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 38533D2848E2229ACC99D7D2 /* PrivacyInfo.xcprivacy */; };
 		673060D0141C55284669ABD2 /* PinnedFrameTrust.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1DDCCB56C35BA702C6413F /* PinnedFrameTrust.swift */; };
@@ -48,7 +57,10 @@
 		A469DC4B3356747C5E4E3D42 /* PhotoAccessClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CAB5148FA1E1636088AADD4 /* PhotoAccessClientTests.swift */; };
 		A8B08F1628A872CD5F5C2520 /* FrameInvitationCodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19E5BC929BFD269953D78E4F /* FrameInvitationCodeTests.swift */; };
 		AB182E3BD1569DBD5D2D3681 /* BluetoothTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */; };
+		ABF9C27EAAFED2AAF0CBA9EC /* BluetoothFactorySetupCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56FC9B3E97F8CC0D3D494A34 /* BluetoothFactorySetupCoordinatorTests.swift */; };
+		AE25C3741EFEBEAE1E6150C7 /* FactorySetupWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8D9EAF0F52C694DC87C8001 /* FactorySetupWireTests.swift */; };
 		B1CD487B42DBC2A80B24DAEC /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E7E1EBB19CAD90394EE3A69 /* DashboardView.swift */; };
+		B7CE993843D3C09DEEE58CFE /* FactorySetupClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B30532265CBFC2C504E708E /* FactorySetupClientTests.swift */; };
 		BDA9790D16F044E74CD03A26 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9EE38F9C4815EE8B81A82971 /* Assets.xcassets */; };
 		C1EE5D5C061584154CB99A54 /* BootstrapFrameTrust.swift in Sources */ = {isa = PBXBuildFile; fileRef = 068B726917984500D0CF71DC /* BootstrapFrameTrust.swift */; };
 		C3248754FBF59BD40C6AD01F /* PhotoAccessVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16411FCC974303614F23B8A7 /* PhotoAccessVault.swift */; };
@@ -56,6 +68,7 @@
 		CB37F0565CDD0759B962195C /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 499D47C314B26D19A55DBE5B /* HistoryView.swift */; };
 		CFB066BEAEAC949806104B3C /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF609B8AA1F8E3DFDC9893A4 /* ConnectionView.swift */; };
 		CFB2A1F16583DE2A3960C0FE /* PhotoAccessModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD9E0808D7AEF74962DB5A19 /* PhotoAccessModels.swift */; };
+		D4266A0A90B9A755DD581BCB /* FactorySetupCheckpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8962D78B193DFC46A31E341C /* FactorySetupCheckpoint.swift */; };
 		D699193F4084B7978695F8FB /* QRHomeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9544F15BB76E973B686EF458 /* QRHomeUITests.swift */; };
 		D96EE03090D613EE5DB32E52 /* FrameLANLoginCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C4661D37EB5D6FF98100BB /* FrameLANLoginCode.swift */; };
 		D9F80ED152C3B8F6C5D9B656 /* BluetoothChannelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D190F2D1CFE1681D659D98 /* BluetoothChannelTests.swift */; };
@@ -91,10 +104,13 @@
 
 /* Begin PBXFileReference section */
 		00E4738FD6DC01E0729BD931 /* PhotoAccessVaultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAccessVaultTests.swift; sourceTree = "<group>"; };
+		04EA53A1A916DDFC4DA995D5 /* FactorySetupWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorySetupWire.swift; sourceTree = "<group>"; };
 		068B726917984500D0CF71DC /* BootstrapFrameTrust.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapFrameTrust.swift; sourceTree = "<group>"; };
+		079D8294EDCBA1CD47B94A7F /* FactorySetupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorySetupUITests.swift; sourceTree = "<group>"; };
 		0BEB97D518A7AD408D5754E3 /* FrameInvitationCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameInvitationCode.swift; sourceTree = "<group>"; };
 		0C1AD736F7DF35F699D1E2AF /* FrameIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameIdentity.swift; sourceTree = "<group>"; };
 		0CAB5148FA1E1636088AADD4 /* PhotoAccessClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAccessClientTests.swift; sourceTree = "<group>"; };
+		0D55B0CD2F2C07BEFD75AA4E /* FactorySetupPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorySetupPresentation.swift; sourceTree = "<group>"; };
 		0E7E1EBB19CAD90394EE3A69 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		16411FCC974303614F23B8A7 /* PhotoAccessVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAccessVault.swift; sourceTree = "<group>"; };
 		19E5BC929BFD269953D78E4F /* FrameInvitationCodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameInvitationCodeTests.swift; sourceTree = "<group>"; };
@@ -102,6 +118,8 @@
 		1CB6FE548F76B8089B50EA4F /* OwnershipVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OwnershipVault.swift; sourceTree = "<group>"; };
 		1EA7C41FE711F5C10D48C074 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		2A2F4D0111059422485B70B8 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
+		2B30532265CBFC2C504E708E /* FactorySetupClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorySetupClientTests.swift; sourceTree = "<group>"; };
+		30A9004EA7755E4BA2D27456 /* FactoryPhotoEnrollment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactoryPhotoEnrollment.swift; sourceTree = "<group>"; };
 		317510685DBCBA4B459AD2F4 /* PhotoPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPipeline.swift; sourceTree = "<group>"; };
 		349A1501C7C3147D64A647BE /* InkyStudioUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InkyStudioUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		36D190F2D1CFE1681D659D98 /* BluetoothChannelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothChannelTests.swift; sourceTree = "<group>"; };
@@ -113,17 +131,24 @@
 		49B1DDA6CD675954525687AE /* BluetoothSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothSetupView.swift; sourceTree = "<group>"; };
 		4D591853F3004F95469F34EA /* InkyAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkyAPI.swift; sourceTree = "<group>"; };
 		50B7D743D63D8E3038F96161 /* BluetoothSetupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothSetupCoordinator.swift; sourceTree = "<group>"; };
+		513BB9A8F8C1BE7D7A9A6FF6 /* FrameBootstrapCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameBootstrapCode.swift; sourceTree = "<group>"; };
 		521ACA1E2D923359CD42DBDD /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		521D68F5511F1421798A1AFC /* PhotoAccessClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAccessClient.swift; sourceTree = "<group>"; };
+		56FC9B3E97F8CC0D3D494A34 /* BluetoothFactorySetupCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothFactorySetupCoordinatorTests.swift; sourceTree = "<group>"; };
+		6C249006E3FDDA363D235E38 /* FactoryBootstrapTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactoryBootstrapTransportTests.swift; sourceTree = "<group>"; };
 		6F0845EFD539104F9AFDB591 /* APITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APITests.swift; sourceTree = "<group>"; };
+		6F3B8E8548D7A2F13F9D4388 /* FactorySetupModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorySetupModels.swift; sourceTree = "<group>"; };
 		705B77096599A912B708C7FF /* FrameIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameIdentityTests.swift; sourceTree = "<group>"; };
 		715F2C31B5B7575A987628A5 /* InkyStudioUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkyStudioUITests.swift; sourceTree = "<group>"; };
+		792F3DA6C59AD661247C7879 /* FactoryPhotoBackendInteropTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactoryPhotoBackendInteropTests.swift; sourceTree = "<group>"; };
 		7CFBE17AACB997A4E14D675B /* BluetoothSetupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothSetupUITests.swift; sourceTree = "<group>"; };
 		803409E6940A2CDA8D8B108A /* PhotoPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPipelineTests.swift; sourceTree = "<group>"; };
 		81D0313FF291E89F24013700 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		82E93EF9A28792AD9A812ED7 /* QueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueView.swift; sourceTree = "<group>"; };
 		836D4C9F8E331DEF2E50DBA6 /* InkyTLS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = InkyTLS; path = Packages/InkyTLS; sourceTree = SOURCE_ROOT; };
 		88F2042323A90DDDC684EBA4 /* LegacyTLSProofModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTLSProofModels.swift; sourceTree = "<group>"; };
+		8962D78B193DFC46A31E341C /* FactorySetupCheckpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorySetupCheckpoint.swift; sourceTree = "<group>"; };
+		8C51051C9C3E5F9FBDE68A35 /* FactorySetupCheckpointTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorySetupCheckpointTests.swift; sourceTree = "<group>"; };
 		8DCEA26471F9019C266D0935 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		8DD2E779AB549D13992CC463 /* InkyStudio.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = InkyStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		908ED9879C756D9FD754E54A /* InkyStudioApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkyStudioApp.swift; sourceTree = "<group>"; };
@@ -156,6 +181,7 @@
 		EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCaptureTests.swift; sourceTree = "<group>"; };
 		F462EF641F8A3166DE01E969 /* LegacyTLSProofClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTLSProofClient.swift; sourceTree = "<group>"; };
 		F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapFrameTrustTests.swift; sourceTree = "<group>"; };
+		F8D9EAF0F52C694DC87C8001 /* FactorySetupWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorySetupWireTests.swift; sourceTree = "<group>"; };
 		FFE676C7D1F7BBFEC4E1A19C /* LegacyTLSProofModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTLSProofModelsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -184,6 +210,7 @@
 			isa = PBXGroup;
 			children = (
 				B2AFCEF5039DACCE31F0E5C3 /* APIError.swift */,
+				30A9004EA7755E4BA2D27456 /* FactoryPhotoEnrollment.swift */,
 				AD13D09A34D1301851C4A1C2 /* FrameAddress.swift */,
 				AA86EF4F893A75D7FFB8E8EA /* FramePhotoClient.swift */,
 				4D591853F3004F95469F34EA /* InkyAPI.swift */,
@@ -237,9 +264,15 @@
 				3A80B1FAF2DB2CA2E44D4488 /* AppStoreTests.swift */,
 				4270798D8720AD8EA20CEDFB /* BluetoothChannelInteropTests.swift */,
 				36D190F2D1CFE1681D659D98 /* BluetoothChannelTests.swift */,
+				56FC9B3E97F8CC0D3D494A34 /* BluetoothFactorySetupCoordinatorTests.swift */,
 				E5ADFD190C12461AC95A6AB3 /* BluetoothSetupCoordinatorTests.swift */,
 				F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */,
 				EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */,
+				6C249006E3FDDA363D235E38 /* FactoryBootstrapTransportTests.swift */,
+				792F3DA6C59AD661247C7879 /* FactoryPhotoBackendInteropTests.swift */,
+				8C51051C9C3E5F9FBDE68A35 /* FactorySetupCheckpointTests.swift */,
+				2B30532265CBFC2C504E708E /* FactorySetupClientTests.swift */,
+				F8D9EAF0F52C694DC87C8001 /* FactorySetupWireTests.swift */,
 				705B77096599A912B708C7FF /* FrameIdentityTests.swift */,
 				19E5BC929BFD269953D78E4F /* FrameInvitationCodeTests.swift */,
 				EA03CF5A821583DC0296E706 /* FrameLANLoginCodeTests.swift */,
@@ -315,6 +348,7 @@
 			isa = PBXGroup;
 			children = (
 				7CFBE17AACB997A4E14D675B /* BluetoothSetupUITests.swift */,
+				079D8294EDCBA1CD47B94A7F /* FactorySetupUITests.swift */,
 				715F2C31B5B7575A987628A5 /* InkyStudioUITests.swift */,
 				D096779D681CB37721D1B984 /* PhotoAccessUITests.swift */,
 				9544F15BB76E973B686EF458 /* QRHomeUITests.swift */,
@@ -329,6 +363,11 @@
 				49B1DDA6CD675954525687AE /* BluetoothSetupView.swift */,
 				D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */,
 				068B726917984500D0CF71DC /* BootstrapFrameTrust.swift */,
+				8962D78B193DFC46A31E341C /* FactorySetupCheckpoint.swift */,
+				6F3B8E8548D7A2F13F9D4388 /* FactorySetupModels.swift */,
+				0D55B0CD2F2C07BEFD75AA4E /* FactorySetupPresentation.swift */,
+				04EA53A1A916DDFC4DA995D5 /* FactorySetupWire.swift */,
+				513BB9A8F8C1BE7D7A9A6FF6 /* FrameBootstrapCode.swift */,
 				0C1AD736F7DF35F699D1E2AF /* FrameIdentity.swift */,
 				0BEB97D518A7AD408D5754E3 /* FrameInvitationCode.swift */,
 				C2C4661D37EB5D6FF98100BB /* FrameLANLoginCode.swift */,
@@ -463,6 +502,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5FAB3E4A3344A8589C1056F6 /* BluetoothSetupUITests.swift in Sources */,
+				0F01F5CE480DEF46C9B26777 /* FactorySetupUITests.swift in Sources */,
 				17CD43BAAB9443573CCC5A30 /* InkyStudioUITests.swift in Sources */,
 				E2AB2C5DC405AFC910538F17 /* PhotoAccessUITests.swift in Sources */,
 				D699193F4084B7978695F8FB /* QRHomeUITests.swift in Sources */,
@@ -477,9 +517,15 @@
 				87F09C526C4734656AAFBC69 /* AppStoreTests.swift in Sources */,
 				88DF6751DB3134A77E600EC7 /* BluetoothChannelInteropTests.swift in Sources */,
 				D9F80ED152C3B8F6C5D9B656 /* BluetoothChannelTests.swift in Sources */,
+				ABF9C27EAAFED2AAF0CBA9EC /* BluetoothFactorySetupCoordinatorTests.swift in Sources */,
 				830D01584B435478285A585A /* BluetoothSetupCoordinatorTests.swift in Sources */,
 				39374A0640F3E0777B82E833 /* BootstrapFrameTrustTests.swift in Sources */,
 				F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */,
+				113F42024C451CA922B3A6E6 /* FactoryBootstrapTransportTests.swift in Sources */,
+				0F435CB4FFCBB6456CC26CF1 /* FactoryPhotoBackendInteropTests.swift in Sources */,
+				37FCF49A4D81234EEB126984 /* FactorySetupCheckpointTests.swift in Sources */,
+				B7CE993843D3C09DEEE58CFE /* FactorySetupClientTests.swift in Sources */,
+				AE25C3741EFEBEAE1E6150C7 /* FactorySetupWireTests.swift in Sources */,
 				E883895084BA3ED85261A5FD /* FrameIdentityTests.swift in Sources */,
 				A8B08F1628A872CD5F5C2520 /* FrameInvitationCodeTests.swift in Sources */,
 				9D637B1E237BEE8040511922 /* FrameLANLoginCodeTests.swift in Sources */,
@@ -511,7 +557,13 @@
 				CFB066BEAEAC949806104B3C /* ConnectionView.swift in Sources */,
 				9CC39CDC8AAA4024792222BF /* CropGeometry.swift in Sources */,
 				B1CD487B42DBC2A80B24DAEC /* DashboardView.swift in Sources */,
+				5F37F1531CD05CF098CB9CCE /* FactoryPhotoEnrollment.swift in Sources */,
+				D4266A0A90B9A755DD581BCB /* FactorySetupCheckpoint.swift in Sources */,
+				1D11E7215311A6138FC1BCA7 /* FactorySetupModels.swift in Sources */,
+				46AE316874B933FFBC1976C9 /* FactorySetupPresentation.swift in Sources */,
+				3B667FB641D8A1000CF17505 /* FactorySetupWire.swift in Sources */,
 				8A4E908BD023391144DC44FD /* FrameAddress.swift in Sources */,
+				41311E7054405394CB82199E /* FrameBootstrapCode.swift in Sources */,
 				9493AB0361A4E54558813731 /* FrameIdentity.swift in Sources */,
 				88FAA570F94ECAB89F2D0175 /* FrameInvitationCode.swift in Sources */,
 				D96EE03090D613EE5DB32E52 /* FrameLANLoginCode.swift in Sources */,

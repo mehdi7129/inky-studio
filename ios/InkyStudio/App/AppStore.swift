@@ -23,6 +23,10 @@ final class AppStore: ObservableObject {
     @Published private(set) var accessDevices: [PhotoAccessDeviceSummary] = []
     @Published private(set) var photoAccessBusy = false
     @Published private(set) var photoAccessError: String?
+    @Published var factorySetupPresentation: FactorySetupPresentation?
+    private var factoryAuthorizationGeneration: UUID?
+    private var factoryAttemptGeneration = UUID()
+    private var queuedFactoryPresentation: FactorySetupPresentation?
     private let photoAccessVault: PhotoAccessVault
     private let makePinnedAPI: @MainActor (URL, FrameIdentity) -> InkyAPI
     private let proveLegacyTLS: @MainActor (URL, String) async throws -> VerifiedLegacyTLSEndpoint
@@ -212,6 +216,13 @@ final class AppStore: ObservableObject {
 
     /// A local lock never logs out or discards a usable in-memory network session.
     func lock() {
+        factoryAuthorizationGeneration = nil
+        factoryAttemptGeneration = UUID()
+        queuedFactoryPresentation = nil
+        if var presentation = factorySetupPresentation {
+            presentation.code = nil
+            factorySetupPresentation = presentation
+        }
         legacySharingUpgradeTask?.cancel()
         legacySharingUpgradeTask = nil
         legacySharingUpgradeID = UUID()
@@ -433,6 +444,141 @@ final class AppStore: ObservableObject {
             guard epoch == generation, localUnlocked else { return }
             // A failed candidate must never sign the established photo session out.
             errorMessage = "Le Wi-Fi est configuré. La nouvelle connexion photo n’a pas pu être vérifiée ; la connexion précédente est conservée."
+        }
+    }
+
+    var hasPendingFactorySetup: Bool {
+        ((try? ownershipVault.allRecords()) ?? []).contains { $0.isFactorySetupPending }
+    }
+
+    func presentFactorySetup(_ code: FrameBootstrapCode) {
+        guard !connecting, !unlocking, !photoAccessBusy, !busy, !displayBusy, !updating else { return }
+        factorySetupPresentation = FactorySetupPresentation(code: code, owner: nil)
+    }
+
+    func queueFactorySetup(_ code: FrameBootstrapCode) {
+        queuedFactoryPresentation = FactorySetupPresentation(code: code, owner: nil)
+    }
+
+    func queueFactoryOwner(_ owner: OwnershipRecord) {
+        guard owner.isFactory else { return }
+        queuedFactoryPresentation = FactorySetupPresentation(code: nil, owner: owner)
+    }
+
+    func presentQueuedFactorySetup() {
+        guard active, let queued = queuedFactoryPresentation else { return }
+        queuedFactoryPresentation = nil
+        factorySetupPresentation = queued
+    }
+
+    func resumeFactorySetup() {
+        guard !connecting, !unlocking, !photoAccessBusy, !busy, !displayBusy, !updating else { return }
+        let pending = ((try? ownershipVault.allRecords()) ?? []).filter { $0.isFactorySetupPending }
+        guard !pending.isEmpty else { return }
+        factorySetupPresentation = FactorySetupPresentation(code: nil, owner: pending.count == 1 ? pending[0] : nil)
+    }
+
+    func authorizeFactorySetup() async -> Bool {
+        if factoryAuthorizationGeneration == localAuthenticationGeneration, localUnlocked, active { return true }
+        guard !connecting, !unlocking, !photoAccessBusy, !busy, !displayBusy, !updating else { return false }
+        let attempt = localAuthenticationGeneration
+        let factoryAttempt = factoryAttemptGeneration
+        unlocking = true
+        defer { if attempt == localAuthenticationGeneration { unlocking = false } }
+        guard await authorizeLocally(force: true), attempt == localAuthenticationGeneration,
+              factoryAttempt == factoryAttemptGeneration else { return false }
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        while !active {
+            guard attempt == localAuthenticationGeneration, factoryAttempt == factoryAttemptGeneration, !Task.isCancelled,
+                  ProcessInfo.processInfo.systemUptime < deadline else { return false }
+            do { try await Task.sleep(nanoseconds: 50_000_000) } catch { return false }
+        }
+        guard attempt == localAuthenticationGeneration, factoryAttempt == factoryAttemptGeneration,
+              localUnlocked, !Task.isCancelled else { return false }
+        factoryAuthorizationGeneration = attempt
+        return true
+    }
+
+    func cancelFactorySetup() {
+        factoryAuthorizationGeneration = nil
+        factoryAttemptGeneration = UUID()
+        cancelPhotoAccessOperation()
+    }
+
+    /// The candidate never changes the selected frame until protected PHOTO
+    /// storage, enrollment and a device-session have all succeeded.
+    func finishFactorySetup(endpoint: URL, owner: OwnershipRecord, status: FactorySetupStatus) async -> Bool {
+        guard factoryAuthorizationGeneration == localAuthenticationGeneration, localUnlocked, active,
+              !photoAccessBusy, !connecting, !busy, !displayBusy, !updating else { return false }
+        let epoch = generation
+        let authentication = localAuthenticationGeneration
+        let operation = UUID()
+        photoAccessOperation = operation
+        photoAccessBusy = true
+        photoAccessError = nil
+        var candidate: InkyAPI?
+        var committed = false
+        defer {
+            if !committed { candidate?.clearSession() }
+            if photoAccessOperation == operation { photoAccessBusy = false; pendingClient = nil }
+        }
+        func current() -> Bool {
+            photoOperationValid(epoch, operation) && authentication == localAuthenticationGeneration &&
+                factoryAuthorizationGeneration == authentication
+        }
+        do {
+            guard owner.isFactory, owner.state == .claimed, status.state == .complete,
+                  status.nextStep == .photoEnroll, status.completionID != nil,
+                  status.frameID == owner.identity.id, status.ownerID == owner.ownerID,
+                  status.claimRequestID == owner.claimRequestID,
+                  status.normalIdentity?.identity == owner.identity,
+                  status.httpsOrigin?.absoluteString == endpoint.absoluteString else { throw PhotoAccessError.identityMismatch }
+            try FrameTrustPolicy(identity: owner.identity).validateHTTPS(endpoint)
+            let draftAccount = "factory:" + owner.id.uuidString.lowercased() + ":" + owner.claimRequestID.uuidString.lowercased()
+            let canonicalAccount = PhotoAccessSelection.account(identity: owner.identity, invitationID: nil)
+            let saved: PhotoAccessCredential?
+            if photoAccessVault.contains(account: draftAccount) {
+                saved = try await photoAccessVault.loadCredential(account: draftAccount)
+            } else if photoAccessVault.contains(account: canonicalAccount) {
+                let existing = try await photoAccessVault.loadCredential(account: canonicalAccount)
+                saved = existing.requestID == owner.claimRequestID ? existing : nil
+            } else { saved = nil }
+            guard await waitForLegacySharingForeground(epoch: epoch, operation: operation), current() else { return false }
+            let credential: PhotoAccessCredential
+            if let saved {
+                guard saved.identity == owner.identity, saved.expectedRole == .owner, saved.invitationID == nil,
+                      saved.requestID == owner.claimRequestID, saved.deviceID != owner.ownerID,
+                      saved.deviceToken != owner.ownerTokenHex else { throw PhotoAccessError.identityMismatch }
+                credential = try PhotoAccessCredential(identity: saved.identity, endpoint: endpoint,
+                    deviceID: saved.deviceID, deviceToken: saved.deviceToken, requestID: saved.requestID, expectedRole: .owner)
+            } else {
+                credential = try PhotoAccessCredential(identity: owner.identity, endpoint: endpoint, deviceID: UUID(),
+                    deviceToken: PhotoAccessValidation.randomToken(), requestID: owner.claimRequestID, expectedRole: .owner)
+            }
+            // Separate protected draft: never overwrite an older selected PHOTO credential here.
+            try photoAccessVault.save(credential, account: draftAccount)
+            guard current() else { return false }
+            let pinned = makePinnedAPI(endpoint, owner.identity)
+            candidate = pinned; pendingClient = pinned
+            try await FactoryPhotoEnrollment.enroll(credential, api: pinned, owner: owner, setupOperationID: status.operationID)
+            guard current() else { return false }
+            _ = try await PhotoAccessClient(api: pinned, identity: owner.identity).openSession(credential)
+            guard current() else { return false }
+            pendingClient = nil
+            try commitPhotoAccess(credential, client: pinned)
+            defaults.set(owner.id.uuidString.lowercased(), forKey: "frameOwnerID")
+            committed = true
+            photoAccessBusy = false
+            try? photoAccessVault.remove(account: draftAccount)
+            let committedEpoch = generation
+            await refresh()
+            guard committedEpoch == generation, localUnlocked, active, authenticated, api === pinned else { return false }
+            startMonitoring()
+            return true
+        } catch {
+            guard current(), !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return false }
+            photoAccessError = "La configuration du cadre est conservée. L’accès photo n’a pas pu être confirmé ; votre accès précédent est conservé."
+            return false
         }
     }
 
@@ -913,6 +1059,7 @@ final class AppStore: ObservableObject {
             stopMonitoring()
         case .active:
             active = true
+            presentQueuedFactorySetup()
             if localUnlocked && authenticated { startMonitoring(); Task { await refresh() } }
         @unknown default:
             active = false

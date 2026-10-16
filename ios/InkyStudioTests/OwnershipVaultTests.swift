@@ -61,6 +61,83 @@ final class OwnershipVaultTests: XCTestCase {
         }
     }
 
+    func testLegacyRecordWithoutFactoryFieldsLoadsWithoutRewriting() throws {
+        try withRecord(endpoints: [endpoint(1)]) { vault, before, service in
+            let original = try storedData(service: service, id: before.id)
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+            XCTAssertNil(json["factoryProfile"])
+            XCTAssertNil(json["factorySetupOperationID"])
+            let loaded = try XCTUnwrap(vault.load(id: before.id))
+            XCTAssertFalse(loaded.isFactory)
+            XCTAssertFalse(loaded.isFactorySetupPending)
+            XCTAssertEqual(loaded, before)
+            XCTAssertEqual(try storedData(service: service, id: before.id), original)
+        }
+    }
+
+    func testBootstrapFutureCertificateCanPersistWithoutNormalTrustOrLANAuthority() throws {
+        // The renewed fixture is not yet date-valid at the fixed test date.
+        // Bootstrap prevalidation is not a TLS handshake or a normal trust grant.
+        try withBootstrapRecord(certificate: FrameTrustTestFixtures.renewedCertificate) { vault, before, service in
+            XCTAssertThrowsError(try PinnedFrameTrust(identity: before.identity, certificateDER: before.certificateDER,
+                                                     at: FrameTrustTestFixtures.date))
+            XCTAssertThrowsError(try before.trust())
+            XCTAssertTrue(before.endpoints.isEmpty)
+            XCTAssertEqual(before.factoryProfile, .bootstrap)
+            let retried = try vault.prepareBootstrap(identity: before.identity, certificateDER: before.certificateDER)
+            XCTAssertEqual(retried.ownerToken, before.ownerToken)
+            XCTAssertEqual(retried.ownerID, before.ownerID)
+            XCTAssertEqual(retried.claimRequestID, before.claimRequestID)
+            let claimed = try vault.markClaimed(id: before.id)
+            XCTAssertEqual(claimed.state, .claimed)
+            XCTAssertEqual(claimed.factoryProfile, .bootstrap)
+            XCTAssertEqual(try OwnershipVault(service: service).load(id: before.id), claimed)
+        }
+    }
+
+    func testFactoryMarkersSurviveStrictPromotionAndWiFiLifecycle() throws {
+        try withBootstrapRecord { vault, before, service in
+            _ = try vault.markClaimed(id: before.id)
+            let operation = UUID()
+            _ = try vault.setFactoryOperation(id: before.id, operationID: operation)
+            let expected = try vault.expectFactoryNormal(id: before.id)
+            XCTAssertEqual(expected.factoryProfile, .bootstrap, "An intention is not a verified normal handshake")
+            XCTAssertThrowsError(try expected.trust())
+
+            let promoted = try vault.promoteFactoryNormal(id: before.id, certificateDER: before.certificateDER)
+            XCTAssertEqual(promoted.factoryProfile, .normalV1)
+            XCTAssertNil(promoted.factoryExpectedNormal)
+            XCTAssertNoThrow(try promoted.trust())
+            _ = try vault.markClaimed(id: before.id, endpoint: endpoint(3))
+            let transaction = UUID()
+            _ = try vault.beginWiFiTransaction(id: before.id, transactionID: transaction, ssid: "Synthetic factory network")
+            _ = try vault.finishWiFiTransaction(id: before.id, transactionID: transaction)
+            _ = try vault.refreshCertificate(id: before.id, certificateDER: before.certificateDER)
+            let completed = try vault.markFactoryPhotoCompleted(id: before.id)
+            XCTAssertEqual(completed.factorySetupOperationID, operation)
+            XCTAssertEqual(completed.factoryPhotoAccessComplete, true)
+            XCTAssertFalse(completed.isFactorySetupPending)
+            XCTAssertEqual(completed.ownerToken, before.ownerToken)
+            XCTAssertEqual(completed.ownerID, before.ownerID)
+            XCTAssertEqual(completed.claimRequestID, before.claimRequestID)
+            XCTAssertEqual(completed.endpoints, [endpoint(3)])
+            XCTAssertEqual(try OwnershipVault(service: service).load(id: before.id), completed)
+        }
+    }
+
+    func testBootstrapRejectsPinChangeAndLegacyReplacementWithoutChangingStoredOwner() throws {
+        try withBootstrapRecord { vault, before, service in
+            let original = try storedData(service: service, id: before.id)
+            XCTAssertThrowsError(try vault.promoteFactoryNormal(id: before.id, certificateDER: FrameTrustTestFixtures.newKeyCertificate))
+            XCTAssertThrowsError(try vault.refreshBootstrapCertificate(id: before.id, certificateDER: FrameTrustTestFixtures.newKeyCertificate))
+            XCTAssertThrowsError(try vault.replaceUnauthorizedOwner(id: before.id, certificateDER: before.certificateDER))
+            XCTAssertThrowsError(try vault.markClaimed(id: before.id, endpoint: endpoint(3)))
+            XCTAssertThrowsError(try vault.markFactoryPhotoCompleted(id: before.id))
+            XCTAssertEqual(try storedData(service: service, id: before.id), original)
+            XCTAssertEqual(try vault.load(id: before.id), before)
+        }
+    }
+
     private func endpoint(_ number: Int) -> URL {
         // RFC 5737 documentation addresses; these tests never open a connection.
         URL(string: "https://192.0.2.\(number):8443")!
@@ -102,6 +179,17 @@ final class OwnershipVaultTests: XCTestCase {
 
         let vault = OwnershipVault(service: service)
         XCTAssertEqual(try vault.load(id: record.id), record)
+        try body(vault, record, service)
+    }
+
+    private func withBootstrapRecord(certificate: Data = FrameTrustTestFixtures.certificate,
+                                     _ body: (OwnershipVault, OwnershipRecord, String) throws -> Void) throws {
+        let service = "InkyOwnershipVaultTests.\(UUID().uuidString)"
+        let vault = OwnershipVault(service: service)
+        let identity = try FrameIdentity(id: FrameTrustTestFixtures.id,
+                                         spkiSHA256: PinnedFrameTrust.spkiSHA256(certificateDER: certificate))
+        let record = try vault.prepareBootstrap(identity: identity, certificateDER: certificate)
+        defer { XCTAssertEqual(SecItemDelete(keychainQuery(service: service, id: record.id) as CFDictionary), errSecSuccess) }
         try body(vault, record, service)
     }
 
