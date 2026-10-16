@@ -378,7 +378,7 @@ def test_factory_scan_marks_completion_baseline_before_even_uncertain_request(un
 
 
 SUBPROCESS_HARNESS = r'''
-import fcntl, importlib.util, os, sys, time
+import fcntl, importlib.util, os, socket, sys, time
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -387,6 +387,10 @@ spec = importlib.util.spec_from_file_location('standalone_helper', sys.argv[1])
 helper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helper)
 directory, stage = Path(sys.argv[2]), sys.argv[3]
+# Actual systemd notification transport; factory readiness is mandatory.
+notification = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+notification.bind(str(directory / 'notify'))
+os.environ['NOTIFY_SOCKET'] = str(directory / 'notify')
 events = directory / 'events'
 def record(name):
     with events.open('a') as output: output.write(name + '\n')

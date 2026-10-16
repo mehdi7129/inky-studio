@@ -246,6 +246,7 @@ def prepare_factory(
     *,
     admission_check: Callable[[], None] | None = None,
     initialization_peer_guard: ConnectedPeerGuard | None = None,
+    resume_consumed: bool = False,
 ) -> FirstBootResult:
     """Prepare durable state only; this is not OS admission or radio readiness.
 
@@ -282,7 +283,7 @@ def prepare_factory(
     except Exception:
         raise FactoryRuntimeError() from None
     try:
-        return coordinator.initialize()
+        return coordinator.initialize(resume_consumed=True) if resume_consumed else coordinator.initialize()
     except FirstBootRefused:
         raise FactoryRuntimeError() from None
     except FirstBootUncertain:

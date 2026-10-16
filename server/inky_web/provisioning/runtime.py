@@ -17,18 +17,28 @@ from inky_web.provisioning.transport import GATTTransport
 
 
 class ProvisioningRuntime:
-    def __init__(self, directory: Path, credentials, display, identity=None):
+    def __init__(self, directory: Path, credentials, display, identity=None, *,
+                 owners=None, network=None, peer_factory=None, frame_status=None,
+                 network_admission=None, adoption_admission=None, owns_store=True, server_factory=BlueZServer,
+                 renew_certificate=True):
         self.directory = directory
         self.credentials = credentials
         self.display = display
         self.identity = identity or load_or_create_identity(directory)
-        self.owners = OwnershipStore(directory, self.epoch)
+        self.owners = owners if owners is not None else OwnershipStore(directory, self.epoch)
+        self.owns_store = owns_store
+        self.frame_status = frame_status
+        self.network_admission = network_admission
+        self.adoption_admission = adoption_admission
+        self.peer_factory = peer_factory
+        self.server_factory = server_factory
+        self.renew_certificate = renew_certificate
         self.tls_context = self.identity.ssl_context()
-        self.network = NetworkClient()
+        self.network = network if network is not None else NetworkClient()
         self.mutation_lock = asyncio.Lock()
         self._screen_lock = asyncio.Lock()
-        self.transport = GATTTransport(self.tls_context, self.command)
-        self.bluez = BlueZServer(self.transport, self.identity)
+        self.transport = GATTTransport(self.tls_context, self.command, **({"peer_factory": self.peer_factory} if self.peer_factory else {}))
+        self.bluez = self.server_factory(self.transport, self.identity)
         self.available = False
         self._window_task = None
         self._certificate_task = None
@@ -51,7 +61,8 @@ class ProvisioningRuntime:
     async def start(self):
         if (self.directory / ".adoption-screen").exists():
             await _display_work(screen.restore, self.display, self.directory)
-        self._certificate_task = asyncio.create_task(self._renew_certificate())
+        if self.renew_certificate:
+            self._certificate_task = asyncio.create_task(self._renew_certificate())
         await self.bluez.start()
         self.available = True
 
@@ -75,8 +86,8 @@ class ProvisioningRuntime:
         if changed or not self.available:
             self.available = False
             await self.bluez.stop()
-            self.transport = GATTTransport(self.tls_context, self.command)
-            self.bluez = BlueZServer(self.transport, self.identity)
+            self.transport = GATTTransport(self.tls_context, self.command, **({"peer_factory": self.peer_factory} if self.peer_factory else {}))
+            self.bluez = self.server_factory(self.transport, self.identity)
             await self.bluez.start()
             self.available = True
 
@@ -84,6 +95,8 @@ class ProvisioningRuntime:
         async with self.mutation_lock:
             if not self.available or self.display.closing:
                 raise NetworkUnavailable("bluetooth_unavailable")
+            if self.adoption_admission:
+                await self.adoption_admission()
             await self.end_adoption()
             async with self._screen_lock:
                 token = self.owners.open_window()
@@ -155,8 +168,12 @@ class ProvisioningRuntime:
                     if operation == "status":
                         result = self._frame_status()
                     elif operation == "wifi.scan":
+                        if self.network_admission:
+                            await self.network_admission()
                         result = await self.network.call("scan", owner_id=owner_id)
                     elif operation == "wifi.begin":
+                        if self.network_admission:
+                            await self.network_admission()
                         result = await self.network.call(
                             "begin", id=request_id, owner_id=owner_id,
                             ssid=message["ssid"], security=message["security"], password=message["password"],
@@ -183,6 +200,8 @@ class ProvisioningRuntime:
         return {"v": 1, "id": request_id, "ok": False, "error": code}
 
     def _frame_status(self):
+        if self.frame_status:
+            return self.frame_status()
         return {"frame_id": self.identity.frame_id, "https_port": 8443,
                 "hostname": socket.gethostname().removesuffix(".local") + ".local"}
 
@@ -191,6 +210,8 @@ class ProvisioningRuntime:
             if self.display.closing:
                 raise NetworkUnavailable("service_stopping")
             self.authorize(owner_id, owner_token)
+            if self.network_admission:
+                await self.network_admission(lan=True)
             return await self.network.call("confirm", id=canonical_uuid(transaction_id), owner_id=owner_id)
 
     async def stop(self):
@@ -216,7 +237,8 @@ class ProvisioningRuntime:
                 try:
                     await self.end_adoption()
                 finally:
-                    self.owners.close()
+                    if self.owns_store:
+                        self.owners.close()
 
 
 async def _display_work(function, *arguments):

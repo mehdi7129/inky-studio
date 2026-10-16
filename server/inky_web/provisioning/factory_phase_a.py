@@ -167,7 +167,9 @@ async def _serve_owned(
                     check_admission()
                     current = _verified_epoch(config)
                     check_admission()
-                    if not secrets.compare_digest(expected_epoch, current):
+                    completed = (lifetime.runtime is not None
+                                 and getattr(lifetime.runtime.runtime, "historical_completed", lambda: False)())
+                    if not completed and not secrets.compare_digest(expected_epoch, current):
                         raise FactoryRuntimeError()
                     lease.check()
                     return current
@@ -195,6 +197,7 @@ async def _serve_owned(
                 return prepare_factory(
                     config, admission_check=check_admission,
                     initialization_peer_guard=initialization_peer_guard,
+                    resume_consumed=True,
                 )
 
             # No cancellation of the coordinator: its one-use begin may have
@@ -215,8 +218,11 @@ async def _serve_owned(
 
             def runtime(result, controller):
                 verify_epoch()
-                wrapped = _OwnedRuntime(runtime_factory(result, controller, verify_epoch),
-                                        verify_epoch, lifetime)
+                candidate_runtime = runtime_factory(result, controller, verify_epoch)
+                bind_stop = getattr(candidate_runtime, "bind_stop", None)
+                if bind_stop is not None:
+                    bind_stop(lifetime.close_admission)
+                wrapped = _OwnedRuntime(candidate_runtime, verify_epoch, lifetime)
                 lifetime.runtime = wrapped
                 return wrapped
 

@@ -38,7 +38,7 @@ SCRYPT_P: Final = 1
 PUBLIC_PATHS: Final = frozenset({
     "/api/health", "/api/auth/login", "/api/auth/status",
     "/api/auth/device-session", "/api/auth/invitations/claim",
-    "/api/auth/legacy-tls-proof",
+    "/api/auth/legacy-tls-proof", "/api/auth/factory-device-enroll",
 })
 
 

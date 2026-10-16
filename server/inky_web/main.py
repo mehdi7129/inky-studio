@@ -59,6 +59,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
+        if path == "/api/auth/factory-device-enroll":
+            try:
+                require_https(request)
+            except HTTPException as exc:
+                return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
+                                    headers={"Cache-Control": "no-store"})
+            chunks, length = [], 0
+            async for chunk in request.stream():
+                length += len(chunk)
+                if length > 2048:
+                    return JSONResponse({"detail": "Requête trop volumineuse"}, status_code=413,
+                                        headers={"Cache-Control": "no-store"})
+                chunks.append(chunk)
+            request._body = b"".join(chunks)
+            response = await call_next(request)
+            response.headers["Cache-Control"] = "no-store"
+            return response
         if path == PROOF_PATH:
             # The nonce-only probe bypasses application cookie/session authority.
             # FastAPI may still parse cookies internally; they are never used.
@@ -214,12 +231,14 @@ async def lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
 
 
 @asynccontextmanager
-async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None):
+async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
+                           factory=None):
     init_db()
     app.state.sessions = auth.SessionStore()
-    app.state.auth_service = auth.CredentialService(
-        auth.load_or_create_credentials(data_dir()), app.state.sessions,
-    )
+    credentials = (auth.load_or_create_credentials(data_dir()) if factory is None else
+                   auth._parse_record(data_dir() / "credentials.json",
+                                      auth._read_record(data_dir() / "credentials.json")))
+    app.state.auth_service = auth.CredentialService(credentials, app.state.sessions)
     app.state.login_limiter = auth.LoginRateLimiter()
     app.state.password_change_limiter = auth.LoginRateLimiter()
     app.state.photo_access = None
@@ -247,10 +266,10 @@ async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = 
         )
         app.state.sessions.principal_validator = app.state.photo_access.valid
     app.state.bus = EventBus()
-    app.state.display = DisplayController()
+    app.state.display = DisplayController() if factory is None else factory.display
     if stop_requested is not None and stop_requested.is_set():
         app.state.display.begin_shutdown()
-    else:
+    elif factory is None:
         # Signals and the event loop must remain responsive during driver setup.
         try:
             await asyncio.to_thread(app.state.display.initialize)
@@ -258,7 +277,9 @@ async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = 
             if not app.state.display.closing:
                 raise
     app.state.scheduler = Scheduler(app.state.display, app.state.bus)
-    app.state.provisioning = None
+    app.state.provisioning = None if factory is None else factory.provisioning
+    app.state.factory_continuation = factory
+    app.state.photo_access_origin = None if factory is None else factory.https_origin
     welcome_task = None
     if not auth.auth_disabled():
         logger = logging.getLogger(__name__)
@@ -270,7 +291,7 @@ async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = 
     # Retry bootstrap display after a power interruption between credential
     # persistence and the first successful screen refresh. Never reveal a
     # personalized password, or overwrite a frame that already has history.
-    if not app.state.display.closing and app.state.auth_service.credentials.bootstrap_password and not auth.auth_disabled():
+    if factory is None and not app.state.display.closing and app.state.auth_service.credentials.bootstrap_password and not auth.auth_disabled():
         # No history yet → show welcome. Run in a thread so lifespan stays snappy.
         from inky_web.services import history as history_service
         from inky_web.welcome import show_welcome
@@ -289,7 +310,11 @@ async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = 
             welcome_task = asyncio.create_task(welcome())
 
     try:
-        if not app.state.display.closing and os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled():
+        if factory is not None:
+            app.state.auth_service.prepare_owner_rotation = factory.prepare_rotation
+            factory.provisioning.credentials = app.state.auth_service
+            await factory.provisioning.start()
+        elif not app.state.display.closing and os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled():
             from inky_web.provisioning.runtime import ProvisioningRuntime
             app.state.provisioning = ProvisioningRuntime(
                 data_dir() / "provisioning", app.state.auth_service, app.state.display,
@@ -314,7 +339,8 @@ async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = 
                 if welcome_task is not None:
                     await welcome_task
         finally:
-            await asyncio.to_thread(app.state.display.shutdown)
+            if factory is None:
+                await asyncio.to_thread(app.state.display.shutdown)
 
 
 app = FastAPI(
@@ -332,7 +358,7 @@ async def display_error(request: Request, exc: DisplayUnavailableError):
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError):
-    if request.url.path.startswith(("/api/auth/devices", "/api/auth/invitations", "/api/auth/device-session")):
+    if request.url.path.startswith(("/api/auth/devices", "/api/auth/invitations", "/api/auth/device-session", "/api/auth/factory-device-enroll")):
         # Even an extra-field *name* is attacker controlled and can be a secret.
         return JSONResponse(status_code=422, content={"detail": "Requête invalide"},
                             headers={"Cache-Control": "no-store"})
@@ -373,6 +399,101 @@ async def spa_fallback(full_path: str) -> FileResponse:
 if CLIENT_DIST.is_dir():
     app.mount("/assets", StaticFiles(directory=CLIENT_DIST / "assets"), name="assets")
     app.add_api_route("/{full_path:path}", spa_fallback, methods=["GET"], include_in_schema=False)
+
+
+
+class FactoryNormalService:
+    """Actual HTTP/HTTPS core with injected, already-owned hardware and ledger."""
+
+    def __init__(self, factory):
+        self.factory = factory
+        self.stop_requested = asyncio.Event()
+        self.ready = asyncio.Event()
+        self.task = None
+        self.servers = []
+
+    async def start(self):
+        if self.task is not None:
+            return
+        self.task = asyncio.create_task(self._run())
+        def completed(task):
+            if not task.cancelled():
+                task.exception()
+            if not self.stop_requested.is_set():
+                self.factory.request_stop()
+        self.task.add_done_callback(completed)
+        waiter = asyncio.create_task(self.ready.wait())
+        try:
+            done, _ = await asyncio.wait((waiter, self.task), return_when=asyncio.FIRST_COMPLETED)
+            if self.task in done:
+                await self.task
+                raise RuntimeError("Normal listeners stopped before startup")
+        finally:
+            waiter.cancel()
+            await asyncio.gather(waiter, return_exceptions=True)
+
+    async def _run(self):
+        from contextlib import contextmanager
+
+        service = self
+
+        class Server(uvicorn.Server):
+            @contextmanager
+            def capture_signals(self):
+                yield
+
+            async def shutdown(self, sockets=None):
+                await super().shutdown(sockets=sockets)
+                self._drained = True
+
+            async def serve(self, sockets=None):
+                try:
+                    await super().serve(sockets=sockets)
+                except BaseException as exc:
+                    service.stop_requested.set()
+                    service.factory.request_stop()
+                    if isinstance(exc, SystemExit):
+                        raise RuntimeError("Frame listener failed to start") from exc
+                    raise
+                finally:
+                    if self.started and not getattr(self, "_drained", False):
+                        await self.shutdown(sockets=sockets)
+
+        app.state.frame_identity = self.factory.identity
+        cert, key = await asyncio.to_thread(self.factory.identity.materialize_tls_files)
+        async with _legacy_lifespan(app, self.stop_requested, factory=self.factory):
+            common = dict(app=app, host="0.0.0.0", lifespan="off", workers=1,
+                          timeout_graceful_shutdown=None, proxy_headers=False)
+            self.servers = [Server(uvicorn.Config(port=8000, **common))]
+            config = uvicorn.Config(port=8443, ssl_certfile=str(cert), ssl_keyfile=str(key), **common)
+            config.load()
+            config.ssl = self.factory.provisioning.tls_context
+            self.servers.append(Server(config))
+            tasks = [asyncio.create_task(server.serve()) for server in self.servers]
+            stopped = asyncio.create_task(self.stop_requested.wait())
+            try:
+                while not all(server.started for server in self.servers):
+                    if any(task.done() for task in tasks):
+                        raise RuntimeError("Normal listener unavailable")
+                    await asyncio.sleep(0.01)
+                self.ready.set()
+                await asyncio.wait((*tasks, stopped), return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                for server in self.servers:
+                    server.should_exit = True
+                stopped.cancel()
+                results = await asyncio.gather(*tasks, stopped, return_exceptions=True)
+            for result in results[:-1]:
+                if isinstance(result, BaseException):
+                    raise RuntimeError("Normal listener unavailable") from None
+
+    async def stop(self):
+        self.stop_requested.set()
+        for server in self.servers:
+            server.should_exit = True
+        if self.task is not None:
+            from inky_web.provisioning.bootstrap_runtime import _complete
+            await _complete(self.task)
 
 
 def run() -> None:

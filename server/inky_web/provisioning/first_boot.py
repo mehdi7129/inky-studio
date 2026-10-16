@@ -140,7 +140,7 @@ class FirstBootCoordinator:
             raise ValueError("Invalid persisted credentials")
         return validate_token(value)
 
-    def initialize(self) -> FirstBootResult:
+    def initialize(self, *, resume_consumed: bool = False) -> FirstBootResult:
         begin_attempted = False
         try:
             directory = private_directory(self.directory)
@@ -178,9 +178,15 @@ class FirstBootCoordinator:
                     if self.admission_check() is not None:
                         raise ValueError
                     self._current_epoch()
-                begin_attempted = True  # Set BEFORE invoking the external boundary.
-                grant, granted_intent, receipt = _receipt_response(
-                    self.adapter.begin_initialization(intent), inspect=False)
+                if state == "consumed" and resume_consumed:
+                    # The attested inspect already supplies the consumed root
+                    # receipt. Reopen only; never submit factory initialization
+                    # again when resuming an adopted/normal frame.
+                    grant, granted_intent, receipt = "already_consumed", intent, inspected_receipt
+                else:
+                    begin_attempted = True  # BEFORE invoking external boundary.
+                    grant, granted_intent, receipt = _receipt_response(
+                        self.adapter.begin_initialization(intent), inspect=False)
                 if granted_intent != intent or (state == "consumed" and (
                         grant != "already_consumed" or receipt != inspected_receipt)):
                     raise FirstBootUncertain()

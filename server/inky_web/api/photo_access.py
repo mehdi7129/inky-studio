@@ -16,8 +16,12 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 from inky_web import auth
 from inky_web.photo_access import AccessError, Principal, token, uuid
+from inky_web.provisioning.factory import FactoryRecoveryRequired
+from inky_web.provisioning.network import NetworkUnavailable
+from inky_web.provisioning.ownership import OwnershipError
 
 router = APIRouter(prefix="/auth", tags=["photo-access"])
+FACTORY_ENROLL_PATH = "/api/auth/factory-device-enroll"
 
 
 class DeviceCredential(BaseModel):
@@ -42,6 +46,16 @@ class Enrollment(DeviceCredential):
     @field_validator("request_id")
     @classmethod
     def canonical_request(cls, value):
+        return uuid(value)
+
+
+class FactoryEnrollment(Enrollment):
+    claim_request_id: StrictStr = Field(min_length=36, max_length=36)
+    setup_op_id: StrictStr = Field(min_length=36, max_length=36)
+
+    @field_validator("claim_request_id", "setup_op_id")
+    @classmethod
+    def canonical_factory_id(cls, value):
         return uuid(value)
 
 
@@ -119,7 +133,11 @@ def public_identity(request, *, with_url=False):
     )
     result = {"frame_id": uuid(identity.frame_id), "spki_sha256": hashlib.sha256(spki).hexdigest()}
     if with_url:
-        raw = os.environ.get("INKY_STUDIO_PHOTO_ACCESS_URL", "")
+        provider = getattr(request.app.state, "photo_access_origin", None)
+        raw = (provider() if provider is not None else
+               os.environ.get("INKY_STUDIO_PHOTO_ACCESS_URL", ""))
+        if type(raw) is not str:
+            raise HTTPException(503, "Adresse HTTPS de partage non configurée")
         try:
             parsed = urlsplit(raw)
             if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
@@ -174,6 +192,44 @@ async def enroll(request: Request, payload: Enrollment):
     principal = await call(operation)
     # Preserve the legacy cookie so a timed-out enrollment can retry identically.
     # The client then calls device-session using its pre-saved credential.
+    return {"device_id": principal.device_id, "role": principal.role, "identity": identity}
+
+
+@router.post("/factory-device-enroll")
+async def factory_enroll(request: Request, payload: FactoryEnrollment):
+    from inky_web.provisioning.api import owner_headers
+
+    value = store(request)
+    throttle(request)
+    factory = getattr(request.app.state, "factory_continuation", None)
+    if factory is None:
+        raise HTTPException(503, "Continuation factory indisponible")
+    owner_id, owner_token = owner_headers(request)
+    if (payload.request_id != payload.claim_request_id or payload.device_id == owner_id
+            or payload.device_token == owner_token):
+        raise HTTPException(422, "Identifiant PHOTO distinct requis")
+    try:
+        await factory.authorize_photo(owner_id, owner_token, payload.claim_request_id, payload.setup_op_id)
+        identity = public_identity(request)
+        if factory.https_origin() != f"https://{request.url.netloc}":
+            raise HTTPException(403, "Origine non autorisée")
+
+        def operation():
+            with request.app.state.auth_service._lock:
+                factory._verify()
+                factory.owners.status(owner_id, owner_token, request_id=payload.claim_request_id)
+                current = request.app.state.auth_service.credentials
+                ram_epoch = hashlib.sha256(b"inky-photo-epoch-v1\0" + current.salt + current.digest).hexdigest()
+                if ram_epoch != value._epoch():
+                    raise AccessError()
+                return value.enroll(payload.device_id, payload.device_token, payload.request_id)
+        principal = await call(operation)
+    except OwnershipError:
+        raise HTTPException(401, "Autorisation du téléphone révoquée ou invalide") from None
+    except NetworkUnavailable:
+        raise HTTPException(409, "Le réseau du cadre n’est pas prêt") from None
+    except FactoryRecoveryRequired:
+        raise HTTPException(503, "Continuation factory indisponible") from None
     return {"device_id": principal.device_id, "role": principal.role, "identity": identity}
 
 

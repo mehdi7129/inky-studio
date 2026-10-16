@@ -325,6 +325,47 @@ class PreparedFactoryIdentity:
         except (OSError, ValueError, TypeError, InvalidSignature, UnsupportedAlgorithm):
             raise BootstrapIdentityRecoveryRequired() from None
 
+    def initial_publication(self) -> dict | None:
+        """Read historical provenance, never reinterpret it as a clock grant."""
+        with _lock(self._directory / ".bootstrap-identity.lock"):
+            record = self._reload()
+            if not record["operations"]:
+                return None
+            item = record["operations"][0]
+            return {"publication_operation_id": item["operation_id"],
+                    "initial_setup_operation_id": item["operation_id"],
+                    "initial_certificate_sha256": item["candidate_sha256"],
+                    "frame_id": self.frame_id, "spki_sha256": self.binding.spki_sha256}
+
+    def continue_initial_publication(self) -> CertificateOperationResult:
+        """Explicit DATA-ONLY retry: finalize the durable initial candidate.
+
+        No clock, issuance or renewal occurs here. A completed journal can have
+        a renewed current certificate; never overwrite it with the initial DER.
+        """
+        try:
+            with _lock(self._directory / ".bootstrap-identity.lock"), _lock(self._directory / ".identity.lock"):
+                record = self._reload()
+                if not record["operations"]:
+                    raise BootstrapIdentityRecoveryRequired()
+                operation = record["operations"][0]
+                if operation["state"] == "completed":
+                    if self._current_or_absent() is None:
+                        raise BootstrapIdentityRecoveryRequired()
+                    return _result(operation)
+                if len(record["operations"]) != 1 or operation["kind"] != "initial":
+                    raise BootstrapIdentityRecoveryRequired()
+                self._publish_candidate(operation)
+                current = self._current_or_absent()
+                if current is None or certificate_sha256(current) != operation["candidate_sha256"]:
+                    raise BootstrapIdentityRecoveryRequired()
+                operation["state"] = "completed"
+                _atomic_json(self._directory / BUNDLE_NAME, record, exclusive=False)
+                self._reload()
+                return _result(operation)
+        except (OSError, ValueError, TypeError, InvalidSignature, UnsupportedAlgorithm):
+            raise BootstrapIdentityRecoveryRequired() from None
+
     def publish_initial(self, *, operation_id: str, clock_result: ClockResult) -> CertificateOperationResult:
         return self._publish("initial", operation_id, clock_result, None)
 

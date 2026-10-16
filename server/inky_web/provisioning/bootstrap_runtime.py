@@ -46,7 +46,7 @@ class BootstrapApplicationPeer(BootstrapTLSPeer):
             if len(encoded) > MAX_MESSAGE:
                 raise TransportError("Réponse indisponible")
             content = result.get("result", {}) if type(result) is dict else {}
-            wire.decode_response(encoded, context={
+            context = {
                 "rpc_id": rpc_id,
                 # Runtime owns and revalidates the actual pinned frame binding;
                 # this transport check enforces grammar, not another authority.
@@ -54,7 +54,12 @@ class BootstrapApplicationPeer(BootstrapTLSPeer):
                 "owner_id": message.get("owner_id"),
                 "claim_request_id": (message.get("id") if message.get("op") == "bootstrap.claim"
                                      else message.get("claim_request_id")),
-            })
+            }
+            if message.get("v") == 2:
+                from . import system_setup_wire
+                system_setup_wire.decode_response(encoded, operation=message.get("op"), context=context)
+            else:
+                wire.decode_response(encoded, context=context)
             if not self.closed:
                 self.reply.extend(struct.pack("!I", len(encoded)) + encoded)
         except asyncio.CancelledError:

@@ -32,6 +32,7 @@ import os
 import re
 import secrets
 import signal
+import socket
 import socketserver
 import stat
 import sys
@@ -58,6 +59,9 @@ CHECKPOINT_PATH = re.compile(r"/org/freedesktop/NetworkManager/Checkpoint/[0-9]+
 DEVICE_PATH = re.compile(r"/org/freedesktop/NetworkManager/Devices/[0-9]+\Z")
 SOCKET_PATH = Path("/run/inky-network/control.sock")
 STATE_DIR = Path("/var/lib/inky-network")
+GRAPH_PATH = Path("/usr/lib/inkyos/writer-graph.py")
+NM_OWNER = re.compile(r":[0-9]+\.[0-9]+\Z")
+INSPECTIONS = {"inspect_committed", "inspect_latest_committed"}
 REQUIRED_ENV = "INKY_STUDIO_FACTORY_REQUIRED"
 WRITER_ENV_NAMES = (
     "INKYOS_WRITER_LEASE_FD",
@@ -162,6 +166,61 @@ def installed_factory_runtime():
     return module
 
 
+def installed_setup_peer_guard(connection):
+    """Only the pinned OS graph can attest the exact root setup-service peer."""
+    try:
+        runtime = installed_factory_runtime()
+        contract = runtime.load_contract()
+        _, _, support, records = runtime.inventories(contract)
+        path = str(GRAPH_PATH)[1:]
+        with contract.tree() as tree:
+            _require(path in support["paths"] and path in records
+                     and records[path]["type"] == "file" and records[path]["mode"] == "0555")
+            runtime.check_path(tree, path, records)
+            raw = tree.read(path, 0o555, 1024 * 1024)
+            _require(hashlib.sha256(raw).hexdigest() == records[path]["sha256"])
+        graph = types.ModuleType("inkyos_writer_graph")
+        graph.__file__ = str(GRAPH_PATH)
+        exec(compile(raw, graph.__file__, "exec"), graph.__dict__)  # noqa: S102 — pinned OS support bytes
+        return graph.setup_peer_guard(connection)
+    except Exception:  # noqa: BLE001 — fixed diagnostics; peer/storage details are private
+        raise HelperError("permission_denied") from None
+
+
+@contextmanager
+def setup_peer_scope(connection, guard):
+    manager = None
+    entered = False
+    try:
+        manager = guard(connection)
+        value = manager.__enter__()
+        entered = True
+        if value is not None:
+            raise HelperError("permission_denied")
+    except Exception:  # noqa: BLE001 — proof diagnostics are private
+        if entered:
+            try:
+                manager.__exit__(None, None, None)
+            except Exception:  # noqa: BLE001, S110 — fixed diagnostics; peer/storage details are private
+                pass
+        raise HelperError("permission_denied") from None
+    try:
+        yield
+    except BaseException as error:
+        try:
+            manager.__exit__(type(error), error, error.__traceback__)
+        except Exception:
+            if not isinstance(error, Exception):
+                raise
+            raise HelperError("permission_denied") from None
+        raise
+    else:
+        try:
+            manager.__exit__(None, None, None)
+        except Exception:  # noqa: BLE001 — fixed diagnostics; peer/storage details are private
+            raise HelperError("permission_denied") from None
+
+
 class StopRequested:
     requested = False
 
@@ -211,7 +270,7 @@ def unique_object(pairs):
 
 
 def parse_request(raw):
-    if not isinstance(raw, bytes) or not raw.endswith(b"\n") or len(raw) > REQUEST_LIMIT + 1:
+    if not isinstance(raw, bytes) or not raw.endswith(b"\n") or raw.count(b"\n") != 1 or len(raw) > REQUEST_LIMIT:
         raise HelperError("invalid_request")
     try:
         value = json.loads(raw, object_pairs_hook=unique_object,
@@ -234,12 +293,14 @@ def validate_request(value):
               # from the BLE command namespace or an unverified HTTP request.
               "health": {"op"},
               "cancel_pending": {"op"},
-              "cancel_owner": {"op", "owner_id"}}
+              "cancel_owner": {"op", "owner_id"},
+              "inspect_committed": {"op", "id", "owner_id"},
+              "inspect_latest_committed": {"op"}}
     if value["op"] not in fields or set(value) != fields[value["op"]]:
         raise HelperError("invalid_request")
     if "owner_id" in value:
         canonical_uuid(value["owner_id"])
-    if value["op"] in {"begin", "status", "confirm", "cancel"}:
+    if value["op"] in {"begin", "status", "confirm", "cancel", "inspect_committed"}:
         canonical_uuid(value["id"])
     if value["op"] == "begin":
         try:
@@ -332,8 +393,15 @@ class Journal:
     @staticmethod
     def _validate(row):
         expected = {"id", "owner_id", "intent", "profile_uuid", "previous_uuid", "device", "instance", "checkpoint", "phase", "state", "addresses"}
-        if not isinstance(row, dict) or set(row) != expected:
+        metadata = {"commit_boot_id", "commit_nm_unique_owner"}
+        if not isinstance(row, dict) or set(row) not in (expected, expected | metadata):
             raise ValueError
+        if metadata <= set(row):
+            canonical_uuid(row["commit_boot_id"])
+            if (row["phase"] != "committed" or row["state"] != "committed"
+                    or type(row["commit_nm_unique_owner"]) is not str
+                    or NM_OWNER.fullmatch(row["commit_nm_unique_owner"]) is None):
+                raise ValueError
         for name in ("id", "owner_id", "profile_uuid"):
             canonical_uuid(row[name])
         if row["previous_uuid"] is not None:
@@ -352,6 +420,39 @@ class Journal:
             raise ValueError
         for address in row["addresses"]:
             ipaddress.IPv4Address(address)
+
+    def inspect_records(self):
+        """Validate current durable bytes without creating/chmod/writing state."""
+        try:
+            descriptor = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                before = os.fstat(descriptor)
+                if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+                        or not 0 < before.st_size <= JOURNAL_LIMIT):
+                    raise ValueError
+                raw = os.read(descriptor, JOURNAL_LIMIT + 1)
+                if (_stamp(os.fstat(descriptor)) != _stamp(before)
+                        or _stamp(os.stat(self.path, follow_symlinks=False)) != _stamp(before)
+                        or len(raw) != before.st_size):
+                    raise ValueError
+            finally:
+                os.close(descriptor)
+            data = json.loads(raw, object_pairs_hook=unique_object,
+                              parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+            if (type(data) is not dict or set(data) != {"v", "records"}
+                    or type(data["v"]) is not int or data["v"] != 1
+                    or type(data["records"]) is not list or len(data["records"]) > HISTORY_LIMIT):
+                raise ValueError
+            rows = data["records"]
+            for row in rows:
+                self._validate(row)
+            if len({row["id"] for row in rows}) != len(rows):
+                raise ValueError
+            if sum(row["phase"] not in FINAL_PHASES for row in rows) > 1:
+                raise ValueError
+            return rows
+        except Exception:  # noqa: BLE001 — fixed diagnostics; peer/storage details are private
+            raise HelperError("not_ready") from None
 
     def intention(self, request):
         raw = json.dumps(request, separators=(",", ":"), sort_keys=True, ensure_ascii=False).encode("utf-8")
@@ -412,6 +513,54 @@ class NetworkManagerAdapter:
         # checkpoint path without both service owner and kernel boot identity.
         boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
         return boot + ":" + str(self.bus.get_name_owner(NM))
+
+    def commit_identity(self):
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
+        canonical_uuid(boot_id)
+        owner = str(self.bus.get_name_owner(NM))
+        if NM_OWNER.fullmatch(owner) is None:
+            raise HelperError("not_ready")
+        return {"commit_boot_id": boot_id, "commit_nm_unique_owner": owner}
+
+    def inspect_persistent(self, row):
+        """Read settings and live state only; never activate, scan or repair."""
+        first = self.commit_identity()
+        # NM object paths may change across boots; the observed interface and
+        # persistent profile binding identify wlan0, never a historical path.
+        device = self.properties(self.device, NM + ".Device")
+        if str(device.get("Interface")) != "wlan0" or int(device.get("DeviceType", 0)) != 2:
+            raise HelperError("not_ready")
+        matches = []
+        settings = self.interface(ROOT + "/Settings", NM + ".Settings")
+        for path in settings.ListConnections(timeout=3):
+            values = self.interface(path, NM + ".Settings.Connection").GetSettings(timeout=3)
+            meta = values.get("connection", {})
+            if str(meta.get("uuid")) == row["profile_uuid"]:
+                matches.append((str(path), meta))
+        if len(matches) != 1:
+            raise HelperError("not_ready")
+        path, meta = matches[0]
+        props = self.properties(path, NM + ".Settings.Connection")
+        if (str(meta.get("id")) != "inky-provisioning-" + row["id"]
+                or str(meta.get("interface-name")) != "wlan0"
+                or str(meta.get("type")) != "802-11-wireless"
+                or bool(props.get("Unsaved", True)) or int(props.get("Flags", 5)) & 5
+                or not str(props.get("Filename", "")).startswith("/")):
+            raise HelperError("not_ready")
+        current = self.snapshot()
+        active_uuid = current["uuid"]
+        if active_uuid is not None:
+            canonical_uuid(active_uuid)
+        addresses = list(dict.fromkeys(current["addresses"])) if current["activated"] else []
+        if len(addresses) > 16:
+            raise HelperError("not_ready")
+        for address in addresses:
+            if str(ipaddress.IPv4Address(address)) != address:
+                raise HelperError("not_ready")
+        if self.commit_identity() != first:
+            raise HelperError("not_ready")
+        return {"boot_id": first["commit_boot_id"], "nm_unique_owner": first["commit_nm_unique_owner"],
+                "active_profile_uuid": active_uuid, "ipv4": addresses, "profile_persistent": True}
 
     def snapshot(self):
         device = self.properties(self.device, NM + ".Device")
@@ -693,7 +842,10 @@ class Provisioner:
                     return
                 self._factory_committed = (row.copy(), self._detached_activation)
                 self.adapter.checkpoint_destroy(row["checkpoint"])
-                self._put(row, phase="committed", state="committed", checkpoint=None)
+                metadata = self.adapter.commit_identity() if hasattr(self.adapter, "commit_identity") else {}
+                if metadata and (metadata["commit_boot_id"] + ":" + metadata["commit_nm_unique_owner"] != row["instance"]):
+                    raise HelperError("not_ready")
+                self._put(row, phase="committed", state="committed", checkpoint=None, **metadata)
                 self._password = None
                 self.deadline = None
             except Exception:  # noqa: BLE001 — rollback every adapter failure
@@ -705,11 +857,65 @@ class Provisioner:
         elif not active and row["phase"] == "waiting" and row["state"] == "awaiting_confirmation":
             self._put(row, state="connecting", addresses=[])
 
+    def inspect_committed(self, request):
+        """No tick, cleanup, journal rewrite, or NetworkManager mutation."""
+        validate_request(request)
+        if request["op"] not in INSPECTIONS or not self.ready:
+            raise HelperError("not_ready")
+        try:
+            rows = self.journal.inspect_records()
+            if any(row["phase"] in FINAL_PHASES and row["state"] != row["phase"] for row in rows):
+                raise HelperError("not_ready")
+            if any(row["phase"] not in FINAL_PHASES for row in rows):
+                raise HelperError("busy")
+            if request["op"] == "inspect_committed":
+                row = next((item.copy() for item in rows if item["id"] == request["id"]
+                            and item["owner_id"] == request["owner_id"]), None)
+                if row is None:
+                    raise HelperError("not_found")
+            else:
+                row = next((item.copy() for item in reversed(rows)
+                            if item["phase"] == "committed" and item["state"] == "committed"), None)
+                if row is None:
+                    raise HelperError("not_found")
+            if (row["phase"] != "committed" or row["state"] != "committed"
+                    or "commit_boot_id" not in row or "commit_nm_unique_owner" not in row):
+                raise HelperError("not_ready")
+            observed = self.adapter.inspect_persistent(row)
+            if (type(observed) is not dict or set(observed) != {"boot_id", "nm_unique_owner", "ipv4",
+                    "active_profile_uuid", "profile_persistent"}
+                    or observed["profile_persistent"] is not True
+                    or type(observed["nm_unique_owner"]) is not str
+                    or NM_OWNER.fullmatch(observed["nm_unique_owner"]) is None
+                    or type(observed["ipv4"]) is not list or len(observed["ipv4"]) > 16
+                    or len(set(observed["ipv4"])) != len(observed["ipv4"])):
+                raise HelperError("not_ready")
+            canonical_uuid(observed["boot_id"])
+            if observed["active_profile_uuid"] is not None:
+                canonical_uuid(observed["active_profile_uuid"])
+            for address in observed["ipv4"]:
+                if type(address) is not str or str(ipaddress.IPv4Address(address)) != address:
+                    raise HelperError("not_ready")
+            result = {"id": row["id"], "owner_id": row["owner_id"], "state": "committed",
+                      "profile_uuid": row["profile_uuid"], "device": "wlan0", **observed,
+                      "commit_boot_id": row["commit_boot_id"],
+                      "commit_nm_unique_owner": row["commit_nm_unique_owner"]}
+            result["observation_sha256"] = hashlib.sha256((json.dumps(
+                result, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False) + "\n").encode("ascii")).hexdigest()
+            return result
+        except HelperError:
+            raise
+        except Exception:  # noqa: BLE001 — fixed diagnostics; peer/storage details are private
+            raise HelperError("not_ready") from None
+
     def handle(self, request):
         validate_request(request)
         if not self.ready:
             raise HelperError("not_ready")
         operation = request["op"]
+        if operation in INSPECTIONS:
+            # Only Handler can attest the setup-service connection.
+            raise HelperError("permission_denied")
         if operation == "health":
             # A capability probe must never scan, advance a pending commit, or
             # trigger rollback. Readiness was established during startup.
@@ -840,7 +1046,12 @@ class Handler(socketserver.StreamRequestHandler):
             request = parse_request(self.rfile.readline(REQUEST_LIMIT + 2))
             if self.server.factory_stop is not None and self.server.factory_stop.requested:
                 return
-            result = {"ok": True, "result": self.server.provisioner.handle(request)}
+            if request["op"] in INSPECTIONS:
+                with setup_peer_scope(self.request, self.server.setup_peer_guard):
+                    observation = self.server.provisioner.inspect_committed(request)
+                result = {"ok": True, "result": observation}
+            else:
+                result = {"ok": True, "result": self.server.provisioner.handle(request)}
         except HelperError as error:
             result = {"ok": False, "error": error.code}
         except Exception:  # noqa: BLE001 — never serialize raw D-Bus exceptions
@@ -857,7 +1068,8 @@ class Handler(socketserver.StreamRequestHandler):
 class Server(socketserver.UnixStreamServer):
     request_queue_size = 8
 
-    def __init__(self, path, provisioner):
+    def __init__(self, path, provisioner, *, setup_peer_guard=installed_setup_peer_guard):
+        self.setup_peer_guard = setup_peer_guard
         self.provisioner = provisioner
         self.factory_stop = None
         super().__init__(str(path), Handler)
@@ -884,6 +1096,23 @@ class Server(socketserver.UnixStreamServer):
 
     def handle_error(self, request, client_address):
         pass
+
+
+def notify_ready(*, required=False):
+    """Publish readiness only after the admitted helper socket is listening."""
+    address = os.environ.get("NOTIFY_SOCKET")
+    if address is None and not required:
+        return
+    try:
+        if (type(address) is not str or not 2 <= len(address.encode("utf-8")) <= 107
+                or address[0] not in {"/", "@"} or "\x00" in address):
+            raise ValueError
+        target = "\x00" + address[1:] if address.startswith("@") else address
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as notification:
+            notification.settimeout(2)
+            notification.sendto(b"READY=1", target)
+    except (OSError, TypeError, ValueError, UnicodeError):
+        raise HelperError("not_ready") from None
 
 
 def run_helper(socket_path, state_dir, stop=None):
@@ -934,6 +1163,7 @@ def run_helper(socket_path, state_dir, stop=None):
         with Server(socket_path, provisioner) as server:
             os.chown(socket_path, -1, grp.getgrnam("inky-provisioning").gr_gid)
             socket_path.chmod(0o660)
+            notify_ready(required=stop is not None)
             if stop is None:
                 server.serve_forever(poll_interval=1)
             else:
