@@ -35,7 +35,10 @@ PASSWORD_ALPHABET: Final = string.ascii_letters + string.digits
 SCRYPT_N: Final = 32768
 SCRYPT_R: Final = 8
 SCRYPT_P: Final = 1
-PUBLIC_PATHS: Final = frozenset({"/api/health", "/api/auth/login", "/api/auth/status"})
+PUBLIC_PATHS: Final = frozenset({
+    "/api/health", "/api/auth/login", "/api/auth/status",
+    "/api/auth/device-session", "/api/auth/invitations/claim",
+})
 
 
 def auth_disabled() -> bool:
@@ -218,15 +221,28 @@ class SessionStore:
 
     def __init__(self) -> None:
         self._sessions: dict[str, float] = {}
+        self._principals: dict[str, object] = {}
+        self.principal_validator = None
         self._lock = threading.RLock()
         self._watchers: dict[asyncio.Event, asyncio.AbstractEventLoop] = {}
 
-    def create(self) -> str:
+    def create(self, principal=None) -> str:
         with self._lock:
             now = time.time()
             self._sessions = {token: expiry for token, expiry in self._sessions.items() if expiry > now}
+            self._principals = {token: value for token, value in self._principals.items() if token in self._sessions}
             token = secrets.token_urlsafe(32)
             self._sessions[token] = now + SESSION_TTL_SECONDS
+            if principal is not None:
+                # Bound persistent-device sessions and close displaced idle WS.
+                previous = [old for old, actor in self._principals.items()
+                            if actor.device_id == principal.device_id]
+                for old in previous[:-7]:
+                    self._sessions.pop(old, None)
+                    self._principals.pop(old, None)
+                if len(previous) >= 8:
+                    self._notify()
+                self._principals[token] = principal
             return token
 
     def validate(self, token: str | None) -> bool:
@@ -238,8 +254,31 @@ class SessionStore:
                 return False
             if time.time() >= expires:
                 self._sessions.pop(token, None)
+                self._principals.pop(token, None)
                 return False
-            return True
+            principal = self._principals.get(token)
+        # Never hold the session lock while entering the durable store: password
+        # rotation/revocation holds its authorization gate before notifying us.
+        if principal is not None and (
+            self.principal_validator is None or not self.principal_validator(principal)
+        ):
+            self.invalidate(token)
+            return False
+        with self._lock:
+            return token in self._sessions
+
+    def principal(self, token: str | None):
+        with self._lock:
+            return self._principals.get(token)
+
+    def invalidate_device(self, device_id: str) -> None:
+        with self._lock:
+            tokens = [token for token, actor in self._principals.items() if actor.device_id == device_id]
+            for token in tokens:
+                self._sessions.pop(token, None)
+                self._principals.pop(token, None)
+            if tokens:
+                self._notify()
 
     def _notify(self) -> None:
         for event, loop in list(self._watchers.items()):
@@ -251,11 +290,13 @@ class SessionStore:
     def invalidate(self, token: str | None) -> None:
         with self._lock:
             if token and self._sessions.pop(token, None) is not None:
+                self._principals.pop(token, None)
                 self._notify()
 
     def invalidate_all(self) -> None:
         with self._lock:
             self._sessions.clear()
+            self._principals.clear()
             self._notify()
 
     def watch_revocation(self) -> asyncio.Event:
@@ -279,7 +320,7 @@ class CredentialService:
     def __init__(self, credentials: Credentials, sessions: SessionStore) -> None:
         self.credentials = credentials
         self.sessions = sessions
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self.prepare_owner_rotation = None
 
     def login(self, password: str) -> str:

@@ -53,7 +53,9 @@ async def status(request: Request) -> AuthStatus:
         return AuthStatus(authenticated=True, auth_required=False, password_change_supported=False)
     sessions = request.app.state.sessions
     is_authed = sessions.validate(auth.get_session_token(request))
-    return AuthStatus(authenticated=is_authed, auth_required=True)
+    principal = sessions.principal(auth.get_session_token(request)) if is_authed else None
+    return AuthStatus(authenticated=is_authed, auth_required=True,
+                      password_change_supported=principal is None or principal.role == "owner")
 
 
 @router.post("/login")
