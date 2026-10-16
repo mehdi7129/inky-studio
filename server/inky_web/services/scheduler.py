@@ -23,7 +23,7 @@ from fastapi import HTTPException
 
 from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
-from inky_web.inky.errors import DisplayUnavailableError
+from inky_web.inky.errors import DisplayConfirmationPending, DisplayUnavailableError
 from inky_web.models import ChangeMode
 from inky_web.services import history, queue, settings
 from inky_web.services.photos import path_for
@@ -61,7 +61,7 @@ class Scheduler:
     def next_change_at(self) -> float | None:
         """Return the unix timestamp of the next scheduled change, or None for manual mode."""
         cfg = settings.get()
-        if cfg.change_mode == ChangeMode.manual:
+        if cfg.change_mode == ChangeMode.manual or self._display.automatic_rotation_paused:
             return None
         last = history.current()
         last_ts = last.displayed_at if last else None
@@ -80,7 +80,7 @@ class Scheduler:
 
     async def _tick(self) -> None:
         cfg = settings.get()
-        if cfg.change_mode == ChangeMode.manual:
+        if cfg.change_mode == ChangeMode.manual or self._display.automatic_rotation_paused:
             return
 
         last = history.current()
@@ -97,7 +97,7 @@ class Scheduler:
     def _advance(self, source: str) -> None:
         with self._display.operation():
             self._display.require_available()
-            if self._display.reserved:
+            if self._display.reserved or self._display.automatic_rotation_paused:
                 return
             # A manual refresh can complete while this worker waits for the display.
             cfg = settings.get()
@@ -135,16 +135,20 @@ def _compute_next_change(
 
 async def trigger_next(display: DisplayController, bus: EventBus) -> None:
     """Manual next — same logic as scheduler tick but with source=manual_next."""
-    await asyncio.to_thread(_manual_next, display, bus)
+    retry_confirmation = display.pending_confirmation
+    await asyncio.to_thread(_manual_next, display, bus, retry_confirmation)
 
 
-def _manual_next(display: DisplayController, bus: EventBus) -> None:
+def _manual_next(display: DisplayController, bus: EventBus, retry_confirmation=None) -> None:
     with display.operation():
         _require_available(display)
-        _advance(display, bus, source="manual_next", recycle_source="manual_next")
+        _advance(display, bus, source="manual_next", recycle_source="manual_next", retry_confirmation=retry_confirmation)
 
 
-def _advance(display: DisplayController, bus: EventBus, *, source: str, recycle_source: str) -> None:
+def _advance(
+    display: DisplayController, bus: EventBus, *, source: str, recycle_source: str,
+    retry_confirmation: DisplayConfirmationPending | None = None,
+) -> None:
     while (entry := queue.peek_next()) is not None:
         if not path_for(entry.photo.id).exists():
             # A permanently missing source must not block every later photo.
@@ -156,7 +160,7 @@ def _advance(display: DisplayController, bus: EventBus, *, source: str, recycle_
                 "action": "skipped", "photo_id": entry.photo.id, "reason": "file_missing",
             })
             continue
-        _show(display, bus, entry.photo.id, source=source)
+        _show(display, bus, entry.photo.id, source=source, retry_confirmation=retry_confirmation)
         queue.remove_entry(entry.id)
         bus.broadcast("queue_updated", {"action": "popped", "photo_id": entry.photo.id})
         return
@@ -166,14 +170,15 @@ def _advance(display: DisplayController, bus: EventBus, *, source: str, recycle_
     )
     if recycled is None:
         return
-    _show(display, bus, recycled, source=recycle_source)
+    _show(display, bus, recycled, source=recycle_source, retry_confirmation=retry_confirmation)
 
 
 async def trigger_previous(display: DisplayController, bus: EventBus) -> None:
-    await asyncio.to_thread(_manual_previous, display, bus)
+    retry_confirmation = display.pending_confirmation
+    await asyncio.to_thread(_manual_previous, display, bus, retry_confirmation)
 
 
-def _manual_previous(display: DisplayController, bus: EventBus) -> None:
+def _manual_previous(display: DisplayController, bus: EventBus, retry_confirmation=None) -> None:
     with display.operation():
         _require_available(display)
         prev = history.previous()
@@ -181,6 +186,7 @@ def _manual_previous(display: DisplayController, bus: EventBus) -> None:
             _show(
                 display, bus, prev.photo.id,
                 source="manual_previous", navigation_history_id=prev.id,
+                retry_confirmation=retry_confirmation,
             )
 
 
@@ -192,13 +198,16 @@ def _require_available(display: DisplayController) -> None:
 
 def _show(
     display: DisplayController, bus: EventBus, photo_id: str, source: str,
-    *, navigation_history_id: int | None = None,
+    *, navigation_history_id: int | None = None, retry_confirmation: DisplayConfirmationPending | None = None,
 ) -> None:
     path = path_for(photo_id)
     if not path.exists():
         raise FileNotFoundError(f"Photo file missing for {photo_id}")
     try:
-        display.display_image(path, saturation=settings.get().saturation)
+        if retry_confirmation is None:
+            display.display_image(path, saturation=settings.get().saturation)
+        else:
+            display.display_image(path, saturation=settings.get().saturation, retry_confirmation=retry_confirmation)
     except DisplayUnavailableError as exc:
         bus.broadcast("display_error", exc.payload())
         raise

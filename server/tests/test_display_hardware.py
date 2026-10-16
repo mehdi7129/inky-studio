@@ -184,7 +184,7 @@ def test_refresh_error_503_preserves_queue_and_no_success_event(client, png_fact
 
 
 @pytest.mark.parametrize(("outcome", "code"), [
-    ("held_high_unverified", "display_busy_unverified"),
+    ("edge_unverified", "display_busy_unverified"),
     ("edge_timeout", "display_busy_timeout"),
     ("driver_error", "display_refresh_failed"),
 ])
@@ -266,7 +266,7 @@ def test_authenticated_reads_survive_sticky_display_fault_without_admitting_writ
         assert client.get(path).status_code == 401
 
 
-@pytest.mark.parametrize(("outcome", "code"), [("edge_timeout", "display_busy_timeout"), ("held_high_unverified", "display_busy_unverified")])
+@pytest.mark.parametrize(("outcome", "code"), [("edge_timeout", "display_busy_timeout"), ("held_high_unverified", "display_confirmation_pending")])
 def test_busy_fault_is_deferred_until_sequence_return_and_preserves_queue(
     client, png_factory, outcome, code,
 ):

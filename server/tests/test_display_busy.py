@@ -339,7 +339,7 @@ def test_unexpected_timeout_or_extra_wait_has_unrecognized_phase(driver_factory)
 @pytest.mark.parametrize(("condition", "outcome", "code"), [
     ("healthy", "edge_received", None),
     ("timeout", "edge_timeout", "display_busy_timeout"),
-    ("held_high", "held_high_unverified", "display_busy_unverified"),
+    ("held_high", "held_high_unverified", "display_confirmation_pending"),
     ("empty_events", "edge_unverified", "display_busy_unverified"),
 ])
 @pytest.mark.filterwarnings("ignore:Busy Wait")
@@ -409,6 +409,14 @@ def test_upstream_busy_sequence_through_controller_and_display_api(
     else:
         assert response.status_code == 503
         assert response.json()["code"] == code
+        if condition == "held_high":
+            assert diagnostics["error"] is None
+            assert diagnostics["state"] == "ready"
+            assert diagnostics["confirmation"] == "pending"
+            assert diagnostics["warning"]["code"] == code
+            assert client.get("/api/queue").json() == original_queue
+            assert client.get("/api/history").json() == original_history
+            return
         assert diagnostics["error"]["code"] == code
         assert client.get("/api/queue").json() == original_queue
         assert client.get("/api/history").json() == original_history

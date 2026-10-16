@@ -61,9 +61,11 @@ an empty list while busy must not be mistaken for a successful operation.
 | `display_refresh_failed` | Image preparation, GPIO/SPI or driver raised |
 | `display_busy_timeout` | Original GPIO edge wait returned false |
 | `display_busy_unverified` | Critical refresh completion could not be observed |
+| `display_confirmation_pending` | Exact upstream sequence returned through its timed held-high fallback; manual retry only |
+| `display_confirmation_interrupted` | A previous monitored refresh has no durably recorded outcome |
+| `display_confirmation_storage_failed` | Private confirmation barrier cannot be read, committed or cleared safely |
 
-Failures remain latched until an operator checks the bench and restarts the
-service. There is no automatic retry and no new successful history entry or
+Actual failures remain latched until an operator reviews them. There is no automatic retry and no new successful history entry or
 queue consumption for the failed operation. A `display_error` event contains
 only `code` and a French `detail`; no `display_changed` success is emitted.
 The web uses its existing Bento alert. Current iOS error handling can present
@@ -84,9 +86,14 @@ original `show()` returns, preserving POF and its final wait. No thread is
 cancelled and the existing display lock is held through the whole operation.
 
 An initially high pin is recorded as `held_high_unverified`, not mislabeled as
-an edge timeout. That observation on the critical refresh phase blocks success;
-it can conservatively reject a physically successful refresh and must be
-qualified on the bench. Short-phase held-high observations remain diagnostic.
+an edge timeout. If all four phases, timeout arguments and sequence numbers are
+exact, every outcome is `edge_received` or `held_high_unverified`, and refresh
+used the held-high fallback, the completed upstream call becomes a non-sticky
+`display_confirmation_pending` result. HTTP 503 preserves the photo, queue and
+history without pretending that pixels changed. A later, explicitly admitted
+manual next/previous may retry without restarting. A request already queued
+before that result is not such a retry. No other unknown result is accepted.
+Short-phase held-high observations remain diagnostic.
 An empty event read remains unverified. Even a received edge does not prove
 its freshness, the physical panel identity or the pixels actually displayed.
 Other driver families report `not_monitored`; do not extend the AC073 timeout
@@ -95,6 +102,52 @@ claim to them.
 The underlying driver still decides when to power off after its wait. This
 patch prevents false application acknowledgement; it does not prove electrical
 safety or that the panel is ready after a timeout.
+
+## Durable pending confirmation and existing installations
+
+The private app data file `.display-confirmation.json` is specific to the
+qualified AC073 observer. It contains only schema version and `in_progress` or
+`pending`, with mode 0600. An atomic write and file/directory fsync commit
+`in_progress` before `show()`. Only a normal, exact timed fallback commits
+`pending`; only a recognized refresh edge permits clearing and syncing the
+barrier before history/queue success. A failed clear restores `in_progress`
+conservatively before reporting its error. If storage also refuses that
+restoration, the current controller stays faulted and operator storage review
+is required: failed persistence cannot establish a reboot guarantee.
+
+On a new process, `pending` remains available for reads/uploads and new manual
+attempts, but blocks the welcome, provisioning-screen restoration and every
+implicit display call. The scheduler is paused and reports no next change.
+`in_progress`, malformed/unsafe files and I/O errors close display admission;
+they never trigger a cleanup, reset or retry. A subsequent manual edge-observed
+completion clears pending and permits scheduling again. The normal upstream
+GPIO/SPI sequence, delays, power-off and serialization remain unchanged.
+
+Diagnostics keep `state=ready` and `error=null` for an available driver with a
+pending confirmation, and add `confirmation=pending`, `warning` and
+`automatic_rotation_paused=true`. iOS build 11 ignores these additive fields
+but understands the HTTP 503 detail and permits a new manual command after its
+state refresh. A startup welcome warning is not a persistent visible banner in
+that older app. BLE restoration may remain unavailable while pending; this is
+not a qualification of Bluetooth/Wi-Fi travel flows.
+
+An absent barrier means a fresh run or previously cleared confirmation only
+for installations already managed by this protocol. It says nothing about a
+refresh made by an older backend. **Before starting this candidate on the
+existing TEST Pi**, the OS operator must bind the known old unconfirmed result
+to its checkpoint and seed pending with the app stopped, using its exact venv,
+app user and existing `INKY_STUDIO_DATA_DIR`:
+
+```bash
+python -m inky_web.inky.confirmation --seed-pending
+```
+
+This explicit offline helper imports no driver and sends no display command.
+It atomically creates pending only when absent, leaves existing pending
+unchanged, and refuses interrupted or malformed state. It does not authorize
+starting the app, erase data, or repair the OS TEST reboot/network lifecycle.
+An accepted fallback continues to preserve the queue rather than advance it;
+physical photo-display acceptance is still required before claiming success.
 
 ## Stop, dependency and physical qualification boundaries
 

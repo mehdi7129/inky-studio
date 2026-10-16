@@ -29,6 +29,9 @@ class DisplayDiagnostics(BaseModel):
     state: str
     is_mock: bool
     error: DisplayFailure | None
+    confirmation: str
+    warning: DisplayFailure | None
+    automatic_rotation_paused: bool
     driver: dict[str, str | int | None]
     busy_monitor: str
     observations: list[BusyObservation]
