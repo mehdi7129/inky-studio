@@ -141,7 +141,7 @@ async def trigger_next(display: DisplayController, bus: EventBus) -> None:
 
 def _manual_next(display: DisplayController, bus: EventBus, retry_confirmation=None) -> None:
     with display.operation():
-        _require_available(display)
+        _require_available(display, retry_confirmation)
         _advance(display, bus, source="manual_next", recycle_source="manual_next", retry_confirmation=retry_confirmation)
 
 
@@ -169,6 +169,8 @@ def _advance(
         current_entry.photo.id if current_entry else None
     )
     if recycled is None:
+        if display.pending_confirmation is not None:
+            raise display.pending_confirmation
         return
     _show(display, bus, recycled, source=recycle_source, retry_confirmation=retry_confirmation)
 
@@ -180,7 +182,7 @@ async def trigger_previous(display: DisplayController, bus: EventBus) -> None:
 
 def _manual_previous(display: DisplayController, bus: EventBus, retry_confirmation=None) -> None:
     with display.operation():
-        _require_available(display)
+        _require_available(display, retry_confirmation)
         prev = history.previous()
         if prev is not None:
             _show(
@@ -188,12 +190,17 @@ def _manual_previous(display: DisplayController, bus: EventBus, retry_confirmati
                 source="manual_previous", navigation_history_id=prev.id,
                 retry_confirmation=retry_confirmation,
             )
+        elif display.pending_confirmation is not None:
+            raise display.pending_confirmation
 
 
-def _require_available(display: DisplayController) -> None:
+def _require_available(display: DisplayController, retry_confirmation=None) -> None:
     display.require_available()
     if display.reserved:
         raise HTTPException(status_code=409, detail="Termine la connexion Bluetooth avant de changer de photo")
+    pending = display.pending_confirmation
+    if pending is not None and retry_confirmation is not pending:
+        raise pending
 
 
 def _show(

@@ -92,7 +92,8 @@ used the held-high fallback, the completed upstream call becomes a non-sticky
 `display_confirmation_pending` result. HTTP 503 preserves the photo, queue and
 history without pretending that pixels changed. A later, explicitly admitted
 manual next/previous may retry without restarting. A request already queued
-before that result is not such a retry. No other unknown result is accepted.
+before that result is not such a retry. While pending, a manual request with no
+candidate photo also returns 503, never a misleading no-op success. No other unknown result is accepted.
 Short-phase held-high observations remain diagnostic.
 An empty event read remains unverified. Even a received edge does not prove
 its freshness, the physical panel identity or the pixels actually displayed.

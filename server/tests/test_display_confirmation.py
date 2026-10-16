@@ -131,6 +131,23 @@ def test_pending_survives_new_controller_and_blocks_welcome_and_provisioning_res
     assert driver.show_calls == 2 and history.current().photo.id == photo.id
 
 
+@pytest.mark.filterwarnings("ignore:Busy Wait")
+def test_pending_manual_requests_without_a_candidate_do_not_claim_success(client, png_factory, monkeypatch, driver_factory):
+    display, driver, _, _ = controlled(monkeypatch, driver_factory)
+    attach(client, display)
+    photo, _ = photos.save(content=png_factory(), original_filename="welcome-like.png")
+    with pytest.raises(DisplayConfirmationPending):
+        display.display_image(photos.path_for(photo.id))
+    assert queue.count() == 0 and history.current() is None
+    for path in ("/api/display/previous", "/api/display/next"):
+        response = client.post(path)
+        assert response.status_code == 503
+        assert response.json()["code"] == "display_confirmation_pending"
+    assert driver.show_calls == 1
+    assert queue.count() == 0 and history.current() is None
+    assert display.status()["state"] == "ready" and display.status()["error"] is None
+
+
 @pytest.mark.parametrize("kind", ["in_progress", "malformed", "permissions", "symlink"])
 def test_interrupted_or_unsafe_barrier_blocks_new_controller_without_show(kind, data_dir, monkeypatch, driver_factory, png_factory):
     barrier = ConfirmationBarrier(data_dir)
