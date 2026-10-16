@@ -35,6 +35,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var phase
     @State private var selection = 0
     @State private var finishingPairing = false
+    @State private var sharingAccess = false
     var body: some View {
         Group {
             if store.recoveringConnection {
@@ -49,7 +50,7 @@ struct RootView: View {
                         DashboardView().tabItem { Label("Cadre", systemImage: "photo") }.tag(0).accessibilityIdentifier("tab.frame")
                         QueueView().tabItem { Label("File", systemImage: "square.stack") }.tag(1).accessibilityIdentifier("tab.queue")
                         HistoryView().tabItem { Label("Historique", systemImage: "clock") }.tag(2).accessibilityIdentifier("tab.history")
-                        SettingsView().tabItem { Label("Réglages", systemImage: "gearshape.fill") }.tag(3).accessibilityIdentifier("tab.settings")
+                        SettingsView(onShareAccess: { sharingAccess = true }).tabItem { Label("Réglages", systemImage: "gearshape.fill") }.tag(3).accessibilityIdentifier("tab.settings")
                     }
                     .id(store.sessionIdentity)
                     .overlay(alignment: .bottom) {
@@ -68,9 +69,12 @@ struct RootView: View {
             if phase != .active { PrivacyCoverView() }
         }
         .sheet(isPresented: $finishingPairing) { LANLoginScannerView() }
+        .sheet(isPresented: $sharingAccess, onDismiss: {
+            store.cancelPhotoAccessOperation()
+        }) { ShareAccessView() }
         .onChange(of: phase) { _, value in
             store.sceneChanged(value)
-            if value == .background { finishingPairing = false }
+            if value == .background { finishingPairing = false; sharingAccess = false }
         }
         .onChange(of: store.authenticated) { _, _ in selection = 0 }
         .onChange(of: store.sessionIdentity) { _, _ in selection = 0 }

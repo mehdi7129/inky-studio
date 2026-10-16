@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    var onShareAccess: () -> Void = {}
     @EnvironmentObject private var store: AppStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var draft = FrameSettings()
@@ -8,7 +9,6 @@ struct SettingsView: View {
     @State private var confirmUpdate = false
     @State private var confirmForget = false
     @State private var gettingStarted = false
-    @State private var sharingAccess = false
     @State private var loaded = false
     private var dirty: Bool { loaded && store.settings != draft }
     var body: some View {
@@ -77,7 +77,7 @@ struct SettingsView: View {
                         } else {
                             Text("Invitez un autre iPhone à envoyer des photos, sans partager votre accès propriétaire.")
                                 .font(.subheadline).foregroundStyle(Bento.secondaryInk)
-                            Button { sharingAccess = true } label: {
+                            Button { onShareAccess() } label: {
                                 Label("Partager l’accès", systemImage: "qrcode")
                                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                             }.disabled(!store.canShareAccess).accessibilityIdentifier("settings.shareAccess")
@@ -128,7 +128,6 @@ struct SettingsView: View {
                 .task { if !loaded, let settings = store.settings { draft = settings; loaded = true } }
                 .onChange(of: store.settings) { old, new in if !loaded || draft == old { if let new { draft = new; loaded = true } } }
                 .sheet(isPresented: $gettingStarted) { GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
-                .sheet(isPresented: $sharingAccess) { ShareAccessView() }
                 .sheet(isPresented: $bluetoothSetup) {
                     BluetoothSetupView(beginWindow: store.connected && store.bluetoothSupported ? {
                         try await store.beginBluetoothAdoption()

@@ -1589,6 +1589,266 @@ final class AppStoreTests: XCTestCase {
             XCTAssertTrue((fixture.defaults.dictionary(forKey: "photoInvitationRevocations") ?? [:]).isEmpty)
         }
     }
+    private var legacyBootstrapSecret: String { "Abcdef0123456789" }
+    private func verifiedLegacyFixture() throws -> VerifiedLegacyTLSEndpoint {
+        // Public cross-language contract vector. A valid result comes through the real verifier, never a bypass initializer.
+        let response = Data("""
+        {"v":1,"nonce":"0000000000000000000000000000000000000000000000000000000000000000","identity":{"frame_id":"11111111-1111-4111-8111-111111111111","spki_sha256":"abababababababababababababababababababababababababababababababab","url":"https://inky-fixture.local:8443"},"proof":"f2bd35f28b36c364a9b2447e89a2158195e4f4b506d3f993e26cd2804fc8456d"}
+        """.utf8)
+        return try LegacyTLSProofVerifier.verify(response: response, expectedNonce: Data(repeating: 0, count: 32),
+                                                 bootstrapPassword: legacyBootstrapSecret)
+    }
+    private func prepareLegacySharing(_ fixture: StoreFixture) async {
+        fixture.store.address = "old-frame.local"
+        await fixture.store.login(password: legacyBootstrapSecret, rememberBiometric: true)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.credentialStored)
+        XCTAssertTrue(fixture.store.needsSecureSharingUpgrade)
+        XCTAssertTrue(fixture.store.canShareAccess)
+    }
+
+    func testLegacyShareSheetRefreshDoesNotProveOrPromoteAnHTTPConnection() async throws {
+        let verified = try verifiedLegacyFixture()
+        var proofs = 0
+        let fixture = StoreFixture(proveLegacyTLS: { _, _ in proofs += 1; return verified })
+        defer { fixture.dispose() }
+        await prepareLegacySharing(fixture)
+        let previous = fixture.store.api
+        let before = fixture.stub.requests.count
+        await fixture.store.refreshAccessDevices()
+        XCTAssertEqual(proofs, 0)
+        XCTAssertEqual(fixture.stub.requests.count, before)
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertNil(fixture.store.photoAccessRole)
+    }
+
+    func testExplicitLegacySharingUpgradeCommitsPinnedOwnerAndCreatesQRInOneAction() async throws {
+        let verified = try verifiedLegacyFixture()
+        var proofs = 0
+        let fixture = StoreFixture(proveLegacyTLS: { endpoint, password in
+            proofs += 1
+            XCTAssertEqual(endpoint.absoluteString, "http://old-frame.local:8000")
+            XCTAssertEqual(password, "Abcdef0123456789")
+            return verified
+        })
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(verified.identity)
+        await prepareLegacySharing(fixture)
+        let previous = fixture.store.api
+        let previousID = fixture.store.sessionIdentity
+        let before = fixture.stub.requests.count
+        let gate = fixture.stub.hold(host: "inky-fixture.local", path: "/api/auth/devices/enroll", method: "POST")
+        let creation = Task { await fixture.store.createInvitation() }
+        await fulfillment(of: [gate.started], timeout: 3)
+        XCTAssertEqual(proofs, 1)
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertEqual(fixture.store.sessionIdentity, previousID)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), "http://old-frame.local:8000")
+        XCTAssertTrue(fixture.store.photoAccessBusy)
+        XCTAssertFalse(fixture.store.connecting, "The live dashboard and Share sheet remain mounted during the bridge")
+        XCTAssertFalse(fixture.store.canMutate)
+        let pending = try XCTUnwrap(fixture.photoCredentials.passwords.first { $0.key.hasPrefix("photo:") }?.value)
+        let credential = try JSONDecoder().decode(PhotoAccessCredential.self, from: Data(pending.utf8))
+        XCTAssertEqual(credential.state, .pending)
+        let enrollment = try requestJSON(XCTUnwrap(fixture.stub.requests.last { $0.url?.path == "/api/auth/devices/enroll" }))
+        XCTAssertEqual(enrollment["device_token"] as? String, credential.deviceToken)
+        gate.release(); await creation.value
+        XCTAssertEqual(fixture.store.photoAccessRole, .owner)
+        XCTAssertEqual(fixture.store.api?.pinnedIdentity, verified.identity)
+        XCTAssertEqual(fixture.store.address, verified.endpoint.absoluteString)
+        XCTAssertNotEqual(fixture.store.sessionIdentity, previousID)
+        XCTAssertFalse(fixture.store.hasAdoptedFrame)
+        XCTAssertFalse(fixture.store.needsSecureSharingUpgrade)
+        XCTAssertNotNil(fixture.store.activeInvitation, "The same explicit action continues after the new session identity commit")
+        XCTAssertEqual(fixture.credentials.passwords["http://old-frame.local:8000"], legacyBootstrapSecret)
+        let calls = Array(fixture.stub.requests.dropFirst(before))
+        XCTAssertTrue(calls.allSatisfy { $0.url?.scheme == "https" })
+        XCTAssertEqual(calls.filter { $0.url?.path == "/api/auth/login" }.count, 1)
+        XCTAssertEqual(calls.filter { $0.url?.path == "/api/auth/devices/enroll" }.count, 1)
+        XCTAssertEqual(calls.filter { $0.url?.path == "/api/auth/device-session" }.count, 1)
+        XCTAssertEqual(calls.filter { $0.url?.path == "/api/auth/invitations" }.count, 1)
+        XCTAssertTrue(fixture.store.canMutate)
+    }
+
+    func testLegacyUpgradeFailureAtEveryStagePreservesOldHTTPAndProtectedSecret() async throws {
+        let verified = try verifiedLegacyFixture()
+        for stage in ["proof", "login", "enroll", "session", "pending-save", "final-save"] {
+            var writes = 0
+            let fixture = StoreFixture(savePhotoValue: { _, _ in
+                writes += 1
+                if stage == "pending-save" || (stage == "final-save" && writes == 2) { throw VaultError.unavailable }
+            }, proveLegacyTLS: { _, _ in
+                if stage == "proof" { throw PhotoAccessError.unavailable }
+                return verified
+            })
+            defer { fixture.dispose() }
+            fixture.stub.enablePhotoAccess(verified.identity)
+            await prepareLegacySharing(fixture)
+            let previous = fixture.store.api
+            let previousID = fixture.store.sessionIdentity
+            let path: String?
+            switch stage {
+            case "login": path = "/api/auth/login"
+            case "enroll": path = "/api/auth/devices/enroll"
+            case "session": path = "/api/auth/device-session"
+            default: path = nil
+            }
+            if let path {
+                fixture.stub.respondNextJSON(host: "inky-fixture.local", path: path, method: "POST", status: 503,
+                    body: ["detail": "Synthetic unavailable capability"])
+            }
+            await fixture.store.createInvitation()
+            XCTAssertTrue(fixture.store.api === previous, stage)
+            XCTAssertEqual(fixture.store.sessionIdentity, previousID, stage)
+            XCTAssertEqual(fixture.store.address, "http://old-frame.local:8000", stage)
+            XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), "http://old-frame.local:8000", stage)
+            XCTAssertEqual(fixture.credentials.passwords["http://old-frame.local:8000"], legacyBootstrapSecret, stage)
+            XCTAssertNil(fixture.defaults.data(forKey: "photoAccessSelection"), stage)
+            XCTAssertNil(fixture.store.photoAccessRole, stage)
+            XCTAssertTrue(fixture.store.authenticated, stage)
+            XCTAssertTrue(fixture.store.canMutate, stage)
+            XCTAssertFalse(fixture.store.photoAccessBusy, stage)
+            XCTAssertNil(fixture.store.activeInvitation, stage)
+            XCTAssertNotNil(fixture.store.photoAccessError, stage)
+            if ["proof", "login", "enroll", "session"].contains(stage) {
+                XCTAssertEqual(fixture.store.photoAccessError, "Le partage nécessite une mise à jour du cadre.")
+            }
+        }
+    }
+
+    func testLegacyUpgradeCancelAndBackgroundRejectLateProofOrTLSReply() async throws {
+        let verified = try verifiedLegacyFixture()
+        for stage in ["proof", "login", "enroll", "session"] {
+            for background in [false, true] {
+                let proofGate = LegacySharingProofGate(verified)
+                let fixture = StoreFixture(proveLegacyTLS: { _, _ in
+                    stage == "proof" ? await proofGate.wait() : verified
+                })
+                defer { fixture.dispose() }
+                fixture.stub.enablePhotoAccess(verified.identity)
+                await prepareLegacySharing(fixture)
+                let previous = fixture.store.api
+                let previousID = fixture.store.sessionIdentity
+                let path: String
+                switch stage {
+                case "login": path = "/api/auth/login"
+                case "enroll": path = "/api/auth/devices/enroll"
+                default: path = "/api/auth/device-session"
+                }
+                let gate = stage == "proof" ? nil : fixture.stub.hold(host: "inky-fixture.local", path: path, method: "POST")
+                let before = fixture.stub.requests.count
+                let creation = Task { await fixture.store.createInvitation() }
+                await fulfillment(of: [gate?.started ?? proofGate.started], timeout: 3)
+                if background { fixture.store.sceneChanged(.background) }
+                else { fixture.store.cancelPhotoAccessOperation() }
+                gate?.release(); proofGate.release()
+                await creation.value
+                XCTAssertTrue(fixture.store.api === previous, stage)
+                XCTAssertEqual(fixture.store.sessionIdentity, previousID, stage)
+                XCTAssertEqual(fixture.store.address, "http://old-frame.local:8000", stage)
+                XCTAssertTrue(fixture.store.authenticated, stage)
+                XCTAssertNil(fixture.store.photoAccessRole, stage)
+                XCTAssertNil(fixture.store.activeInvitation, stage)
+                XCTAssertFalse(fixture.store.photoAccessBusy, stage)
+                XCTAssertFalse(fixture.store.connecting, stage)
+                XCTAssertEqual(fixture.store.localUnlocked, !background, stage)
+                XCTAssertEqual(fixture.credentials.passwords["http://old-frame.local:8000"], legacyBootstrapSecret, stage)
+                if stage == "proof" { XCTAssertEqual(fixture.stub.requests.count, before) }
+            }
+        }
+    }
+
+    func testLegacyUpgradeLostEnrollmentResponseReusesProtectedDeviceAndRequestIDs() async throws {
+        let verified = try verifiedLegacyFixture()
+        let fixture = StoreFixture(proveLegacyTLS: { _, _ in verified })
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(verified.identity)
+        await prepareLegacySharing(fixture)
+        fixture.stub.respondNextJSON(host: "inky-fixture.local", path: "/api/auth/devices/enroll", method: "POST", status: 503,
+            body: ["detail": "Uncertain enrollment response"])
+        await fixture.store.createInvitation()
+        XCTAssertTrue(fixture.store.needsSecureSharingUpgrade)
+        let first = try requestJSON(XCTUnwrap(fixture.stub.requests.last { $0.url?.path == "/api/auth/devices/enroll" }))
+        await fixture.store.createInvitation()
+        let second = try requestJSON(XCTUnwrap(fixture.stub.requests.last { $0.url?.path == "/api/auth/devices/enroll" }))
+        for field in ["device_id", "device_token", "request_id"] { XCTAssertEqual(first[field] as? String, second[field] as? String) }
+        XCTAssertNotNil(fixture.store.activeInvitation)
+        XCTAssertEqual(fixture.store.photoAccessRole, .owner)
+    }
+
+    func testLegacyCookieOnlyCannotUpgradeButKeepsWorkingWithoutRescan() async throws {
+        var proofs = 0
+        let verified = try verifiedLegacyFixture()
+        let fixture = StoreFixture(proveLegacyTLS: { _, _ in proofs += 1; return verified })
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        let previous = fixture.store.api
+        XCTAssertTrue(fixture.store.needsSecureSharingUpgrade)
+        XCTAssertFalse(fixture.store.canShareAccess)
+        let before = fixture.stub.requests.count
+        await fixture.store.createInvitation()
+        await fixture.store.enrollPhotoAccess()
+        XCTAssertEqual(proofs, 0)
+        XCTAssertEqual(fixture.stub.requests.count, before)
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.canMutate)
+    }
+
+    func testLegacyUpgradeNeverSendsPasswordWhenCandidateDoesNotHaveVerifiedPin() async throws {
+        let verified = try verifiedLegacyFixture()
+        let wrong = try FrameIdentity(id: UUID(), spkiSHA256: verified.identity.spkiSHA256)
+        let fixture = StoreFixture(candidatePin: wrong, proveLegacyTLS: { _, _ in verified })
+        defer { fixture.dispose() }
+        await prepareLegacySharing(fixture)
+        let previous = fixture.store.api
+        let before = fixture.stub.requests.count
+        await fixture.store.createInvitation()
+        XCTAssertEqual(fixture.stub.requests.count, before)
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertNil(fixture.store.photoAccessRole)
+    }
+
+    func testUpgradedOwner401DoesNotUseRetainedLegacyPasswordOrRepeatProof() async throws {
+        let verified = try verifiedLegacyFixture()
+        var proofs = 0
+        let fixture = StoreFixture(proveLegacyTLS: { _, _ in proofs += 1; return verified })
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(verified.identity)
+        await prepareLegacySharing(fixture)
+        await fixture.store.enrollPhotoAccess()
+        XCTAssertEqual(fixture.store.photoAccessRole, .owner)
+        await fixture.store.logout()
+        fixture.stub.respondNextJSON(host: "inky-fixture.local", path: "/api/auth/device-session", method: "POST", status: 401,
+            body: ["detail": "Revoked device"])
+        let before = fixture.stub.requests.count
+        await fixture.store.unlock()
+        XCTAssertEqual(fixture.stub.requests.dropFirst(before).map { $0.url!.path }, ["/api/auth/device-session"])
+        XCTAssertEqual(proofs, 1)
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertEqual(fixture.store.photoAccessRole, .owner)
+        XCTAssertEqual(fixture.credentials.passwords["http://old-frame.local:8000"], legacyBootstrapSecret)
+    }
+
+    func testForgetDuringLegacyProofCannotReviveOldOrPendingAccess() async throws {
+        let verified = try verifiedLegacyFixture()
+        let gate = LegacySharingProofGate(verified)
+        let fixture = StoreFixture(proveLegacyTLS: { _, _ in await gate.wait() })
+        defer { fixture.dispose() }
+        await prepareLegacySharing(fixture)
+        let creation = Task { await fixture.store.createInvitation() }
+        await fulfillment(of: [gate.started], timeout: 3)
+        await fixture.store.logout(forget: true)
+        gate.release(); await creation.value
+        XCTAssertFalse(fixture.store.hasSavedFrame)
+        XCTAssertNil(fixture.store.api)
+        XCTAssertNil(fixture.store.photoAccessRole)
+        XCTAssertNil(fixture.defaults.data(forKey: "photoAccessSelection"))
+        XCTAssertNil(fixture.defaults.data(forKey: "photoAccessPending"))
+        XCTAssertFalse(fixture.stub.requests.contains { $0.url?.host == "inky-fixture.local" })
+    }
 }
 
 @MainActor
@@ -1608,7 +1868,9 @@ private final class StoreFixture {
          saveCredential: (@MainActor (String, String) throws -> Void)? = nil,
          loadCredential: (@MainActor (String) async throws -> String)? = nil,
          savePhotoValue: (@MainActor (String, String) throws -> Void)? = nil,
-         pin: FrameIdentity? = nil) {
+         pin: FrameIdentity? = nil,
+         candidatePin: FrameIdentity? = nil,
+         proveLegacyTLS: (@MainActor (URL, String) async throws -> VerifiedLegacyTLSEndpoint)? = nil) {
         let defaults = UserDefaults(suiteName: suite)!
         self.defaults = defaults
         let stub = StoreStub(totals: totals)
@@ -1632,7 +1894,8 @@ private final class StoreFixture {
                          vault: BiometricVault(service: vaultService),
                          photoAccessVault: protectedAccess,
                          ownershipVault: OwnershipVault(service: ownershipService),
-                         makePinnedAPI: { InkyAPI(baseURL: $0, configuration: stub.configuration(), trustedIdentity: $1) },
+                         makePinnedAPI: { InkyAPI(baseURL: $0, configuration: stub.configuration(), trustedIdentity: candidatePin ?? $1) },
+                         proveLegacyTLS: proveLegacyTLS,
                          authenticateLocal: authenticateLocal ?? {},
                          invalidateAuthentication: {},
                          saveCredential: { password, address in
@@ -1893,4 +2156,19 @@ private final class StoreURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override func stopLoading() { responseLock.withLock { stopped = true } }
+}
+
+@MainActor
+private final class LegacySharingProofGate {
+    let started = XCTestExpectation(description: "Public proof requested")
+    private let verified: VerifiedLegacyTLSEndpoint
+    private var continuation: CheckedContinuation<VerifiedLegacyTLSEndpoint, Never>?
+    init(_ verified: VerifiedLegacyTLSEndpoint) { self.verified = verified }
+    func wait() async -> VerifiedLegacyTLSEndpoint {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            started.fulfill()
+        }
+    }
+    func release() { continuation?.resume(returning: verified); continuation = nil }
 }

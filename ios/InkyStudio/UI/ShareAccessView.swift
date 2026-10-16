@@ -42,7 +42,10 @@ struct ShareAccessView: View {
             }.accessibilityIdentifier("access.scroll").screenBackground().navigationTitle("Partager l’accès")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) {
-                    Button("Fermer") { dismiss() }.accessibilityIdentifier("access.close")
+                    Button("Fermer") {
+                        store.cancelPhotoAccessOperation()
+                        dismiss()
+                    }.accessibilityIdentifier("access.close")
                 } }
                 .task { await store.refreshAccessDevices() }
                 .confirmationDialog("Retirer l’accès de cet iPhone ?", isPresented: Binding(

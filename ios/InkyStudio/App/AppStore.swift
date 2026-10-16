@@ -25,6 +25,9 @@ final class AppStore: ObservableObject {
     @Published private(set) var photoAccessError: String?
     private let photoAccessVault: PhotoAccessVault
     private let makePinnedAPI: @MainActor (URL, FrameIdentity) -> InkyAPI
+    private let proveLegacyTLS: @MainActor (URL, String) async throws -> VerifiedLegacyTLSEndpoint
+    private var legacySharingUpgradeTask: Task<Bool, Never>?
+    private var legacySharingUpgradeID = UUID()
     private var selectedPhotoAccess: PhotoAccessSelection?
     private var pendingPhotoAccess: PhotoAccessSelection?
     private var photoAccessOperation = UUID()
@@ -90,6 +93,7 @@ final class AppStore: ObservableObject {
          photoAccessVault: PhotoAccessVault? = nil,
          ownershipVault: OwnershipVault = OwnershipVault(),
          makePinnedAPI: @escaping @MainActor (URL, FrameIdentity) -> InkyAPI = { InkyAPI(baseURL: $0, trustedIdentity: $1) },
+         proveLegacyTLS: (@MainActor (URL, String) async throws -> VerifiedLegacyTLSEndpoint)? = nil,
          authenticateLocal: (@MainActor () async throws -> Void)? = nil,
          invalidateAuthentication: (@MainActor () -> Void)? = nil,
          saveCredential: (@MainActor (String, String) throws -> Void)? = nil,
@@ -104,6 +108,7 @@ final class AppStore: ObservableObject {
         let deviceAuthentication = LocalDeviceAuthentication()
         self.photoAccessVault = photoAccessVault ?? PhotoAccessVault(context: { deviceAuthentication.context })
         self.makePinnedAPI = makePinnedAPI
+        self.proveLegacyTLS = proveLegacyTLS ?? { try await LegacyTLSProofClient().prove(endpoint: $0, bootstrapPassword: $1) }
         self.authenticateLocal = authenticateLocal ?? { try await deviceAuthentication.authenticate() }
         self.invalidateAuthentication = invalidateAuthentication ?? { deviceAuthentication.invalidate() }
         self.saveCredential = saveCredential ?? { try vault.save(password: $0, address: $1, context: deviceAuthentication.context) }
@@ -169,7 +174,15 @@ final class AppStore: ObservableObject {
     var isMediaPhotoAccess: Bool { selectedPhotoAccess?.role == .media || photoAccessRole == .media }
     var hasIndividualPhotoAccess: Bool { selectedPhotoAccess != nil }
     var canAdminister: Bool { authenticated && photoAccessRole != .media }
-    var canShareAccess: Bool { localUnlocked && active && authenticated && connected && !pairingNeedsCompletion && photoAccessRole != .media && api?.pinnedIdentity != nil }
+    var needsSecureSharingUpgrade: Bool {
+        selectedPhotoAccess == nil && photoAccessRole == nil && !hasAdoptedFrame && api?.pinnedIdentity == nil &&
+        api?.baseURL.scheme == "http"
+    }
+    var canShareAccess: Bool {
+        localUnlocked && active && authenticated && connected && !pairingNeedsCompletion && photoAccessRole != .media &&
+        (api?.pinnedIdentity != nil || (needsSecureSharingUpgrade && credentialStored &&
+            api?.baseURL.absoluteString == address && defaults.string(forKey: "frameAddress") == address))
+    }
     var displayIssue: String? { displayDiagnostics?.issue ?? displayReadError }
     var canDisplay: Bool { canMutate && state != nil && displayIssue == nil }
 
@@ -199,6 +212,9 @@ final class AppStore: ObservableObject {
 
     /// A local lock never logs out or discards a usable in-memory network session.
     func lock() {
+        legacySharingUpgradeTask?.cancel()
+        legacySharingUpgradeTask = nil
+        legacySharingUpgradeID = UUID()
         recoveringConnection = false
         activeInvitation = nil
         accessDevices = []
@@ -226,7 +242,9 @@ final class AppStore: ObservableObject {
         busy = false
         displayBusy = false
         imageCache.removeAllObjects()
-        if connecting { pendingClient?.clearSession(); pendingClient = nil; connecting = false }
+        pendingClient?.clearSession()
+        pendingClient = nil
+        connecting = false
     }
 
     func unlock() async {
@@ -711,7 +729,12 @@ final class AppStore: ObservableObject {
         if let client { _ = try? await client.logout() }
     }
 
-    private func resetSession(clearClient: Bool = true) {
+    private func resetSession(clearClient: Bool = true, cancelLegacyUpgrade: Bool = true) {
+        if cancelLegacyUpgrade {
+            legacySharingUpgradeTask?.cancel()
+            legacySharingUpgradeTask = nil
+            legacySharingUpgradeID = UUID()
+        }
         activeInvitation = nil
         accessDevices = []
         photoAccessOperation = UUID()
@@ -1105,6 +1128,120 @@ final class AppStore: ObservableObject {
 
 // MARK: - Individually revocable photo access
 private extension AppStore {
+    func upgradeLegacySharing() async -> Bool {
+        guard canShareAccess, needsSecureSharingUpgrade, !photoAccessBusy, !connecting, !unlocking, !busy, !displayBusy, !updating else { return false }
+        let identifier = UUID()
+        legacySharingUpgradeID = identifier
+        let task = Task { await performLegacySharingUpgrade() }
+        legacySharingUpgradeTask = task
+        defer { if legacySharingUpgradeID == identifier { legacySharingUpgradeTask = nil } }
+        return await withTaskCancellationHandler(operation: { await task.value }, onCancel: { task.cancel() })
+    }
+
+    func waitForLegacySharingForeground(epoch: UUID, operation: UUID) async -> Bool {
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        while !active {
+            guard epoch == generation, operation == photoAccessOperation, localUnlocked, !Task.isCancelled,
+                  ProcessInfo.processInfo.systemUptime < deadline else { return false }
+            do { try await Task.sleep(nanoseconds: 50_000_000) } catch { return false }
+        }
+        return photoOperationValid(epoch, operation)
+    }
+
+    func performLegacySharingUpgrade() async -> Bool {
+        guard canShareAccess, needsSecureSharingUpgrade, let previous = api else { return false }
+        let previousAccount = credentialAccount
+        let previousAddress = address
+        let authentication = localAuthenticationGeneration
+        // Retire existing metadata callbacks without logging the old HTTP connection out.
+        stopMonitoring()
+        generation = UUID()
+        refreshID = nil
+        refreshing = false
+        requestedRefresh = false
+        historyRevision = UUID()
+        loadingHistory = false
+        var epoch = generation
+        var operation = UUID()
+        photoAccessOperation = operation
+        photoAccessBusy = true
+        photoAccessError = nil
+        var candidate: InkyAPI?
+        func stillSelected() -> Bool {
+            photoOperationValid(epoch, operation) && localAuthenticationGeneration == authentication &&
+            api === previous && address == previousAddress && credentialAccount == previousAccount && needsSecureSharingUpgrade
+        }
+        defer {
+            candidate?.clearSession()
+            if operation == photoAccessOperation {
+                pendingClient = nil
+                photoAccessBusy = false
+                if api === previous, localUnlocked, active, authenticated { startMonitoring() }
+            }
+        }
+        do {
+            var bootstrapPassword = try await readCredential(previousAccount)
+            guard await waitForLegacySharingForeground(epoch: epoch, operation: operation), stillSelected() else { return false }
+            // This client has no access to the live HTTP jar. It sends a fresh nonce only.
+            let verified = try await proveLegacyTLS(previous.baseURL, bootstrapPassword)
+            guard stillSelected() else { return false }
+            let pinned = makePinnedAPI(verified.endpoint, verified.identity)
+            candidate = pinned
+            pendingClient = pinned
+            guard OriginRedirectDelegate.sameOrigin(pinned.baseURL, verified.endpoint) else { throw PhotoAccessError.identityMismatch }
+            let access = try PhotoAccessClient(api: pinned, identity: verified.identity)
+            // The verifier is the only constructor of VerifiedLegacyTLSEndpoint. The secret
+            // first leaves this iPhone on the strictly pinned HTTPS candidate, never on HTTP.
+            let authenticatedReply = try await pinned.login(password: bootstrapPassword)
+            bootstrapPassword = ""
+            guard stillSelected() else { return false }
+            guard authenticatedReply.authenticated else { throw APIError.unauthorized }
+            let account = PhotoAccessSelection.account(identity: verified.identity, invitationID: nil)
+            var credential: PhotoAccessCredential
+            if photoAccessVault.contains(account: account) {
+                let saved = try await photoAccessVault.loadCredential(account: account)
+                guard await waitForLegacySharingForeground(epoch: epoch, operation: operation), stillSelected() else { return false }
+                guard saved.identity == verified.identity, saved.expectedRole == .owner, saved.invitationID == nil else {
+                    throw PhotoAccessError.identityMismatch
+                }
+                // Reuse exact device/request IDs after an uncertain response, including a verified locator change.
+                credential = try PhotoAccessCredential(identity: saved.identity, endpoint: verified.endpoint,
+                    deviceID: saved.deviceID, deviceToken: saved.deviceToken, requestID: saved.requestID,
+                    expectedRole: .owner, state: .pending)
+            } else {
+                credential = try PhotoAccessCredential.make(identity: verified.identity, endpoint: verified.endpoint, role: .owner)
+            }
+            guard stillSelected() else { return false }
+            credential.state = .pending
+            try rememberPendingPhotoAccess(credential)
+            _ = try await access.enroll(credential)
+            guard stillSelected() else { return false }
+            _ = try await access.openSession(credential)
+            guard stillSelected() else { return false }
+            // Protected final save and local selection commit happen synchronously. Until this
+            // exact boundary the previous HTTP cookie, locator and protected QR secret remain usable.
+            pendingClient = nil
+            try commitPhotoAccess(credential, client: pinned, preservingLegacyUpgrade: true)
+            candidate = nil
+            epoch = generation
+            operation = UUID()
+            photoAccessOperation = operation
+            photoAccessBusy = true
+            await refresh()
+            guard photoOperationValid(epoch, operation), authenticated, api === pinned else { return false }
+            startMonitoring()
+            return true
+        } catch {
+            guard stillSelected(), !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return false }
+            if error is VaultError {
+                photoAccessError = error.localizedDescription
+            } else {
+                photoAccessError = "Le partage nécessite une mise à jour du cadre."
+            }
+            return false
+        }
+    }
+
     func finishPhotoAccessWiFi(endpoint: URL, owner: OwnershipRecord, selected: PhotoAccessSelection) async {
         guard canMutate, !photoAccessBusy, selected.role == .owner else { return }
         let epoch = generation; let operation = UUID(); photoAccessOperation = operation
@@ -1166,13 +1303,13 @@ private extension AppStore {
         pendingPhotoAccess = selection
         defaults.set(data, forKey: "photoAccessPending")
     }
-    func commitPhotoAccess(_ credential: PhotoAccessCredential, client: InkyAPI) throws {
+    func commitPhotoAccess(_ credential: PhotoAccessCredential, client: InkyAPI, preservingLegacyUpgrade: Bool = false) throws {
         var saved = credential
         saved.state = .active
         let selection = PhotoAccessSelection(saved)
         try photoAccessVault.save(saved, account: selection.account)
         let selectionData = try JSONEncoder().encode(selection)
-        resetSession()
+        resetSession(cancelLegacyUpgrade: !preservingLegacyUpgrade)
         selectedPhotoAccess = selection
         photoAccessRole = credential.expectedRole
         defaults.set(selectionData, forKey: "photoAccessSelection")
@@ -1279,6 +1416,24 @@ private extension AppStore {
 }
 
 extension AppStore {
+    func cancelPhotoAccessOperation() {
+        guard photoAccessBusy else { return }
+        legacySharingUpgradeTask?.cancel()
+        legacySharingUpgradeTask = nil
+        legacySharingUpgradeID = UUID()
+        photoAccessOperation = UUID()
+        pendingClient?.clearSession()
+        pendingClient = nil
+        photoAccessBusy = false
+        stopMonitoring()
+        generation = UUID()
+        refreshID = nil
+        refreshing = false
+        requestedRefresh = false
+        loadingHistory = false
+        startMonitoring()
+    }
+
     /// Recipient QR claim is isolated from the currently selected frame until secure commit.
     func claimInvitation(_ code: FrameInvitationCode) async {
         guard !connecting, !unlocking, !photoAccessBusy, !busy, !displayBusy, !updating else { return }
@@ -1345,6 +1500,7 @@ extension AppStore {
 
     func enrollPhotoAccess() async {
         guard canShareAccess, !photoAccessBusy else { return }
+        if needsSecureSharingUpgrade { _ = await upgradeLegacySharing(); return }
         let epoch = generation; let operation = UUID(); photoAccessOperation = operation
         photoAccessBusy = true; photoAccessError = nil
         defer { if photoAccessOperation == operation { photoAccessBusy = false } }
@@ -1352,7 +1508,8 @@ extension AppStore {
         catch { reportPhotoAccessError(error, epoch: epoch, operation: operation) }
     }
     func refreshAccessDevices() async {
-        guard canShareAccess, !photoAccessBusy else { return }
+        // Opening the sheet or its automatic task must never promote a legacy connection.
+        guard canShareAccess, !needsSecureSharingUpgrade, !photoAccessBusy else { return }
         #if DEBUG
         if fixturePhotoAccess != nil { return }
         #endif
@@ -1368,6 +1525,9 @@ extension AppStore {
     }
     func createInvitation() async {
         guard canShareAccess, !photoAccessBusy else { return }
+        if needsSecureSharingUpgrade {
+            guard await upgradeLegacySharing(), canShareAccess, !photoAccessBusy else { return }
+        }
         #if DEBUG
         if fixturePhotoAccess != nil { createFixtureInvitation(expired: false); return }
         #endif

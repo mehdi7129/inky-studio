@@ -2,14 +2,14 @@ import Foundation
 import XCTest
 @testable import InkyStudio
 
-/// Opt-in real HTTPS exchange with the unchanged Python PHOTO backend on this Mac.
+/// Opt-in nonce-only HTTP proof, then strict pinned HTTPS against the exact Python bridge backend.
 /// No URLProtocol, trust bypass, real frame, local-auth fixture or Keychain claim.
 @MainActor
 final class PhotoAccessBackendInteropTests: XCTestCase {
-    func testPinnedHTTPSOwnerEnrollmentInvitationMediaClaimAndRevocation() async throws {
+    func testLegacyNonceProofPinnedHTTPSOwnerEnrollmentInvitationMediaClaimAndRevocation() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard let endpointText = environment["INKY_PHOTO_INTEROP_ENDPOINT"], !endpointText.isEmpty else {
-            throw XCTSkip("Real backend fixture absent; start photo-access-backend-fixture.py and inject its three public environment values.")
+            throw XCTSkip("Real backend fixture absent; start photo-access-backend-fixture.py and inject its four public environment values.")
         }
         let endpoint = try XCTUnwrap(URL(string: endpointText))
         XCTAssertEqual(endpoint.scheme, "https")
@@ -19,12 +19,38 @@ final class PhotoAccessBackendInteropTests: XCTestCase {
               endpoint.fragment == nil, endpoint.path.isEmpty else {
             XCTFail("Invalid real-backend fixture endpoint."); return
         }
+        let httpText = try XCTUnwrap(environment["INKY_PHOTO_INTEROP_HTTP_ENDPOINT"])
+        let httpEndpoint = try XCTUnwrap(URL(string: httpText))
+        guard httpEndpoint.scheme == "http", httpEndpoint.host == "127.0.0.1", httpEndpoint.port != nil,
+              httpEndpoint.user == nil, httpEndpoint.password == nil, httpEndpoint.query == nil,
+              httpEndpoint.fragment == nil, httpEndpoint.path.isEmpty, httpEndpoint.port != endpoint.port else {
+            XCTFail("Invalid nonce-only loopback listener."); return
+        }
         let id = try XCTUnwrap(environment["INKY_PHOTO_INTEROP_FRAME_ID"].flatMap(UUID.init(uuidString:)))
         let pin = try XCTUnwrap(environment["INKY_PHOTO_INTEROP_SPKI_SHA256"].flatMap(PhotoAccessValidation.bytes))
         let identity = try FrameIdentity(id: id, spkiSHA256: pin)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = nil
-        let fixturePassword = "photo-access-interop-password-v1"
+        let fixturePassword = "Abcdef0123456789" // Public synthetic16alnum bootstrap, identical to the fixture script.
+        // The actual proof client discards injected headers/storage. The backend wrapper
+        // independently asserts that every HTTP request contains only v + a fresh nonce.
+        let proofConfiguration = URLSessionConfiguration.ephemeral
+        proofConfiguration.protocolClasses = nil
+        proofConfiguration.httpAdditionalHeaders = [
+            "Cookie": "inky_session=synthetic-must-not-forward",
+            "Authorization": "Synthetic-must-not-forward",
+            "Proxy-Authorization": "synthetic-must-not-forward",
+            "X-Inky-Owner-ID": "synthetic-must-not-forward",
+            "X-Inky-Owner-Token": "synthetic-must-not-forward",
+            "X-Device-Token": "synthetic-must-not-forward",
+        ]
+        let proofClient = LegacyTLSProofClient(configuration: proofConfiguration)
+        let verified = try await proofClient.prove(endpoint: httpEndpoint, bootstrapPassword: fixturePassword)
+        XCTAssertEqual(verified.identity, identity)
+        XCTAssertEqual(verified.endpoint, endpoint)
+        // The real backend observes two independently generated nonces; receipts expose only their count.
+        let verifiedAgain = try await proofClient.prove(endpoint: httpEndpoint, bootstrapPassword: fixturePassword)
+        XCTAssertEqual(verifiedAgain, verified)
 
         // Negative control: an incorrect pin must fail in the real TLS exchange.
         let wrongIdentity = try FrameIdentity(id: id, spkiSHA256: Data(repeating: 0, count: 32))
@@ -42,7 +68,7 @@ final class PhotoAccessBackendInteropTests: XCTestCase {
                           "An unrelated timeout or offline error cannot qualify the wrong-pin control.")
         }
 
-        let ownerAPI = InkyAPI(baseURL: endpoint, configuration: configuration, trustedIdentity: identity)
+        let ownerAPI = InkyAPI(baseURL: verified.endpoint, configuration: configuration, trustedIdentity: verified.identity)
         defer { ownerAPI.clearSession() }
         let ownerClient = try PhotoAccessClient(api: ownerAPI, identity: identity)
         let health = try await ownerAPI.health()
@@ -100,7 +126,10 @@ final class PhotoAccessBackendInteropTests: XCTestCase {
         XCTAssertNil(try mediaAPI.eventRequest().value(forHTTPHeaderField: "Cookie"))
 
         let evidence: [String: Any] = [
-            "transport": "real Foundation HTTPS to unchanged Python backend on Mac loopback",
+            "transport": "real Foundation nonce-only HTTP proof then pinned HTTPS to unchanged Python backend on Mac loopback",
+            "backend_commit": "79050e25cb749d03b65592e81f1dd89bffa44472",
+            "http_endpoint": httpEndpoint.absoluteString, "nonce_proof_verified": true,
+            "proof_attempts": 2, "proof_transport_has_no_cookie_password_or_device_token": true,
             "endpoint": endpoint.absoluteString, "frame_id": identity.id.uuidString.lowercased(),
             "wrong_pin_rejected": true, "legacy_owner_enrollment": true, "owner_device_session": true,
             "invitation_qr_roundtrip": true, "media_claim_and_device_session": true,
@@ -111,7 +140,7 @@ final class PhotoAccessBackendInteropTests: XCTestCase {
         ]
         let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: evidence, options: [.sortedKeys, .prettyPrinted]),
                                        uniformTypeIdentifier: "public.json")
-        attachment.name = "PHOTO real backend HTTPS interop — no secrets"
+        attachment.name = "PHOTO real backend legacy proof + HTTPS interop — no secrets"
         attachment.lifetime = .keepAlways
         add(attachment)
     }

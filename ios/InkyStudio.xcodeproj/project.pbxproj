@@ -20,7 +20,10 @@
 		25B80AA3199AE33F4DC01392 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 2A2F4D0111059422485B70B8 /* ThirdPartyNotices.txt */; };
 		2F7AC99D1BA003EFA4DB94FC /* InkyAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D591853F3004F95469F34EA /* InkyAPI.swift */; };
 		303C97AA771D6E8566655491 /* FramePhotoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA86EF4F893A75D7FFB8E8EA /* FramePhotoClient.swift */; };
+		324AC1EBE0B647C8B19018D9 /* LegacyTLSProofModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE676C7D1F7BBFEC4E1A19C /* LegacyTLSProofModelsTests.swift */; };
 		39374A0640F3E0777B82E833 /* BootstrapFrameTrustTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */; };
+		3B2FA8B8345A13890D0C1722 /* LegacyTLSProofClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F462EF641F8A3166DE01E969 /* LegacyTLSProofClient.swift */; };
+		42766EFA47788DD300F4CC2C /* LegacyTLSProofModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F2042323A90DDDC684EBA4 /* LegacyTLSProofModels.swift */; };
 		4964887E4D9053F0AAADA934 /* OwnershipVaultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4BC623B018F1BD03AECD32 /* OwnershipVaultTests.swift */; };
 		5DA5EACB32570669F29B66A8 /* InkyStudioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908ED9879C756D9FD754E54A /* InkyStudioApp.swift */; };
 		5E0735A767035D2E7F09E1B6 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94A820224492220A3DA35B5 /* AppStore.swift */; };
@@ -62,6 +65,7 @@
 		E2419ACE2BDCF78FE510845A /* Bento.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB7F251A4078603A5EA5E0F2 /* Bento.swift */; };
 		E2AB2C5DC405AFC910538F17 /* PhotoAccessUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D096779D681CB37721D1B984 /* PhotoAccessUITests.swift */; };
 		E883895084BA3ED85261A5FD /* FrameIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 705B77096599A912B708C7FF /* FrameIdentityTests.swift */; };
+		EDA0A047E42AE16E3E6C2CA0 /* LegacyTLSProofClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5DA247B21F3449721115522 /* LegacyTLSProofClientTests.swift */; };
 		F36892B63C1B13F1A00D3BD7 /* FrameTrustTestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABDD49EB7DC85A967681D04E /* FrameTrustTestFixtures.swift */; };
 		F42B2C151B9E2437D32F442D /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EA7C41FE711F5C10D48C074 /* QRScannerView.swift */; };
 		F43A513BED09803091EF2F30 /* CameraCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */; };
@@ -119,6 +123,7 @@
 		81D0313FF291E89F24013700 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		82E93EF9A28792AD9A812ED7 /* QueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueView.swift; sourceTree = "<group>"; };
 		836D4C9F8E331DEF2E50DBA6 /* InkyTLS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = InkyTLS; path = Packages/InkyTLS; sourceTree = SOURCE_ROOT; };
+		88F2042323A90DDDC684EBA4 /* LegacyTLSProofModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTLSProofModels.swift; sourceTree = "<group>"; };
 		8DCEA26471F9019C266D0935 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		8DD2E779AB549D13992CC463 /* InkyStudio.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = InkyStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		908ED9879C756D9FD754E54A /* InkyStudioApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkyStudioApp.swift; sourceTree = "<group>"; };
@@ -145,10 +150,13 @@
 		D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothTransport.swift; sourceTree = "<group>"; };
 		E0834373954BB5835FADEA86 /* ShareAccessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareAccessView.swift; sourceTree = "<group>"; };
 		E5ADFD190C12461AC95A6AB3 /* BluetoothSetupCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothSetupCoordinatorTests.swift; sourceTree = "<group>"; };
+		E5DA247B21F3449721115522 /* LegacyTLSProofClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTLSProofClientTests.swift; sourceTree = "<group>"; };
 		E6000FA45E4E44E5673B2505 /* PinnedFrameTrustTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedFrameTrustTests.swift; sourceTree = "<group>"; };
 		EA03CF5A821583DC0296E706 /* FrameLANLoginCodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameLANLoginCodeTests.swift; sourceTree = "<group>"; };
 		EDA88A012B49D18F232A1459 /* CameraCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCaptureTests.swift; sourceTree = "<group>"; };
+		F462EF641F8A3166DE01E969 /* LegacyTLSProofClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTLSProofClient.swift; sourceTree = "<group>"; };
 		F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapFrameTrustTests.swift; sourceTree = "<group>"; };
+		FFE676C7D1F7BBFEC4E1A19C /* LegacyTLSProofModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTLSProofModelsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -179,6 +187,8 @@
 				AD13D09A34D1301851C4A1C2 /* FrameAddress.swift */,
 				AA86EF4F893A75D7FFB8E8EA /* FramePhotoClient.swift */,
 				4D591853F3004F95469F34EA /* InkyAPI.swift */,
+				F462EF641F8A3166DE01E969 /* LegacyTLSProofClient.swift */,
+				88F2042323A90DDDC684EBA4 /* LegacyTLSProofModels.swift */,
 				521ACA1E2D923359CD42DBDD /* Models.swift */,
 				521D68F5511F1421798A1AFC /* PhotoAccessClient.swift */,
 				CD9E0808D7AEF74962DB5A19 /* PhotoAccessModels.swift */,
@@ -234,6 +244,8 @@
 				19E5BC929BFD269953D78E4F /* FrameInvitationCodeTests.swift */,
 				EA03CF5A821583DC0296E706 /* FrameLANLoginCodeTests.swift */,
 				ABDD49EB7DC85A967681D04E /* FrameTrustTestFixtures.swift */,
+				E5DA247B21F3449721115522 /* LegacyTLSProofClientTests.swift */,
+				FFE676C7D1F7BBFEC4E1A19C /* LegacyTLSProofModelsTests.swift */,
 				CA4BC623B018F1BD03AECD32 /* OwnershipVaultTests.swift */,
 				46C2790BC45731DD11C8F334 /* PhotoAccessBackendInteropTests.swift */,
 				0CAB5148FA1E1636088AADD4 /* PhotoAccessClientTests.swift */,
@@ -472,6 +484,8 @@
 				A8B08F1628A872CD5F5C2520 /* FrameInvitationCodeTests.swift in Sources */,
 				9D637B1E237BEE8040511922 /* FrameLANLoginCodeTests.swift in Sources */,
 				F36892B63C1B13F1A00D3BD7 /* FrameTrustTestFixtures.swift in Sources */,
+				EDA0A047E42AE16E3E6C2CA0 /* LegacyTLSProofClientTests.swift in Sources */,
+				324AC1EBE0B647C8B19018D9 /* LegacyTLSProofModelsTests.swift in Sources */,
 				4964887E4D9053F0AAADA934 /* OwnershipVaultTests.swift in Sources */,
 				21432DAAEF7B5BC7457F7A35 /* PhotoAccessBackendInteropTests.swift in Sources */,
 				A469DC4B3356747C5E4E3D42 /* PhotoAccessClientTests.swift in Sources */,
@@ -506,6 +520,8 @@
 				CB37F0565CDD0759B962195C /* HistoryView.swift in Sources */,
 				2F7AC99D1BA003EFA4DB94FC /* InkyAPI.swift in Sources */,
 				5DA5EACB32570669F29B66A8 /* InkyStudioApp.swift in Sources */,
+				3B2FA8B8345A13890D0C1722 /* LegacyTLSProofClient.swift in Sources */,
+				42766EFA47788DD300F4CC2C /* LegacyTLSProofModels.swift in Sources */,
 				A0044C08941B57E21663EC19 /* Models.swift in Sources */,
 				1006BC8D40E57ADA2432DC39 /* OwnershipVault.swift in Sources */,
 				0CAE38FB30219486A9361511 /* PhotoAccessClient.swift in Sources */,
