@@ -48,6 +48,7 @@ struct CapturedPhoto: @unchecked Sendable {
 /// UIKit's still-camera UI provides capture, retake and cancellation. It neither
 /// records audio nor writes the captured photo into the user's photo library.
 struct CameraCaptureView: UIViewControllerRepresentable {
+    @Environment(\.scenePhase) private var scenePhase
     let onFinish: (Result<CapturedPhoto, Error>?) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
@@ -64,7 +65,11 @@ struct CameraCaptureView: UIViewControllerRepresentable {
         return controller
     }
 
-    func updateUIViewController(_ controller: UIImagePickerController, context: Context) {}
+    func updateUIViewController(_ controller: UIImagePickerController, context: Context) {
+        // Hide the native camera surface too, underneath the SwiftUI privacy shield.
+        // UIImagePickerController keeps ownership of capture and background suspension.
+        controller.view.isHidden = scenePhase != .active
+    }
 
     final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
         private let onFinish: (Result<CapturedPhoto, Error>?) -> Void

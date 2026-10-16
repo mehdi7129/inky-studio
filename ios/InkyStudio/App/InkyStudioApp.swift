@@ -7,20 +7,43 @@ struct InkyStudioApp: App {
     var body: some Scene {
         WindowGroup {
             RootView().environmentObject(store).tint(Bento.ink)
+                #if DEBUG
+                .preferredColorScheme(uiTestAppearance)
+                #endif
         }
     }
+
+    #if DEBUG
+    // The launch argument alone does not change UIKit's appearance on every
+    // Simulator runtime. Scope this override to the explicit UI-test fixture.
+    private var uiTestAppearance: ColorScheme? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("--uitesting"),
+              let index = arguments.firstIndex(of: "-AppleInterfaceStyle"),
+              arguments.indices.contains(index + 1) else { return nil }
+        switch arguments[index + 1].lowercased() {
+        case "dark": return .dark
+        case "light": return .light
+        default: return nil
+        }
+    }
+    #endif
 }
 
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.scenePhase) private var phase
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selection = 0
+    @State private var finishingPairing = false
     var body: some View {
         Group {
-            if store.authenticated && !store.connecting {
+            if store.recoveringConnection {
+                ConnectionView()
+            } else if store.unlocking || (!store.localUnlocked && store.authenticated) ||
+                        ((store.credentialStored || store.hasAdoptedFrame) && !store.authenticated && !store.connecting) {
+                LocalLockView()
+            } else if store.authenticated && store.localUnlocked && !store.connecting && !store.unlocking {
                 VStack(spacing: 0) {
-                    if store.isDemo { demoBanner }
                     connectionBanners
                     TabView(selection: $selection) {
                         DashboardView().tabItem { Label("Cadre", systemImage: "photo") }.tag(0).accessibilityIdentifier("tab.frame")
@@ -39,10 +62,16 @@ struct RootView: View {
                 }
             } else { ConnectionView() }
         }
-        .sheet(isPresented: $store.offeringLANBiometrics, onDismiss: store.declineLANBiometrics) {
-            LANBiometricConsentView().environmentObject(store)
+        .background { ScenePrivacyAnchor() }
+        .accessibilityHidden(phase != .active)
+        .overlay {
+            if phase != .active { PrivacyCoverView() }
         }
-        .onChange(of: phase) { _, value in store.sceneActive(value == .active) }
+        .sheet(isPresented: $finishingPairing) { LANLoginScannerView() }
+        .onChange(of: phase) { _, value in
+            store.sceneChanged(value)
+            if value == .background { finishingPairing = false }
+        }
         .onChange(of: store.authenticated) { _, _ in selection = 0 }
         .onChange(of: store.sessionIdentity) { _, _ in selection = 0 }
         .onChange(of: store.notice) { previous, current in
@@ -56,6 +85,33 @@ struct RootView: View {
     // draw through them. Each message owns its vertical space.
     private var connectionBanners: some View {
         VStack(spacing: 0) {
+            if store.pairingNeedsCompletion {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Association à finaliser", systemImage: "lock.trianglebadge.exclamationmark")
+                        .font(.subheadline.weight(.semibold))
+                    if let message = store.credentialStorageError {
+                        Text(message).font(.caption).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if store.canRetryCredentialStorage {
+                        Button("Enregistrer l’accès sur cet iPhone") {
+                            Task { await store.retryCredentialStorage() }
+                        }.frame(minHeight: 44).accessibilityIdentifier("connection.retryCredentialStorage")
+                    } else {
+                        Button("Terminer par QR") { finishingPairing = true }
+                            .frame(minHeight: 44).disabled(!store.canScanLANLoginCode)
+                            .accessibilityIdentifier("connection.finishPairingQR")
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12).background(Color.orange.opacity(0.12))
+                    .accessibilityIdentifier("connection.pairingIncomplete")
+            } else if let message = store.credentialStorageError {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "lock.trianglebadge.exclamationmark")
+                    Text(message).font(.caption).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }.padding(12).background(Color.orange.opacity(0.12))
+                    .accessibilityIdentifier("connection.credentialStorageError")
+            }
             if !store.connected {
                 HStack {
                     Image(systemName: "wifi.slash")
@@ -87,21 +143,5 @@ struct RootView: View {
                 .accessibilityIdentifier("connection.error")
             }
         }.fixedSize(horizontal: false, vertical: true)
-    }
-    private var demoBanner: some View {
-        HStack(spacing: 12) {
-            Group {
-                if dynamicTypeSize.isAccessibilitySize { Text("Démo") }
-                else { Label("Démo · sur cet iPhone", systemImage: "play.circle") }
-            }
-                .font(.caption.weight(.medium)).fixedSize(horizontal: true, vertical: true)
-                .accessibilityLabel("Démonstration locale, aucun cadre connecté")
-                .accessibilityIdentifier("demo.banner")
-            Spacer(minLength: 0)
-            Button("Quitter") { store.exitDemo() }
-                .font(.caption.weight(.semibold)).fixedSize(horizontal: true, vertical: true).frame(minHeight: 44)
-                .accessibilityLabel("Quitter la démo")
-                .accessibilityIdentifier("demo.exit")
-        }.padding(.horizontal, 16).background(Bento.surface)
     }
 }

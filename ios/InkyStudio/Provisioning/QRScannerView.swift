@@ -12,11 +12,15 @@ enum QRScannerFailure: Error, LocalizedError, Sendable {
 }
 
 struct QRScannerView: UIViewControllerRepresentable {
+    @Environment(\.scenePhase) private var scenePhase
     let onResult: (Result<String, QRScannerFailure>) -> Void
     func makeUIViewController(context: Context) -> QRScannerController {
         QRScannerController(onResult: onResult)
     }
-    func updateUIViewController(_ controller: QRScannerController, context: Context) {}
+    func updateUIViewController(_ controller: QRScannerController, context: Context) {
+        // A sheet's native camera renders above the root privacy overlay.
+        controller.view.isHidden = scenePhase != .active
+    }
     static func dismantleUIViewController(_ controller: QRScannerController, coordinator: ()) { controller.stop() }
 }
 

@@ -28,6 +28,9 @@ extension View {
             .background(Bento.surface, in: RoundedRectangle(cornerRadius: 20))
             .overlay(RoundedRectangle(cornerRadius: 20).stroke(Bento.border, lineWidth: 0.7))
     }
+    /// Apply on each presented surface as well as the root: sheets render above root overlays.
+    func protectSensitiveContent() -> some View { modifier(SensitiveContentShield()) }
+
     func screenBackground() -> some View {
         self.background(Bento.background)
             // A compact native title avoids the invisible large-title space on iOS 27.
@@ -35,6 +38,104 @@ extension View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(Bento.background, for: .navigationBar)
     }
+}
+
+private struct SensitiveContentShield: ViewModifier {
+    @Environment(\.scenePhase) private var phase
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityHidden(phase != .active)
+            .allowsHitTesting(phase == .active)
+            .overlay {
+                if phase != .active { PrivacyCoverView().ignoresSafeArea() }
+            }
+    }
+}
+
+/// An anchor in this scene's real window. Its opaque UIKit view covers native
+/// presentations (including PhotosPicker) above SwiftUI's root and sheet layers.
+struct ScenePrivacyAnchor: UIViewRepresentable {
+    func makeUIView(context: Context) -> ScenePrivacyAnchorView { ScenePrivacyAnchorView() }
+    func updateUIView(_ view: ScenePrivacyAnchorView, context: Context) {}
+    static func dismantleUIView(_ view: ScenePrivacyAnchorView, coordinator: ()) { view.detach() }
+}
+
+final class ScenePrivacyAnchorView: UIView {
+    private weak var protectedWindow: UIWindow?
+    private var shield: UIView?
+
+    init() {
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        isAccessibilityElement = false
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(willDeactivate(_:)),
+                           name: UIScene.willDeactivateNotification, object: nil)
+        center.addObserver(self, selector: #selector(didActivate(_:)),
+                           name: UIScene.didActivateNotification, object: nil)
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if protectedWindow !== window { removeShield(); protectedWindow = window }
+        if let scene = window?.windowScene, scene.activationState != .foregroundActive { showShield() }
+    }
+
+    @objc private func willDeactivate(_ notification: Notification) {
+        guard let scene = notification.object as? UIWindowScene,
+              scene === protectedWindow?.windowScene else { return }
+        showShield()
+    }
+
+    @objc private func didActivate(_ notification: Notification) {
+        guard let scene = notification.object as? UIWindowScene,
+              scene === protectedWindow?.windowScene else { return }
+        removeShield()
+    }
+
+    private func showShield() {
+        guard shield == nil, let window = protectedWindow else { return }
+        let cover = UIView(frame: window.bounds)
+        cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        cover.backgroundColor = UIColor(Bento.background)
+        cover.layer.zPosition = 10_000
+        cover.isAccessibilityElement = true
+        cover.accessibilityLabel = "Inky Studio verrouillé"
+        cover.accessibilityViewIsModal = true
+        let symbol = UIImageView(image: UIImage(systemName: "lock.iphone"))
+        symbol.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 52, weight: .ultraLight)
+        symbol.tintColor = .label
+        symbol.contentMode = .scaleAspectFit
+        let title = UILabel()
+        title.text = "Inky Studio"
+        title.font = .preferredFont(forTextStyle: .title2)
+        title.textColor = .label
+        title.adjustsFontForContentSizeCategory = true
+        let content = UIStackView(arrangedSubviews: [symbol, title])
+        content.axis = .vertical
+        content.alignment = .center
+        content.spacing = 20
+        content.translatesAutoresizingMaskIntoConstraints = false
+        cover.addSubview(content)
+        NSLayoutConstraint.activate([
+            content.centerXAnchor.constraint(equalTo: cover.centerXAnchor),
+            content.centerYAnchor.constraint(equalTo: cover.centerYAnchor),
+            content.leadingAnchor.constraint(greaterThanOrEqualTo: cover.leadingAnchor, constant: 24),
+            content.trailingAnchor.constraint(lessThanOrEqualTo: cover.trailingAnchor, constant: -24),
+        ])
+        window.addSubview(cover)
+        shield = cover
+    }
+
+    private func removeShield() { shield?.removeFromSuperview(); shield = nil }
+    func detach() {
+        NotificationCenter.default.removeObserver(self)
+        removeShield()
+        protectedWindow = nil
+    }
+    deinit { NotificationCenter.default.removeObserver(self) }
 }
 
 struct PrimaryButtonStyle: ButtonStyle {

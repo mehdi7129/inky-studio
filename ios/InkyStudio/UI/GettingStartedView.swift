@@ -2,46 +2,62 @@ import SwiftUI
 
 struct GettingStartedView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: AppStore
+    var allowWiFiSetup = false
+    @State private var bluetoothSetup = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Un cadre, vos photos.").font(.title.weight(.bold))
-                        Text("Quelques repères pour la première connexion.")
-                            .foregroundStyle(Bento.secondaryInk)
+                        Text("Vos photos, simplement.").font(.title.weight(.bold))
+                        Text("Le QR du cadre suffit pour commencer.").foregroundStyle(Bento.secondaryInk)
                     }.padding(.vertical, 8)
-                    step("1", title: "Préparer le cadre", symbol: "photo.artframe") {
-                        Text("Il vous faut un Raspberry Pi, un écran Inky compatible et le serveur Inky Studio déjà installé sur le Raspberry.")
-                        Text("L’app iPhone accompagne ce matériel. Elle n’installe pas le serveur sur un Raspberry vierge.").foregroundStyle(Bento.secondaryInk)
+                    step("1", title: "Allumer le cadre", symbol: "photo.artframe") {
+                        Text("Votre cadre Inky doit être prêt et afficher son QR de connexion.")
+                        Text("Si aucun QR n’est visible, consultez l’aide de votre cadre. L’app ne prépare pas un Raspberry vierge.")
+                            .foregroundStyle(Bento.secondaryInk)
                     }
                     step("2", title: "Rejoindre le même Wi-Fi", symbol: "wifi") {
-                        Text("Pour commencer, connectez l’iPhone et le cadre au même réseau local.")
-                        Text("Saisissez le nom local du Raspberry ou son adresse IP, avec le port du serveur : par exemple inky.local:8000.")
-                        Text("Autorisez « Réseau local » quand iOS le demande. Le partage des photos nécessite que les deux appareils puissent communiquer sur ce réseau.").foregroundStyle(Bento.secondaryInk)
+                        Text("Connectez cet iPhone au même réseau local que le cadre.")
+                        Text("Autorisez Réseau local et Appareil photo quand iOS le demande. Certains réseaux invités empêchent les appareils de communiquer entre eux.")
+                            .foregroundStyle(Bento.secondaryInk)
                     }
-                    step("3", title: "Ouvrir votre cadre", symbol: "key") {
-                        Text("Utilisez le mot de passe de l’app du cadre. Il est distinct du mot de passe Wi-Fi et du compte Linux / SSH.")
-                        Text("Vous pourrez activer Face ID si vous le souhaitez, puis personnaliser le mot de passe dans Réglages.").foregroundStyle(Bento.secondaryInk)
+                    step("3", title: "Scanner le QR", symbol: "qrcode.viewfinder") {
+                        Text("Touchez Scanner un QR code, puis visez le code affiché sur le cadre.")
+                        Text("L’accès est protégé par Face ID, Touch ID ou le code de cet iPhone. Configurez un code iPhone pour utiliser Inky Studio.")
+                            .foregroundStyle(Bento.secondaryInk)
+                        Text("Après la connexion, l’accès est conservé dans le trousseau sécurisé. Déverrouillez l’app pour retrouver votre cadre, sans scanner à chaque fois.")
+                            .foregroundStyle(Bento.secondaryInk)
                     }
-                    step("4", title: "Préparer les prochains voyages", symbol: "antenna.radiowaves.left.and.right") {
-                        Text("Une fois connecté au cadre, ouvrez Réglages → Configurer le Wi-Fi du cadre, puis scannez son QR pour associer cet iPhone.")
-                        Text("Cet iPhone déjà associé pourra ensuite transmettre un nouveau réseau au cadre par Bluetooth. La première association nécessite encore une connexion locale au cadre.")
-                        Text("Privilégiez un réseau WPA2 personnel en 2,4 GHz. Les portails d’hôtel et réseaux d’entreprise ne sont pas pris en charge. L’app ne commande pas le cadre à distance via le réseau mobile.").foregroundStyle(Bento.secondaryInk)
+                    step("4", title: "Ajouter votre première photo", symbol: "photo.badge.plus") {
+                        Text("Prenez une photo ou choisissez-en une dans Photos. Ajustez son cadrage, puis ajoutez-la à la file.")
+                        Text("Touchez Suivante pour l’afficher, ou choisissez une programmation dans Réglages. Un rafraîchissement e-ink peut prendre environ une minute.")
+                            .foregroundStyle(Bento.secondaryInk)
                     }
                     DisclosureGroup {
                         VStack(alignment: .leading, spacing: 18) {
-                            help("Cadre introuvable", "Vérifiez qu’il est allumé, que son serveur fonctionne et que l’adresse est correcte. Évitez les réseaux invités qui isolent les appareils. Dans Réglages iOS → Apps → Inky Studio, autorisez Réseau local si l’option est présente.")
-                            if let settings = URL(string: UIApplication.openSettingsURLString) {
-                                Link("Ouvrir les réglages iOS", destination: settings)
-                                    .frame(minHeight: 44).accessibilityIdentifier("guide.iosSettings")
+                            help("Le cadre ne se connecte pas", "Vérifiez qu’il est allumé et sur le même Wi-Fi que l’iPhone. Autorisez Réseau local et Appareil photo dans les réglages iOS. La connexion au cadre n’est pas disponible à distance via le réseau mobile.")
+                            Link("Ouvrir les réglages iOS", destination: URL(string: UIApplication.openSettingsURLString)!)
+                                .frame(minHeight: 44).accessibilityIdentifier("guide.iosSettings")
+                            help("Le QR n’est plus affiché", "L’accès déjà enregistré sur cet iPhone se retrouve en déverrouillant l’app. Si vous avez oublié le cadre ou changé d’iPhone, suivez l’aide du cadre pour retrouver un QR de connexion.")
+                            help("Changer le Wi-Fi du cadre", "Depuis un cadre connecté, ouvrez Réglages → Configurer le Wi-Fi du cadre pour associer cet iPhone par Bluetooth. Un iPhone déjà associé peut ensuite retrouver le cadre à proximité. Les réseaux personnels WPA2 sont pris en charge ; les réseaux d’entreprise et portails d’hôtel ne le sont pas.")
+                            if allowWiFiSetup {
+                                Button {
+                                    Task {
+                                        if !store.localUnlocked { await store.unlock() }
+                                        if store.localUnlocked { bluetoothSetup = true }
+                                    }
+                                } label: {
+                                    Label("Retrouver le cadre par Bluetooth", systemImage: "wifi")
+                                        .frame(minHeight: 44)
+                                }.accessibilityIdentifier("guide.bluetooth")
                             }
-                            help("Retrouver le mot de passe", "Sur le Raspberry, la commande inky-studio password affiche le mot de passe initial s’il est encore disponible. Un mot de passe personnalisé n’est pas consultable : suivez la procédure de récupération locale sur le site de support.")
-                            help("La photo met du temps à apparaître", "Un écran e-ink peut clignoter et prendre environ une minute pour s’actualiser. Attendez la fin du rafraîchissement avant de lancer une autre commande.")
+                            help("L’affichage n’est pas confirmé", "Vérifiez le cadre avant une nouvelle tentative manuelle. Une commande non confirmée ne prouve pas que la photo a été affichée. Vérifiez également la file avant de renvoyer une photo.")
                         }.padding(.top, 16)
                     } label: {
-                        Label("Besoin d’un coup de main ?", systemImage: "questionmark.circle").font(.headline)
+                        Label("Besoin d’aide ?", systemImage: "questionmark.circle").font(.headline)
                             .frame(minHeight: 44)
                     }.bentoCard().accessibilityIdentifier("guide.troubleshooting")
                     SupportPrivacyLinks(identifierPrefix: "guide")
@@ -49,10 +65,15 @@ struct GettingStartedView: View {
                         .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("guide.connect")
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
             }.accessibilityIdentifier("guide.scroll")
-                .navigationTitle("Premiers pas").screenBackground()
+                .navigationTitle("Aide").screenBackground()
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Fermer") { dismiss() }.accessibilityIdentifier("guide.close")
+                    }
+                }
+                .sheet(isPresented: $bluetoothSetup) {
+                    BluetoothSetupView { endpoint, owner in
+                        await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
                     }
                 }
         }

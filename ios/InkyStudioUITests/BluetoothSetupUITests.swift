@@ -38,7 +38,7 @@ final class BluetoothSetupUITests: XCTestCase {
 
     private func launchFixture(_ state: String, appearance: String) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--uitesting", "--bluetooth-fixture", state, "-AppleInterfaceStyle", appearance]
+        app.launchArguments = ["--uitesting", "--legacy-login-fixture", "--bluetooth-fixture", state, "-AppleInterfaceStyle", appearance]
         app.launch()
         let entry = app.buttons["connection.bluetooth"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))

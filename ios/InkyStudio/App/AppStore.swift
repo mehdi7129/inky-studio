@@ -3,7 +3,6 @@ import Combine
 
 @MainActor
 final class AppStore: ObservableObject {
-    @Published private(set) var isDemo = false
     @Published private(set) var sessionIdentity = UUID()
     @Published var address = ""
     @Published var authenticated = false
@@ -12,8 +11,13 @@ final class AppStore: ObservableObject {
     @Published var refreshing = false
     @Published var busy = false
     @Published var displayBusy = false
-    @Published var biometricEnabled = false
-    @Published var offeringLANBiometrics = false
+    @Published private(set) var localUnlocked = false
+    @Published private(set) var unlocking = false
+    @Published private(set) var localAuthenticationError: String?
+    @Published private(set) var credentialStored = false
+    @Published private(set) var credentialStorageError: String?
+    @Published private(set) var pairingNeedsCompletion = false
+    @Published private(set) var recoveringConnection = false
     @Published var passwordChangeSupported = false
     @Published var bluetoothSupported = false
     @Published var errorMessage: String?
@@ -31,20 +35,29 @@ final class AppStore: ObservableObject {
     @Published var hasMoreHistory = false
     @Published var loadingHistory = false
     private(set) var api: InkyAPI?
-    private var demoClient: DemoFrameClient?
-    private var photoClient: (any FramePhotoClient)? {
-        if let demoClient { return demoClient }
-        return api
-    }
-    var demoSampleData: Data? { demoClient?.sampleData }
+    private var photoClient: (any FramePhotoClient)? { api }
     let vault: BiometricVault
     private let defaults: UserDefaults
     private let makeAPI: @MainActor (URL) -> InkyAPI
-    private let biometricCapability: @MainActor () -> String?
-    private let saveBiometricPassword: @MainActor (String, String) throws -> Void
+    private let authenticateLocal: @MainActor () async throws -> Void
+    private let invalidateAuthentication: @MainActor () -> Void
+    private let saveCredential: @MainActor (String, String) throws -> Void
+    private let loadCredential: @MainActor (String) async throws -> String
+    private let containsCredential: @MainActor (String) -> Bool
+    private let authenticationName: @MainActor () -> String
     private let monitorsEvents: Bool
-    // A scanned credential survives only long enough for this session's explicit opt-in.
-    private var pendingLANBiometricCredential: (password: String, account: String)?
+    private var localAuthenticationGeneration = UUID()
+    private var credentialTask: Task<String, Error>?
+    private var credentialTaskID = UUID()
+    private var pendingPairingCredential: (password: String, account: String, generation: UUID)?
+    private struct ForgetAuthorization {
+        let account: String
+        let ownerID: String?
+        let generation: UUID
+        let authentication: UUID
+        let issuedAt: TimeInterval
+    }
+    private var forgetAuthorization: ForgetAuthorization?
     private let imageCache = NSCache<NSString, UIImage>()
     private var eventsTask: Task<Void, Never>?
     private var pollingTask: Task<Void, Never>?
@@ -63,70 +76,216 @@ final class AppStore: ObservableObject {
     init(defaults: UserDefaults = .standard,
          makeAPI: @escaping @MainActor (URL) -> InkyAPI = { InkyAPI(baseURL: $0) },
          vault: BiometricVault = BiometricVault(),
-         biometricCapability: (@MainActor () -> String?)? = nil,
-         saveBiometricPassword: (@MainActor (String, String) throws -> Void)? = nil,
+         authenticateLocal: (@MainActor () async throws -> Void)? = nil,
+         invalidateAuthentication: (@MainActor () -> Void)? = nil,
+         saveCredential: (@MainActor (String, String) throws -> Void)? = nil,
+         loadCredential: (@MainActor (String) async throws -> String)? = nil,
+         containsCredential: (@MainActor (String) -> Bool)? = nil,
+         authenticationName: (@MainActor () -> String)? = nil,
          monitorsEvents: Bool = true) {
         self.defaults = defaults
         self.makeAPI = makeAPI
         self.vault = vault
-        self.biometricCapability = biometricCapability ?? { vault.capability }
-        self.saveBiometricPassword = saveBiometricPassword ?? { try vault.save(password: $0, address: $1) }
+        let deviceAuthentication = LocalDeviceAuthentication()
+        self.authenticateLocal = authenticateLocal ?? { try await deviceAuthentication.authenticate() }
+        self.invalidateAuthentication = invalidateAuthentication ?? { deviceAuthentication.invalidate() }
+        self.saveCredential = saveCredential ?? { try vault.save(password: $0, address: $1, context: deviceAuthentication.context) }
+        self.loadCredential = loadCredential ?? { try await vault.load(address: $0, context: deviceAuthentication.context) }
+        self.containsCredential = containsCredential ?? { vault.contains(address: $0) }
+        self.authenticationName = authenticationName ?? { deviceAuthentication.name }
         self.monitorsEvents = monitorsEvents
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--uitesting") {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--uitesting") {
             defaults.removeObject(forKey: "frameAddress")
             defaults.removeObject(forKey: "biometricEnabled")
             defaults.removeObject(forKey: "frameOwnerID")
         }
         #endif
         address = defaults.string(forKey: "frameAddress") ?? ""
-        biometricEnabled = defaults.bool(forKey: "biometricEnabled")
         #if DEBUG
-        let args = ProcessInfo.processInfo.arguments
         if let index = args.firstIndex(of: "--frame-address"), args.indices.contains(index + 1) { address = args[index + 1] }
+        if args.contains("--uitesting"), let index = args.firstIndex(of: "--local-auth-fixture"),
+           args.indices.contains(index + 1), ["locked", "failure", "recoverable"].contains(args[index + 1]) {
+            // Explicit inert UI fixture: represents a locked saved frame, without a credential or network request.
+            credentialStored = true
+            if args[index + 1] == "recoverable" {
+                address = "http://192.168.1.120:8000"
+                defaults.set(address, forKey: "frameAddress")
+            }
+        } else { credentialStored = self.containsCredential(credentialAccount) }
+        #else
+        credentialStored = self.containsCredential(credentialAccount)
         #endif
+        if defaults.string(forKey: "credentialStorageFailedAccount") == credentialAccount {
+            credentialStored = false
+            pairingNeedsCompletion = true
+            credentialStorageError = "L’association n’est pas finalisée : aucun identifiant de cette connexion n’a été confirmé. Scannez à nouveau le QR du cadre pour terminer l’association."
+        }
         imageCache.totalCostLimit = 24 * 1024 * 1024
     }
 
     var hasSavedFrame: Bool { defaults.string(forKey: "frameAddress") != nil }
-    var biometricName: String { biometricCapability() ?? "Face ID" }
-    var availableBiometrics: String? { biometricCapability() }
+    var localAuthenticationName: String { authenticationName() }
     var hasAdoptedFrame: Bool { defaults.string(forKey: "frameOwnerID") != nil }
     var panelWidth: Int { state?.display.width ?? 800 }
     var panelHeight: Int { state?.display.height ?? 480 }
-    var canMutate: Bool { authenticated && connected && !busy && !updating }
+    var canMutate: Bool { localUnlocked && active && !unlocking && !recoveringConnection && !pairingNeedsCompletion && authenticated && connected && !busy && !updating }
     var displayIssue: String? { displayDiagnostics?.issue ?? displayReadError }
     var canDisplay: Bool { canMutate && state != nil && displayIssue == nil }
 
-    /// The demo never changes the real address, preferences or credentials.
-    /// Enter only from the signed-out screen, with no login in flight.
-    func enterDemo() async {
-        guard !authenticated, !connecting, !busy, !isDemo else { return }
-        prepareDemo()
-        await refresh()
+    private func authorizeLocally(force: Bool = false, grantContent: Bool = true) async -> Bool {
+        if localUnlocked && !force { return true }
+        let attempt = localAuthenticationGeneration
+        localAuthenticationError = nil
+        do {
+            #if DEBUG
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("--uitesting"), let index = args.firstIndex(of: "--local-auth-fixture"), args.indices.contains(index + 1) {
+                guard ["success", "recoverable"].contains(args[index + 1]) else { throw VaultError.cancelled }
+            } else { try await authenticateLocal() }
+            #else
+            try await authenticateLocal()
+            #endif
+            guard attempt == localAuthenticationGeneration, !Task.isCancelled else { return false }
+            localUnlocked = grantContent
+            return true
+        } catch {
+            guard attempt == localAuthenticationGeneration else { return false }
+            localUnlocked = false
+            localAuthenticationError = error.localizedDescription
+            return false
+        }
     }
 
-    private func prepareDemo() {
-        resetSession()
-        demoClient = DemoFrameClient()
-        isDemo = true
-        sessionIdentity = UUID()
-        authenticated = true
+    /// A local lock never logs out or discards a usable in-memory network session.
+    func lock() {
+        recoveringConnection = false
+        forgetAuthorization = nil
+        localAuthenticationGeneration = UUID()
+        invalidateAuthentication()
+        credentialTask?.cancel()
+        credentialTask = nil
+        credentialTaskID = UUID()
+        pendingPairingCredential = nil
+        if pairingNeedsCompletion {
+            credentialStorageError = "L’association n’est pas finalisée et son identifiant temporaire n’est plus disponible. Scannez à nouveau le QR pour terminer l’association."
+        }
+        localUnlocked = false
+        unlocking = false
+        localAuthenticationError = nil
+        generation = UUID()
+        stopMonitoring()
+        refreshing = false
+        refreshID = nil
+        requestedRefresh = false
+        loadingHistory = false
+        busy = false
+        displayBusy = false
+        imageCache.removeAllObjects()
+        if connecting { pendingClient?.clearSession(); pendingClient = nil; connecting = false }
     }
 
-    func exitDemo() {
-        guard isDemo else { return }
-        resetSession()
-        sessionIdentity = UUID()
+    func unlock() async {
+        guard !unlocking, !connecting else { return }
+        let attempt = localAuthenticationGeneration
+        unlocking = true
+        defer { if attempt == localAuthenticationGeneration { unlocking = false } }
+        guard await authorizeLocally() else { return }
+        if authenticated, api != nil {
+            // Cookie-only sessions remain usable. Do not require a lost QR or force logout.
+            credentialStored = containsCredential(credentialAccount) && defaults.string(forKey: "credentialStorageFailedAccount") != credentialAccount
+            if !credentialStored && credentialStorageError == nil {
+                credentialStorageError = "La connexion actuelle est conservée. Cet iPhone n’a pas encore d’identifiant enregistré pour les prochaines connexions."
+            }
+            startMonitoring()
+            await refresh()
+            return
+        }
+        guard hasSavedFrame || credentialStored else { return }
+        do {
+            let password = try await readCredential(credentialAccount)
+            guard attempt == localAuthenticationGeneration, localUnlocked, !Task.isCancelled else { return }
+            credentialStored = true
+            await connect(password: password, at: nil, savePassword: false)
+        } catch {
+            guard attempt == localAuthenticationGeneration else { return }
+            localUnlocked = false
+            invalidateAuthentication()
+            credentialStored = containsCredential(credentialAccount)
+            localAuthenticationError = error.localizedDescription
+        }
     }
 
-    func resetDemo() async {
-        guard isDemo, !busy, !displayBusy else { return }
-        prepareDemo()
-        let identity = sessionIdentity
-        await refresh()
-        guard isDemo, sessionIdentity == identity else { return }
-        notice = "La démo a été réinitialisée."
+    /// Voluntary legacy-LAN recovery never reads, removes, or logs out the old credential.
+    func beginConnectionRecovery() async {
+        guard !hasAdoptedFrame, !pairingNeedsCompletion, !unlocking, !connecting, !busy, !displayBusy, !updating else { return }
+        let attempt = localAuthenticationGeneration
+        unlocking = true
+        defer { if attempt == localAuthenticationGeneration { unlocking = false } }
+        guard await authorizeLocally(force: true) else { return }
+        guard attempt == localAuthenticationGeneration, !Task.isCancelled else { return }
+        generation = UUID()
+        forgetAuthorization = nil
+        stopMonitoring()
+        refreshing = false
+        refreshID = nil
+        requestedRefresh = false
+        loadingHistory = false
+        recoveringConnection = true
+        errorMessage = nil
+    }
+
+    func cancelConnectionRecovery() {
+        guard recoveringConnection else { return }
+        // lock() cancels only the candidate. The current api, cookie and selected account remain intact.
+        lock()
+    }
+
+    /// An adopted frame can be forgotten only after a fresh local authorization and an explicit UI confirmation.
+    func authorizeForgetCurrentFrame() async -> Bool {
+        guard hasSavedFrame, !recoveringConnection, !unlocking, !connecting, !busy, !displayBusy, !updating else { return false }
+        let account = credentialAccount
+        let selectedOwner = defaults.string(forKey: "frameOwnerID")
+        let epoch = generation
+        let attempt = localAuthenticationGeneration
+        forgetAuthorization = nil
+        unlocking = true
+        defer { if attempt == localAuthenticationGeneration { unlocking = false } }
+        guard await authorizeLocally(force: true, grantContent: false) else { return false }
+        guard epoch == generation, attempt == localAuthenticationGeneration,
+              account == credentialAccount, selectedOwner == defaults.string(forKey: "frameOwnerID"),
+              !Task.isCancelled else { return false }
+        forgetAuthorization = ForgetAuthorization(account: account, ownerID: selectedOwner,
+            generation: epoch, authentication: attempt, issuedAt: ProcessInfo.processInfo.systemUptime)
+        return true
+    }
+
+    func cancelForgetCurrentFrame() {
+        guard forgetAuthorization != nil else { return }
+        forgetAuthorization = nil
+        lock()
+    }
+
+    func forgetCurrentFrameAfterConfirmation() async {
+        guard let authorization = forgetAuthorization else { return }
+        forgetAuthorization = nil
+        guard active, !unlocking, !connecting,
+              authorization.generation == generation,
+              authorization.authentication == localAuthenticationGeneration,
+              authorization.account == credentialAccount,
+              authorization.ownerID == defaults.string(forKey: "frameOwnerID"),
+              ProcessInfo.processInfo.systemUptime - authorization.issuedAt < 60 else { return }
+        await finishLogout(forget: true)
+    }
+
+    private func readCredential(_ account: String) async throws -> String {
+        let identifier = UUID()
+        let task = Task { try Task.checkCancellation(); return try await loadCredential(account) }
+        credentialTaskID = identifier
+        credentialTask = task
+        defer { if credentialTaskID == identifier { credentialTask = nil } }
+        return try await withTaskCancellationHandler(operation: { try await task.value }, onCancel: { task.cancel() })
     }
 
     private var credentialAccount: String {
@@ -146,7 +305,7 @@ final class AppStore: ObservableObject {
     }
 
     func beginBluetoothAdoption() async throws {
-        guard !isDemo, canMutate, let api else { throw APIError.unauthorized }
+        guard canMutate, let api else { throw APIError.unauthorized }
         let epoch = generation
         let id = try await api.beginBluetoothAdoption()
         guard epoch == generation else { throw CancellationError() }
@@ -154,114 +313,143 @@ final class AppStore: ObservableObject {
     }
 
     func finishBluetoothSetup(endpoint: URL, owner: OwnershipRecord) async {
-        guard !isDemo else { return }
+        guard localUnlocked, !pairingNeedsCompletion else { return }
+        let epoch = generation
         do {
             try FrameTrustPolicy(identity: owner.identity).validateHTTPS(endpoint)
-            let epoch = generation
             let oldAccount = credentialAccount
-            let sameAdoptedFrame = defaults.string(forKey: "frameOwnerID").flatMap(UUID.init(uuidString:)) == owner.id
-            let upgradingCurrentFrame = authenticated && requestedAdoptionFrameID == owner.id
-            let remembered = biometricEnabled && (sameAdoptedFrame || upgradingCurrentFrame)
-            // Face ID explicitly unlocks the existing password before moving it
-            // to the stable identity. No secret is recovered from the Pi.
-            let password = remembered ? try? await vault.load(address: oldAccount) : nil
-            guard epoch == generation, !Task.isCancelled else { return }
+            let password: String
+            do { password = try await readCredential(oldAccount) }
+            catch {
+                guard epoch == generation, localUnlocked else { return }
+                notice = "Le Wi-Fi est configuré. L’accès actuel à vos photos est conservé ; son transfert sécurisé n’a pas été effectué."
+                return
+            }
+            guard epoch == generation, localUnlocked, !Task.isCancelled else { return }
+            // Validate the new photo connection before changing the current cookie, pin or locator.
+            let candidate = InkyAPI(baseURL: endpoint, owner: owner)
+            let status = try await candidate.authStatus()
+            guard epoch == generation, localUnlocked, !Task.isCancelled else { candidate.clearSession(); return }
+            if !status.authenticated {
+                let reply = try await candidate.login(password: password)
+                guard reply.authenticated else { candidate.clearSession(); throw APIError.unauthorized }
+            }
+            guard epoch == generation, localUnlocked, !Task.isCancelled else { candidate.clearSession(); return }
+            let newAccount = "inky-frame:" + owner.id.uuidString.lowercased()
+            do { try saveCredential(password, newAccount) }
+            catch {
+                candidate.clearSession()
+                credentialStorageError = "Le Wi-Fi est configuré, mais l’identifiant sécurisé n’a pas pu être transféré. L’accès actuel à vos photos est conservé."
+                return
+            }
             _ = try ownershipVault.markClaimed(id: owner.id, endpoint: endpoint)
             resetSession()
+            let committedEpoch = generation
             defaults.set(owner.id.uuidString.lowercased(), forKey: "frameOwnerID")
             address = endpoint.absoluteString
             defaults.set(address, forKey: "frameAddress")
-            biometricEnabled = false
-            defaults.set(false, forKey: "biometricEnabled")
-            if let password {
-                await login(password: password, rememberBiometric: true)
-                if authenticated && biometricEnabled && oldAccount != credentialAccount {
-                    try? vault.remove(address: oldAccount)
-                }
-            } else {
-                notice = "Le cadre est connecté. Utilisez son mot de passe habituel pour retrouver vos photos."
-            }
-        } catch { handle(error) }
+            api = candidate
+            authenticated = true
+            credentialStored = true
+            credentialStorageError = nil
+            defaults.removeObject(forKey: "credentialStorageFailedAccount")
+            passwordChangeSupported = status.authRequired && status.passwordChangeSupported == true
+            await refresh()
+            guard committedEpoch == generation, localUnlocked, authenticated, credentialStored, credentialAccount == newAccount else { return }
+            startMonitoring()
+            if oldAccount != newAccount { try? vault.remove(address: oldAccount) }
+        } catch {
+            guard epoch == generation, localUnlocked else { return }
+            // A failed candidate must never sign the established photo session out.
+            errorMessage = "Le Wi-Fi est configuré. La nouvelle connexion photo n’a pas pu être vérifiée ; la connexion précédente est conservée."
+        }
     }
 
     var canScanLANLoginCode: Bool {
-        !isDemo && !authenticated && !connecting && !busy && defaults.string(forKey: "frameOwnerID") == nil
+        (recoveringConnection || !authenticated || (pairingNeedsCompletion && pendingPairingCredential == nil)) && !connecting && !unlocking && !busy && defaults.string(forKey: "frameOwnerID") == nil
     }
 
-    /// A welcome QR supplies only a legacy LAN password. It never changes trust,
-    /// reads an existing Keychain credential, or opts into saving this password.
+    /// The QR is the only public login input. Local authentication precedes use and protected storage.
     func loginFromLANQRCode(_ text: String) async {
-        guard !isDemo, !authenticated, !connecting, !busy else { return }
+        guard (recoveringConnection || !authenticated || (pairingNeedsCompletion && pendingPairingCredential == nil)), !connecting, !unlocking, !busy else { return }
         guard defaults.string(forKey: "frameOwnerID") == nil else {
             errorMessage = LANLoginCodeError.adoptedFrame.localizedDescription
             return
         }
-        do {
-            let code = try FrameLANLoginCode.parse(text)
-            // Keep the saved/manual locator intact until authentication succeeds.
-            // A QR password also replaces any old biometric opt-in after success,
-            // without ever saving the scanned password itself.
-            await login(password: code.password, rememberBiometric: false, at: code.endpoint, offerBiometrics: true)
-        } catch {
-            errorMessage = LANLoginCodeError.invalidCode.localizedDescription
+        let code: FrameLANLoginCode
+        do { code = try FrameLANLoginCode.parse(text) }
+        catch { errorMessage = LANLoginCodeError.invalidCode.localizedDescription; return }
+        if authenticated && pairingNeedsCompletion && code.endpoint.absoluteString != address {
+            errorMessage = "Scannez le QR du cadre dont l’association est en cours."
+            return
         }
+        let attempt = localAuthenticationGeneration
+        unlocking = true
+        defer { if attempt == localAuthenticationGeneration { unlocking = false } }
+        guard await authorizeLocally() else { return }
+        if recoveringConnection { await connectRecovery(code) }
+        else { await connect(password: code.password, at: code.endpoint, savePassword: true) }
     }
 
     func cancelLogin() {
+        if recoveringConnection { cancelConnectionRecovery(); return }
         guard connecting else { return }
         resetSession()
+        lock()
     }
 
+    #if DEBUG
+    /// Synthetic tests retain their loopback contract; Release exposes only QR and local unlock.
     func login(password: String, rememberBiometric: Bool? = nil) async {
-        await login(password: password, rememberBiometric: rememberBiometric, at: nil)
+        guard !unlocking, !connecting else { return }
+        let attempt = localAuthenticationGeneration
+        unlocking = true
+        defer { if attempt == localAuthenticationGeneration { unlocking = false } }
+        guard await authorizeLocally() else { return }
+        await connect(password: password, at: nil, savePassword: rememberBiometric == true)
     }
+    #endif
 
-    private func login(password: String, rememberBiometric: Bool?, at endpoint: URL?, offerBiometrics: Bool = false) async {
-        guard !isDemo, !connecting else { return }
+    private func connect(password: String, at endpoint: URL?, savePassword: Bool) async {
+        guard localUnlocked, !connecting else { return }
         resetSession()
         let epoch = generation
         connecting = true
         errorMessage = nil
         defer {
-            if epoch == generation {
-                connecting = false
-                pendingClient = nil
-            }
+            if epoch == generation { connecting = false; pendingClient = nil }
         }
         do {
             let url = try endpoint ?? FrameAddress.parse(address)
             let normalized = url.absoluteString
             let credentialAddress = defaults.string(forKey: "frameOwnerID").map { "inky-frame:" + $0 } ?? normalized
-            let previousAddress = defaults.string(forKey: "frameAddress")
             let client = try connectionClient(url)
             pendingClient = client
             let status = try await client.authStatus()
-            guard epoch == generation, !Task.isCancelled else { return }
+            guard epoch == generation, localUnlocked, !Task.isCancelled else { return }
             if !status.authenticated {
                 let response = try await client.login(password: password)
-                guard epoch == generation, !Task.isCancelled else { return }
+                guard epoch == generation, localUnlocked, !Task.isCancelled else { return }
                 guard response.authenticated else { throw APIError.unauthorized }
             }
-            if previousAddress != normalized && defaults.string(forKey: "frameOwnerID") == nil {
-                if let previousAddress { try? vault.remove(address: previousAddress) }
-                biometricEnabled = false
-                defaults.set(false, forKey: "biometricEnabled")
-            }
-            if rememberBiometric == true && status.authRequired && !password.isEmpty {
+            // Never retain an unvalidated QR, and never represent a failed save as durable pairing.
+            if savePassword && status.authRequired {
                 do {
-                    try vault.save(password: password, address: credentialAddress)
-                    biometricEnabled = true
+                    try saveCredential(password, credentialAddress)
+                    credentialStored = true
+                    pairingNeedsCompletion = false
+                    pendingPairingCredential = nil
+                    credentialStorageError = nil
+                    defaults.removeObject(forKey: "credentialStorageFailedAccount")
                 } catch {
-                    biometricEnabled = false
-                    notice = error.localizedDescription
+                    credentialStored = false
+                    pairingNeedsCompletion = true
+                    pendingPairingCredential = (password, credentialAddress, epoch)
+                    defaults.set(credentialAddress, forKey: "credentialStorageFailedAccount")
+                    credentialStorageError = "L’association reste à finaliser : l’identifiant n’a pas pu être enregistré. Réessayez pour pouvoir envoyer vos photos."
                 }
-                defaults.set(biometricEnabled, forKey: "biometricEnabled")
-            } else if rememberBiometric == false && biometricEnabled {
-                // An explicit unchecked switch disables the previously opted-in credential.
-                // Biometric login passes nil and preserves the existing Keychain item.
-                try vault.remove(address: credentialAddress)
-                biometricEnabled = false
-                defaults.set(false, forKey: "biometricEnabled")
+            } else {
+                credentialStored = containsCredential(credentialAddress) && defaults.string(forKey: "credentialStorageFailedAccount") != credentialAddress
             }
             stopMonitoring()
             api?.clearSession()
@@ -275,113 +463,96 @@ final class AppStore: ObservableObject {
             imageCache.removeAllObjects()
             await refresh()
             guard epoch == generation else { return }
-            guard !Task.isCancelled else { resetSession(); return }
-            guard connected else {
-                let message = errorMessage
-                resetSession()
-                errorMessage = message
-                return
-            }
-            let supportsBluetooth = await client.bluetoothSupported()
+            if Task.isCancelled { resetSession(); lock(); return }
+            guard localUnlocked else { return }
+            // Keep a successfully authenticated session even when its first metadata refresh fails.
+            if connected { bluetoothSupported = await client.bluetoothSupported() }
             guard epoch == generation else { return }
-            guard !Task.isCancelled else { resetSession(); return }
-            bluetoothSupported = supportsBluetooth
-            if offerBiometrics, active, connected, status.authRequired, availableBiometrics != nil {
-                pendingLANBiometricCredential = (password, credentialAddress)
-                offeringLANBiometrics = true
-            }
+            if Task.isCancelled { resetSession(); lock(); return }
+            guard localUnlocked else { return }
             startMonitoring()
-        } catch {
-            if epoch == generation { handle(error) }
-        }
-    }
-
-    func declineLANBiometrics() {
-        pendingLANBiometricCredential = nil
-        offeringLANBiometrics = false
-    }
-
-    /// Called only by the consent button after successful QR authentication.
-    /// The validated QR password is never requested from the user again.
-    func acceptLANBiometrics() {
-        guard !isDemo, active, authenticated, connected, !busy, availableBiometrics != nil,
-              let credential = pendingLANBiometricCredential,
-              credential.account == credentialAccount else { declineLANBiometrics(); return }
-        declineLANBiometrics()
-        do {
-            try saveBiometricPassword(credential.password, credential.account)
-            biometricEnabled = true
-            defaults.set(true, forKey: "biometricEnabled")
-            notice = "La connexion avec \(biometricName) est activée."
-        } catch {
-            biometricEnabled = false
-            defaults.set(false, forKey: "biometricEnabled")
-            notice = "L’enregistrement sécurisé n’a pas abouti. Vous pourrez scanner à nouveau le QR du cadre."
-        }
-    }
-
-    func loginWithBiometrics() async {
-        guard !isDemo, !connecting else { return }
-        errorMessage = nil
-        connecting = true
-        let epoch = generation
-        defer { if epoch == generation { connecting = false } }
-        do {
-            let normalized = try FrameAddress.parse(address).absoluteString
-            guard normalized == defaults.string(forKey: "frameAddress"), biometricEnabled else { throw VaultError.missing }
-            let password = try await vault.load(address: credentialAccount)
-            guard epoch == generation, !Task.isCancelled,
-                  normalized == (try? FrameAddress.parse(address).absoluteString) else { return }
-            connecting = false
-            await login(password: password)
-        } catch {
-            guard epoch == generation else { return }
-            connecting = false
-            if let vaultError = error as? VaultError, case .missing = vaultError {
-                biometricEnabled = false
-                defaults.set(false, forKey: "biometricEnabled")
-            }
-            if error is VaultError, !hasAdoptedFrame {
-                errorMessage = "La connexion biométrique n’a pas abouti. Vous pouvez scanner à nouveau le QR du cadre."
-            } else { handle(error) }
-        }
-    }
-
-    func enableBiometrics(password: String) async {
-        guard !isDemo, let api, !busy else { return }
-        let epoch = generation
-        let credentialAddress = credentialAccount
-        busy = true
-        defer { if epoch == generation { busy = false } }
-        do {
-            // Validate before replacing a previously stored credential.
-            let status = try await api.login(password: password)
-            guard epoch == generation, !Task.isCancelled else { return }
-            guard status.authenticated, status.authRequired else { throw VaultError.unavailable }
-            try vault.save(password: password, address: credentialAddress)
-            biometricEnabled = true
-            defaults.set(true, forKey: "biometricEnabled")
-            notice = "La connexion avec \(biometricName) est activée."
         } catch { if epoch == generation { handle(error) } }
     }
 
-    func disableBiometrics() {
-        guard !isDemo else { return }
-        declineLANBiometrics()
+    private func connectRecovery(_ code: FrameLANLoginCode) async {
+        guard recoveringConnection, localUnlocked, !hasAdoptedFrame, !connecting else { return }
+        let epoch = generation
+        connecting = true
+        errorMessage = nil
+        let candidate = makeAPI(code.endpoint)
+        pendingClient = candidate
+        var committed = false
+        defer {
+            if !committed { candidate.clearSession() }
+            if epoch == generation { connecting = false; pendingClient = nil }
+        }
         do {
-            try vault.remove(address: credentialAccount)
-            biometricEnabled = false
-            defaults.set(false, forKey: "biometricEnabled")
-        } catch { handle(error) }
+            let status = try await candidate.authStatus()
+            guard epoch == generation, recoveringConnection, localUnlocked, !Task.isCancelled else { return }
+            if !status.authenticated {
+                let response = try await candidate.login(password: code.password)
+                guard response.authenticated else { throw APIError.unauthorized }
+            }
+            guard epoch == generation, recoveringConnection, localUnlocked, !Task.isCancelled else { return }
+            let account = code.endpoint.absoluteString
+            try saveCredential(code.password, account)
+            guard epoch == generation, recoveringConnection, localUnlocked, !Task.isCancelled else { return }
+            // Only a validated, protected replacement changes the selected connection.
+            pendingClient = nil
+            resetSession()
+            sessionIdentity = UUID()
+            api = candidate
+            committed = true
+            address = account
+            defaults.set(account, forKey: "frameAddress")
+            defaults.removeObject(forKey: "credentialStorageFailedAccount")
+            authenticated = true
+            credentialStored = true
+            credentialStorageError = nil
+            passwordChangeSupported = status.authRequired && status.passwordChangeSupported == true
+            let committedEpoch = generation
+            await refresh()
+            guard committedEpoch == generation, localUnlocked, authenticated else { return }
+            bluetoothSupported = await candidate.bluetoothSupported()
+            guard committedEpoch == generation, localUnlocked, authenticated else { return }
+            startMonitoring()
+        } catch {
+            guard epoch == generation, recoveringConnection, localUnlocked else { return }
+            // Never route candidate errors through handle(), which could sign the old session out.
+            errorMessage = "La nouvelle connexion n’a pas pu être finalisée. L’ancien accès est conservé. " + error.localizedDescription
+        }
+    }
+
+    var canRetryCredentialStorage: Bool {
+        localUnlocked && active && authenticated && !unlocking && !busy &&
+        pendingPairingCredential?.account == credentialAccount &&
+        pendingPairingCredential?.generation == generation
+    }
+
+    /// Retry only protected storage. The existing network session is never logged in or replayed.
+    func retryCredentialStorage() async {
+        guard canRetryCredentialStorage, let credential = pendingPairingCredential else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            try saveCredential(credential.password, credential.account)
+            credentialStored = true
+            pairingNeedsCompletion = false
+            pendingPairingCredential = nil
+            credentialStorageError = nil
+            defaults.removeObject(forKey: "credentialStorageFailedAccount")
+        } catch {
+            credentialStored = false
+            credentialStorageError = "L’enregistrement sécurisé n’a pas abouti. L’association reste à finaliser ; vous pouvez réessayer."
+        }
     }
 
     /// Rotate exactly once. A lost response must not replay this mutation or
     /// silently restore an old Keychain password after the frame has changed it.
     func changePassword(current: String, new: String) async -> PasswordChangeResult {
-        guard !isDemo, canMutate, !displayBusy, passwordChangeSupported, let api else {
+        guard canMutate, !displayBusy, passwordChangeSupported, let api else {
             return .failure("Reconnectez-vous au cadre avant de modifier son mot de passe.")
         }
-        declineLANBiometrics()
         stopMonitoring()
         // Retire in-flight refreshes and thumbnails using the previous session.
         generation = UUID()
@@ -395,7 +566,7 @@ final class AppStore: ObservableObject {
         busy = true
         errorMessage = nil
         let credentialAddress = credentialAccount
-        let remember = biometricEnabled
+        let remember = credentialStored
         defer {
             if epoch == generation {
                 passwordRotating = false
@@ -409,11 +580,10 @@ final class AppStore: ObservableObject {
             guard result.authenticated else { throw APIError.invalidResponse }
             var message = "Le mot de passe du cadre a été modifié. Les autres connexions ont été fermées."
             if remember {
-                do { try vault.save(password: new, address: credentialAddress) }
+                do { try saveCredential(new, credentialAddress) }
                 catch {
-                    biometricEnabled = false
-                    defaults.set(false, forKey: "biometricEnabled")
-                    message += " Face ID n’a pas pu être mis à jour. Utilisez votre nouveau mot de passe et réactivez-le dans Réglages."
+                    credentialStored = false
+                    message += " L’identifiant sécurisé n’a pas pu être mis à jour sur cet iPhone."
                 }
             }
             connected = true
@@ -431,8 +601,7 @@ final class AppStore: ObservableObject {
             // keep offering an old biometric credential in this ambiguous state.
             if remember {
                 try? vault.remove(address: credentialAddress)
-                biometricEnabled = false
-                defaults.set(false, forKey: "biometricEnabled")
+                credentialStored = false
             }
             resetSession()
             let message = "Le résultat n’a pas pu être confirmé. Essayez de vous reconnecter avec le nouveau mot de passe ; s’il est refusé, utilisez l’ancien."
@@ -442,7 +611,12 @@ final class AppStore: ObservableObject {
     }
 
     func logout(forget: Bool = false) async {
-        if isDemo { exitDemo(); return }
+        guard localUnlocked else { return }
+        await finishLogout(forget: forget)
+    }
+
+    /// Used by an unlocked session or a separately verified, scoped forget confirmation.
+    private func finishLogout(forget: Bool) async {
         let client = api
         let credentialAddress = credentialAccount
         // Complete every local change before suspension. The old client is isolated;
@@ -451,29 +625,31 @@ final class AppStore: ObservableObject {
         if forget {
             do {
                 try vault.remove(address: credentialAddress)
-                biometricEnabled = false
-                defaults.set(false, forKey: "biometricEnabled")
+                credentialStored = false
                 if let selected = defaults.string(forKey: "frameOwnerID"), let id = UUID(uuidString: selected) {
                     try ownershipVault.remove(id: id)
                 }
                 defaults.removeObject(forKey: "frameAddress")
                 defaults.removeObject(forKey: "biometricEnabled")
                 defaults.removeObject(forKey: "frameOwnerID")
+                defaults.removeObject(forKey: "credentialStorageFailedAccount")
+                credentialStorageError = nil
                 address = ""
             } catch {
                 errorMessage = "Les identifiants de ce cadre n’ont pas tous pu être effacés. Déverrouillez l’iPhone puis réessayez Oublier ce cadre."
             }
         }
+        lock()
         if let client { _ = try? await client.logout() }
     }
 
     private func resetSession(clearClient: Bool = true) {
-        declineLANBiometrics()
+        recoveringConnection = false
+        forgetAuthorization = nil
+        pendingPairingCredential = nil
+        pairingNeedsCompletion = false
         stopMonitoring()
         generation = UUID()
-        demoClient?.clear()
-        demoClient = nil
-        isDemo = false
         if clearClient { api?.clearSession() }
         pendingClient?.clearSession()
         pendingClient = nil
@@ -510,7 +686,7 @@ final class AppStore: ObservableObject {
     }
 
     func refresh() async {
-        guard authenticated, !passwordRotating, let api = photoClient else { return }
+        guard localUnlocked, active, !recoveringConnection, authenticated, !passwordRotating, let api = photoClient else { return }
         guard !refreshing else { requestedRefresh = true; return }
         refreshing = true
         let epoch = generation
@@ -560,7 +736,6 @@ final class AppStore: ObservableObject {
                 retryAfterCancellation = true
                 return
             }
-            if isDemo { imageCache.removeAllObjects() }
             if case .success(let value) = result.0 { state = value; displayReadError = nil }
             else if let error = result.0.failure, !(error is URLError) {
                 displayReadError = error.localizedDescription
@@ -604,6 +779,7 @@ final class AppStore: ObservableObject {
         // One look-ahead row makes the final page exact even when the existing
         // history length is a multiple of the page size.
         while entries.count <= count {
+            guard localUnlocked, active else { throw CancellationError() }
             try Task.checkCancellation()
             let limit = min(500, count + 1 - entries.count)
             let page = try await api.history(limit: limit, offset: entries.count)
@@ -614,7 +790,7 @@ final class AppStore: ObservableObject {
     }
 
     func loadMoreHistory() async {
-        guard authenticated, !passwordRotating, let api = photoClient, !loadingHistory, !refreshing, hasMoreHistory else { return }
+        guard localUnlocked, active, !recoveringConnection, authenticated, !passwordRotating, let api = photoClient, !loadingHistory, !refreshing, hasMoreHistory else { return }
         let epoch = generation
         let revision = historyRevision
         loadingHistory = true
@@ -628,16 +804,29 @@ final class AppStore: ObservableObject {
         } catch { if epoch == generation, revision == historyRevision { handle(error) } }
     }
 
-    func sceneActive(_ isActive: Bool) {
-        active = isActive
-        if isActive, authenticated {
-            startMonitoring()
-            Task { await refresh() }
-        } else if !isActive { stopMonitoring(); declineLANBiometrics() }
+    func sceneChanged(_ phase: ScenePhase) {
+        switch phase {
+        case .background:
+            active = false
+            lock()
+        case .inactive:
+            // System authentication and permission prompts can make us inactive.
+            active = false
+            stopMonitoring()
+        case .active:
+            active = true
+            if localUnlocked && authenticated { startMonitoring(); Task { await refresh() } }
+        @unknown default:
+            active = false
+            lock()
+        }
     }
 
+    /// Compatibility for protocol tests; UI forwards the actual ScenePhase.
+    func sceneActive(_ isActive: Bool) { sceneChanged(isActive ? .active : .background) }
+
     private func startMonitoring() {
-        guard monitorsEvents, !isDemo, active, authenticated, !passwordRotating, let api, monitoringID == nil else { return }
+        guard monitorsEvents, localUnlocked, active, !recoveringConnection, authenticated, !passwordRotating, let api, monitoringID == nil else { return }
         let epoch = generation
         let identifier = UUID()
         monitoringID = identifier
@@ -670,6 +859,7 @@ final class AppStore: ObservableObject {
     }
 
     func receiveServerEvent(_ event: ServerEvent) async {
+        guard localUnlocked, active, !recoveringConnection else { return }
         if event.type == "system_update" {
             if case let .string(message)? = event.payload["message"] { updateMessage = message }
             if case .string("error")? = event.payload["stage"] { updating = false }
@@ -687,8 +877,8 @@ final class AppStore: ObservableObject {
     }
 
     func image(for photo: Photo) async -> UIImage? {
+        guard localUnlocked, active, !recoveringConnection, !passwordRotating, let api = photoClient else { return nil }
         if let image = imageCache.object(forKey: photo.id as NSString) { return image }
-        guard !passwordRotating, let api = photoClient else { return nil }
         let epoch = generation
         do {
             let data = try await api.photoData(id: photo.id)
@@ -709,7 +899,8 @@ final class AppStore: ObservableObject {
         do {
             if previous { try await api.previous() } else { try await api.next() }
             guard epoch == generation else { return }
-            notice = isDemo ? "Affichage simulé sur le cadre de démonstration." : "Le cadre est à jour."
+            errorMessage = nil
+            notice = "Le cadre est à jour."
         } catch {
             guard epoch == generation else { return }
             handle(error)
@@ -764,7 +955,7 @@ final class AppStore: ObservableObject {
     func saveSettings(_ value: FrameSettings) async {
         guard let api = photoClient else { return }
         if await perform({ _ = try await api.updateSettings(value) }) {
-            notice = isDemo ? "Réglages enregistrés pour cette démo uniquement." : "Réglages enregistrés."
+            notice = "Réglages enregistrés."
         }
     }
     @discardableResult
@@ -788,8 +979,7 @@ final class AppStore: ObservableObject {
         }
     }
     func checkUpdate() async {
-        if isDemo { updateMessage = "Démonstration : aucune mise à jour ni connexion au Raspberry."; return }
-        guard let api, !busy else { return }
+        guard canMutate, let api else { return }
         let epoch = generation
         busy = true
         defer { if epoch == generation { busy = false } }
@@ -799,7 +989,6 @@ final class AppStore: ObservableObject {
         } catch { if epoch == generation { handle(error) } }
     }
     func startUpdate() async {
-        guard !isDemo else { return }
         guard canMutate, let api else { return }
         let epoch = generation
         updating = true

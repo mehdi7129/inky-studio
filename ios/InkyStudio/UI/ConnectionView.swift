@@ -2,186 +2,279 @@ import SwiftUI
 
 struct ConnectionView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var password = ""
-    @State private var showPassword = false
-    @State private var remember = false
-    @State private var bluetoothSetup = false
     @State private var gettingStarted = false
     @State private var scanningLANQR = false
-    @FocusState private var passwordFocused: Bool
-    private var biometric: Bool { store.hasSavedFrame && store.biometricEnabled && !showPassword }
-    // Keep the old loopback E2E protocol fixture usable without exposing manual
-    // LAN credentials in the product or relaxing the production QR parser.
+    @State private var bluetoothSetup = false
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 40
+    #if DEBUG
+    @State private var fixturePassword = ""
     private var legacyLoginFixture: Bool {
-        #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         return arguments.contains("--uitesting") && arguments.contains("--legacy-login-fixture")
-        #else
-        return false
+    }
+    #endif
+
+    var body: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    InkyBrandHeader().padding(.top, 16).padding(.bottom, 36)
+                    VStack(alignment: .leading, spacing: 20) {
+                        ScanPhotoSymbol().frame(maxWidth: .infinity).padding(.vertical, 10)
+                        Text("Connecter\nmon cadre.")
+                            .font(.system(size: titleSize, weight: .bold)).tracking(-1.2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityAddTraits(.isHeader)
+                        Text("Scannez le QR code affiché sur votre cadre.")
+                            .font(.title3).foregroundStyle(Bento.secondaryInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(24).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Bento.surface, in: RoundedRectangle(cornerRadius: 28))
+                    .overlay(RoundedRectangle(cornerRadius: 28).stroke(Bento.border, lineWidth: 0.7))
+                    .accessibilityIdentifier("connection.card")
+                    Button { scanningLANQR = true } label: {
+                        Label("Scanner un QR code", systemImage: "qrcode.viewfinder")
+                            .frame(minHeight: 32)
+                    }
+                    .buttonStyle(PrimaryButtonStyle()).padding(.top, 20)
+                    .disabled(store.connecting || store.unlocking)
+                    .accessibilityIdentifier("connection.scanLANQR")
+                    if store.recoveringConnection {
+                        Text("Votre accès enregistré est conservé jusqu’à la validation du nouveau QR.")
+                            .font(.footnote).foregroundStyle(Bento.secondaryInk).padding(.top, 16)
+                        Button("Annuler") { store.cancelConnectionRecovery() }
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .accessibilityIdentifier("connection.cancelRecovery")
+                    }
+                    if store.connecting {
+                        VStack(spacing: 8) {
+                            HStack(spacing: 12) { ProgressView(); Text("Connexion au cadre…") }
+                            Button("Annuler la connexion") { store.cancelLogin() }
+                                .frame(minHeight: 44).accessibilityIdentifier("connection.cancel")
+                        }.font(.subheadline).frame(maxWidth: .infinity).padding(.top, 20)
+                    }
+                    if let error = store.localAuthenticationError ?? store.errorMessage {
+                        Text(error).font(.subheadline).foregroundStyle(Bento.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16).accessibilityIdentifier("connection.error")
+                    }
+                    #if DEBUG
+                    if legacyLoginFixture { fixtureLogin.padding(.top, 20) }
+                    #endif
+                    Spacer(minLength: 44)
+                    VStack(spacing: 12) {
+                        Image(systemName: "faceid").font(.system(size: 28, weight: .light)).accessibilityHidden(true)
+                        Text("Accès protégé par l’iPhone.").font(.subheadline)
+                        HStack(spacing: 12) {
+                            Button("Aide") { gettingStarted = true }
+                                .frame(minHeight: 44)
+                                .accessibilityIdentifier("connection.guide")
+                            Text("·").accessibilityHidden(true)
+                            Link("Confidentialité", destination: SupportPrivacyLinks.privacyURL)
+                                .frame(minHeight: 44)
+                                .accessibilityIdentifier("connection.privacy")
+                        }.font(.footnote).frame(minHeight: 44).padding(.top, 6)
+                    }
+                    .foregroundStyle(Bento.secondaryInk).frame(maxWidth: .infinity)
+                    .padding(.bottom, 12)
+                }
+                .padding(.horizontal, 24).frame(maxWidth: 540)
+                .frame(minHeight: geometry.size.height, alignment: .top)
+                .frame(maxWidth: .infinity)
+            }.accessibilityIdentifier("connection.scroll")
+        }
+        .background(Bento.background).foregroundStyle(Bento.ink)
+        .sheet(isPresented: $gettingStarted) {
+            GettingStartedView(allowWiFiSetup: store.hasAdoptedFrame && !store.pairingNeedsCompletion)
+        }
+        .sheet(isPresented: $scanningLANQR) {
+            LANLoginScannerView().interactiveDismissDisabled(store.recoveringConnection)
+        }
+        #if DEBUG
+        .sheet(isPresented: $bluetoothSetup) {
+            BluetoothSetupView { endpoint, owner in
+                await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
+            }
+        }
         #endif
     }
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Label("Inky Studio", systemImage: "photo").font(.title3.weight(.bold)).padding(.top, 28)
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(store.hasSavedFrame ? "Retrouver mon cadre" : "Bonjour, Inky.").font(.largeTitle.weight(.bold)).tracking(-1)
-                    Text(store.hasSavedFrame ? "Votre cadre vous attend." : "Vos photos, sur votre cadre.").font(.title3).foregroundStyle(Bento.secondaryInk)
-                }
-                if store.hasSavedFrame {
-                    HStack(spacing: 16) {
-                        Image(systemName: "photo").font(.largeTitle).foregroundStyle(Bento.secondaryInk)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Mon cadre").font(.headline)
-                            Text(store.address).font(.subheadline).foregroundStyle(Bento.secondaryInk).textSelection(.enabled)
-                        }
-                        Spacer(minLength: 0)
-                    }.bentoCard()
-                }
-                if biometric {
-                    Image(systemName: store.biometricName == "Face ID" ? "faceid" : "touchid")
-                        .font(.system(size: 84, weight: .ultraLight)).foregroundStyle(Bento.secondaryInk)
-                        .frame(maxWidth: .infinity).padding(.vertical, 28).accessibilityHidden(true)
-                    Button { Task { await store.loginWithBiometrics() } } label: {
-                        if store.connecting { ProgressView().tint(Bento.actionText) }
-                        else { Label("Se connecter avec \(store.biometricName)", systemImage: store.biometricName == "Face ID" ? "faceid" : "touchid") }
-                    }.buttonStyle(PrimaryButtonStyle()).disabled(store.connecting).accessibilityIdentifier("connection.biometric")
-                    if store.hasAdoptedFrame || legacyLoginFixture {
-                        Button("Utiliser le mot de passe") { showPassword = true; passwordFocused = true }
-                            .buttonStyle(OutlineButtonStyle()).disabled(store.connecting)
-                    }
-                } else if store.hasAdoptedFrame || legacyLoginFixture {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SecureField("Mot de passe du cadre", text: $password).textContentType(.password)
-                            .padding(14).background(Bento.background, in: RoundedRectangle(cornerRadius: 10))
-                            .focused($passwordFocused).submitLabel(.go).onSubmit { connect() }
-                            .accessibilityIdentifier("connection.password")
-                        if let capability = store.availableBiometrics {
-                            Toggle("Activer \(capability)", isOn: $remember).font(.subheadline).tint(Bento.blue)
-                            Text("Autorise l’utilisation du mot de passe enregistré sur cet iPhone.").font(.caption).foregroundStyle(Bento.secondaryInk)
-                        }
-                    }.bentoCard()
-                    Button(action: connect) {
-                        if store.connecting { ProgressView().tint(Bento.actionText) }
-                        else { Text("Se connecter") }
-                    }.buttonStyle(PrimaryButtonStyle()).disabled(store.connecting || store.address.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .accessibilityIdentifier("connection.submit")
-                    if store.biometricEnabled {
-                        Button("Utiliser \(store.biometricName)") { showPassword = false }.frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                }
-                if store.canScanLANLoginCode {
-                    Button { passwordFocused = false; scanningLANQR = true } label: {
-                        Label("Scanner le QR du cadre", systemImage: "qrcode.viewfinder")
-                    }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("connection.scanLANQR")
-                    Text("Scannez le code affiché sur votre cadre. La connexion se fait automatiquement, sans saisie.")
-                        .font(.subheadline).foregroundStyle(Bento.secondaryInk)
-                }
-                if store.connecting {
-                    HStack(spacing: 12) { ProgressView(); Text("Connexion au cadre…") }
-                    Button("Annuler la connexion") { store.cancelLogin() }
-                        .frame(maxWidth: .infinity, minHeight: 44).accessibilityIdentifier("connection.cancel")
-                }
-                if let error = store.errorMessage {
-                    Text(error).font(.subheadline).foregroundStyle(Bento.danger).accessibilityIdentifier("connection.error")
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        Link("Ouvrir les réglages iOS", destination: url).font(.subheadline)
-                    }
-                }
-                Text("Votre iPhone et le cadre doivent être sur le même réseau Wi-Fi.")
-                    .font(.subheadline).foregroundStyle(Bento.secondaryInk).multilineTextAlignment(.center).frame(maxWidth: .infinity)
-                Button { bluetoothSetup = true } label: {
-                    Label("Configurer le Wi-Fi du cadre", systemImage: "wifi")
-                }.buttonStyle(OutlineButtonStyle()).disabled(store.connecting)
+
+    #if DEBUG
+    // Only the explicit loopback E2E fixture exposes synthetic credentials.
+    // Release and the public QR screen contain no frame password field.
+    private var fixtureLogin: some View {
+        VStack(spacing: 12) {
+            SecureField("Mot de passe synthétique", text: $fixturePassword)
+                .textContentType(.none).textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("connection.password")
+            Button("Connexion de test") {
+                let password = fixturePassword
+                fixturePassword = ""
+                Task { await store.login(password: password, rememberBiometric: false) }
+            }.accessibilityIdentifier("connection.submit").disabled(store.connecting)
+            if ProcessInfo.processInfo.arguments.contains("--bluetooth-fixture") {
+                Button("Ouvrir la fixture Wi-Fi") { bluetoothSetup = true }
                     .accessibilityIdentifier("connection.bluetooth")
-                Text("Pour un iPhone déjà associé au cadre. La première association se prépare après la connexion, dans Réglages.")
-                    .font(.caption).foregroundStyle(Bento.secondaryInk)
-                if store.hasSavedFrame {
-                    Button("Changer de cadre") { Task { await store.logout(forget: true); showPassword = false; password = ""; remember = false } }
-                        .frame(maxWidth: .infinity, minHeight: 44).padding(.top, 8).disabled(store.connecting)
-                }
-                discoveryActions
-                SupportPrivacyLinks(identifierPrefix: "connection")
-            }.padding(20).frame(maxWidth: 540)
-                .frame(maxWidth: .infinity)
-        }.accessibilityIdentifier("connection.scroll")
-            .background(Bento.background).scrollDismissesKeyboard(.interactively)
-            .onAppear { remember = store.biometricEnabled }
-            .onChange(of: store.biometricEnabled) { _, enabled in remember = enabled }
-            .sheet(isPresented: $gettingStarted) { GettingStartedView() }
-            .sheet(isPresented: $scanningLANQR) { lanScanner }
-            .sheet(isPresented: $bluetoothSetup) {
-                BluetoothSetupView { endpoint, owner in
-                    await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
-                }
             }
-    }
-    private var lanScanner: some View {
-        NavigationStack {
-            VStack(spacing: 20) {
-                Text("Scannez le QR de l’écran d’accueil du cadre. Votre iPhone doit être sur le même Wi-Fi.")
-                    .font(.subheadline).foregroundStyle(Bento.secondaryInk)
-                QRScannerView { result in
-                    scanningLANQR = false
-                    switch result {
-                    case .success(let text):
-                        password = ""
-                        Task { await store.loginFromLANQRCode(text) }
-                    case .failure(let error): store.errorMessage = error.localizedDescription
-                    }
-                }.clipShape(RoundedRectangle(cornerRadius: 20)).frame(minHeight: 280)
-            }.padding(20).background(Bento.background)
-                .navigationTitle("Scanner le cadre").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annuler") { scanningLANQR = false } } }
         }
     }
-
-    private var discoveryActions: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button { Task { password = ""; await store.enterDemo() } } label: {
-                Label("Explorer la démo", systemImage: "play.circle")
-            }.buttonStyle(OutlineButtonStyle()).disabled(store.connecting)
-                .accessibilityIdentifier("connection.demo")
-            Text("Découvrez l’app sans cadre. Les essais restent temporaires sur cet iPhone.")
-                .font(.caption).foregroundStyle(Bento.secondaryInk)
-            Button { gettingStarted = true } label: {
-                Label("Préparer mon cadre", systemImage: "questionmark.circle")
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            }.font(.subheadline.weight(.medium)).foregroundStyle(Bento.blue)
-                .accessibilityIdentifier("connection.guide")
-        }
-    }
-
-    private func connect() { passwordFocused = false; Task { await store.login(password: password, rememberBiometric: remember) } }
+    #endif
 }
 
-struct LANBiometricConsentView: View {
+struct LANLoginScannerView: View {
     @EnvironmentObject private var store: AppStore
-
+    @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 24) {
-                Image(systemName: store.biometricName == "Face ID" ? "faceid" : "touchid")
-                    .font(.system(size: 64, weight: .light)).accessibilityHidden(true)
-                Text("Votre cadre est connecté").font(.title2.weight(.bold))
-                Text("Activer \(store.biometricName) pour les prochaines connexions ?")
-                    .font(.title3.weight(.medium))
-                Text("Le mot de passe lu dans le QR sera conservé dans le trousseau sécurisé de cet iPhone, protégé par votre biométrie. Vous pourrez toujours scanner à nouveau le QR du cadre.")
-                    .font(.body).foregroundStyle(Bento.secondaryInk)
-                Button { store.acceptLANBiometrics() } label: {
-                    Text("Activer \(store.biometricName)")
-                }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("connection.enableLANBiometrics")
-                Button("Plus tard") { store.declineLANBiometrics() }
-                    .buttonStyle(OutlineButtonStyle()).accessibilityIdentifier("connection.skipLANBiometrics")
+            VStack(spacing: 20) {
+                Text("Placez le QR du cadre dans le viseur. Votre iPhone doit être sur le même réseau Wi-Fi.")
+                    .font(.subheadline).foregroundStyle(Bento.secondaryInk)
+                #if DEBUG && targetEnvironment(simulator)
+                if ProcessInfo.processInfo.arguments.contains("--uitesting"),
+                   ProcessInfo.processInfo.arguments.contains("--qr-input-fixture") {
+                    QRInputFixture { text in acceptQR(text) }
+                } else { cameraScanner }
+                #else
+                cameraScanner
+                #endif
                 Spacer(minLength: 0)
-            }.padding(24).screenBackground().navigationTitle("Connexion simplifiée")
-                .navigationBarTitleDisplayMode(.inline)
-        }.presentationDetents([.large])
+            }.padding(24).background(Bento.background)
+                .navigationTitle("Scanner le cadre").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") {
+                        if store.recoveringConnection { store.cancelConnectionRecovery() }
+                        dismiss()
+                    }.accessibilityIdentifier("connection.cancelScanner")
+                } }
+        }.protectSensitiveContent()
+    }
+
+    private var cameraScanner: some View {
+        QRScannerView { result in
+            dismiss()
+            switch result {
+            case .success(let text): Task { await store.loginFromLANQRCode(text) }
+            case .failure(let error): store.errorMessage = error.localizedDescription
+            }
+        }.clipShape(RoundedRectangle(cornerRadius: 20)).frame(minHeight: 280)
+    }
+
+    private func acceptQR(_ text: String) {
+        dismiss()
+        Task { await store.loginFromLANQRCode(text) }
+    }
+
+}
+
+struct LocalLockView: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var gettingStarted = false
+    @State private var confirmingForget = false
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 36
+
+    var body: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    InkyBrandHeader().padding(.top, 20)
+                    Spacer(minLength: 44)
+                    VStack(alignment: .leading, spacing: 24) {
+                        Image(systemName: "lock.iphone")
+                            .font(.system(size: 68, weight: .ultraLight))
+                            .frame(maxWidth: .infinity).padding(.vertical, 24).accessibilityHidden(true)
+                        Text("Votre cadre,\nen toute confiance.")
+                            .font(.system(size: titleSize, weight: .bold)).tracking(-0.9)
+                            .fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
+                        Text("Déverrouillez Inky Studio avec Face ID, Touch ID ou le code de cet iPhone.")
+                            .foregroundStyle(Bento.secondaryInk).fixedSize(horizontal: false, vertical: true)
+                    }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Bento.surface, in: RoundedRectangle(cornerRadius: 28))
+                        .overlay(RoundedRectangle(cornerRadius: 28).stroke(Bento.border, lineWidth: 0.7))
+                    Button { Task { await store.unlock() } } label: {
+                        HStack(spacing: 12) {
+                            if store.unlocking { ProgressView().tint(Bento.actionText) }
+                            else { Image(systemName: "lock.open") }
+                            Text(store.localUnlocked ? "Réessayer la connexion" : "Déverrouiller")
+                        }.frame(minHeight: 32)
+                    }.buttonStyle(PrimaryButtonStyle()).disabled(store.unlocking)
+                        .accessibilityIdentifier("lock.unlock")
+                        .accessibilityLabel(store.localUnlocked ? "Réessayer la connexion au cadre" : "Déverrouiller Inky Studio")
+                        .accessibilityValue(store.unlocking ? "Vérification en cours" : "")
+                    if let error = store.localAuthenticationError ?? store.errorMessage {
+                        Text(error).font(.subheadline).foregroundStyle(Bento.danger)
+                            .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("lock.error")
+                    }
+                    if store.hasAdoptedFrame {
+                        Button("Oublier ce cadre…") {
+                            Task { confirmingForget = await store.authorizeForgetCurrentFrame() }
+                        }
+                        .disabled(store.unlocking || store.connecting)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .font(.footnote).foregroundStyle(Bento.secondaryInk)
+                        .accessibilityIdentifier("lock.forget")
+                    } else {
+                        Button("Scanner un nouveau QR") { Task { await store.beginConnectionRecovery() } }
+                            .disabled(store.unlocking || store.connecting)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .font(.footnote).foregroundStyle(Bento.secondaryInk)
+                            .accessibilityIdentifier("lock.recover")
+                    }
+                    Spacer(minLength: 44)
+                    Text("Accès protégé par l’iPhone.").font(.subheadline).foregroundStyle(Bento.secondaryInk)
+                        .frame(maxWidth: .infinity)
+                    Button("Aide") { gettingStarted = true }.font(.footnote)
+                        .frame(maxWidth: .infinity, minHeight: 44).accessibilityIdentifier("lock.help")
+                }.padding(.horizontal, 24).padding(.bottom, 12).frame(maxWidth: 540)
+                    .frame(minHeight: geometry.size.height).frame(maxWidth: .infinity)
+            }.accessibilityIdentifier("lock.scroll")
+        }.background(Bento.background).foregroundStyle(Bento.ink)
+            .sheet(isPresented: $gettingStarted) { GettingStartedView(allowWiFiSetup: store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
+            .confirmationDialog("Oublier ce cadre sur cet iPhone ?", isPresented: $confirmingForget) {
+                Button("Oublier ce cadre", role: .destructive) {
+                    Task { await store.forgetCurrentFrameAfterConfirmation() }
+                }
+                Button("Annuler", role: .cancel) { store.cancelForgetCurrentFrame() }
+            } message: {
+                Text("L’accès et l’association de ce cadre seront supprimés de cet iPhone. Les photos du cadre seront conservées. Il faudra un QR pour l’associer à nouveau.")
+            }
+            .onDisappear { store.cancelForgetCurrentFrame() }
+    }
+}
+
+struct PrivacyCoverView: View {
+    var body: some View {
+        ZStack {
+            Bento.background.ignoresSafeArea()
+            VStack(spacing: 20) {
+                Image(systemName: "lock.iphone").font(.system(size: 52, weight: .ultraLight))
+                Text("Inky Studio").font(.title2.weight(.bold))
+            }.foregroundStyle(Bento.ink)
+        }.accessibilityElement(children: .ignore).accessibilityLabel("Inky Studio verrouillé")
+    }
+}
+
+private struct InkyBrandHeader: View {
+    var body: some View {
+        Label("Inky Studio", systemImage: "photo")
+            .font(.title3.weight(.bold)).labelStyle(.titleAndIcon)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct ScanPhotoSymbol: View {
+    @ScaledMetric(relativeTo: .largeTitle) private var size = 112
+    var body: some View {
+        ZStack {
+            Image(systemName: "viewfinder").font(.system(size: size, weight: .ultraLight))
+            Image(systemName: "photo").font(.system(size: size * 0.46, weight: .light))
+        }.frame(height: size).accessibilityHidden(true)
     }
 }
 
 struct SupportPrivacyLinks: View {
     let identifierPrefix: String
+    static let privacyURL = URL(string: "https://inky-studio.netlify.app/confidentialite.html")!
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -193,24 +286,37 @@ struct SupportPrivacyLinks: View {
             .accessibilityHint("Ouvre le site de support dans le navigateur.")
             .accessibilityIdentifier("\(identifierPrefix).support")
             Divider()
-            Link(destination: URL(string: "https://inky-studio.netlify.app/confidentialite.html")!) {
-                linkLabel("Confidentialité", systemImage: "hand.raised")
-            }
-            .accessibilityLabel("Politique de confidentialité")
-            .accessibilityHint("Ouvre la politique de confidentialité dans le navigateur.")
-            .accessibilityIdentifier("\(identifierPrefix).privacy")
+            Link(destination: Self.privacyURL) { linkLabel("Confidentialité", systemImage: "hand.raised") }
+                .accessibilityLabel("Politique de confidentialité")
+                .accessibilityHint("Ouvre la politique de confidentialité dans le navigateur.")
+                .accessibilityIdentifier("\(identifierPrefix).privacy")
         }.buttonStyle(.plain).bentoCard()
     }
 
     private func linkLabel(_ title: String, systemImage: String) -> some View {
         HStack(spacing: 12) {
-            Label(title, systemImage: systemImage)
-                .fixedSize(horizontal: false, vertical: true)
+            Label(title, systemImage: systemImage).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             Image(systemName: "arrow.up.right").foregroundStyle(Bento.secondaryInk).accessibilityHidden(true)
-        }
-        .font(.body).foregroundStyle(Bento.blue)
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .contentShape(Rectangle())
+        }.font(.body).foregroundStyle(Bento.blue)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
     }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+private struct QRInputFixture: View {
+    let accept: (String) -> Void
+    @State private var value = ""
+    var body: some View {
+        VStack(spacing: 16) {
+            TextField("QR synthétique", text: $value).textInputAutocapitalization(.never).autocorrectionDisabled()
+                .accessibilityIdentifier("connection.testQR")
+            Button("Lire le QR synthétique") {
+                let text = value
+                value = ""
+                accept(text)
+            }.accessibilityIdentifier("connection.acceptTestQR")
+        }.padding(20).bentoCard()
+    }
+}
+#endif

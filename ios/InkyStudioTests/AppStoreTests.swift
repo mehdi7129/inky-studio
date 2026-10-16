@@ -7,78 +7,297 @@ import XCTest
 final class AppStoreTests: XCTestCase {
     private let lanQR = "{\"v\":1,\"p\":\"lan-login\",\"url\":\"http://192.168.1.120:8000\",\"password\":\"DemoPass12345678\"}"
 
-    func testQRBiometricCredentialRequiresExplicitConsentAndIsSavedOnlyForThisFrame() async {
-        var saved: [(String, String)] = []
-        let fixture = StoreFixture(biometricCapability: { "Face ID" },
-                                   saveBiometricPassword: { saved.append(($0, $1)) })
+    func testRecoveryCancellationPreservesOldSessionWithoutReadingItsCredential() async throws {
+        var localChecks = 0
+        var credentialReads = 0
+        let fixture = StoreFixture(authenticateLocal: { localChecks += 1 }, loadCredential: { _ in
+            credentialReads += 1
+            throw VaultError.missing
+        })
         defer { fixture.dispose() }
-        fixture.enterForegroundWithoutMonitoring()
+        await fixture.login("old-frame.local")
+        let oldClient = try XCTUnwrap(fixture.store.api)
+        let oldAddress = fixture.store.address
+        fixture.credentials.passwords[oldAddress] = "old-protected-credential"
+        fixture.store.lock()
+        let requests = fixture.stub.requests.count
+        await fixture.store.beginConnectionRecovery()
+        XCTAssertEqual(localChecks, 2, "Recovery authorizes locally without trying the irreparable old item")
+        XCTAssertEqual(credentialReads, 0)
+        XCTAssertTrue(fixture.store.recoveringConnection)
+        XCTAssertFalse(fixture.store.canMutate)
+        fixture.store.cancelConnectionRecovery()
+        XCTAssertFalse(fixture.store.recoveringConnection)
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertTrue(fixture.store.api === oldClient)
+        XCTAssertEqual(fixture.store.address, oldAddress)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), oldAddress)
+        XCTAssertEqual(fixture.credentials.passwords[oldAddress], "old-protected-credential")
+        XCTAssertEqual(fixture.stub.requests.count, requests)
+    }
+
+    func testRecoveryMalformedOrRejectedQRPreservesOldSelectedAccess() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        let oldClient = try XCTUnwrap(fixture.store.api)
+        let oldAddress = fixture.store.address
+        fixture.credentials.passwords[oldAddress] = "old-protected-credential"
+        await fixture.store.beginConnectionRecovery()
+        let before = fixture.stub.requests.count
+        await fixture.store.loginFromLANQRCode("invalid-qr")
+        XCTAssertEqual(fixture.stub.requests.count, before)
+        fixture.stub.respondNextJSON(host: "192.168.1.120", path: "/api/auth/login", method: "POST", status: 401,
+                                     body: ["detail": "Synthetic rejection"])
         await fixture.store.loginFromLANQRCode(lanQR)
-        XCTAssertTrue(fixture.store.offeringLANBiometrics)
-        XCTAssertFalse(fixture.store.biometricEnabled)
-        XCTAssertTrue(saved.isEmpty, "A successful scan is not consent to Keychain storage.")
-        fixture.store.acceptLANBiometrics()
-        XCTAssertEqual(saved.count, 1)
-        XCTAssertEqual(saved.first?.0, "DemoPass12345678")
-        XCTAssertEqual(saved.first?.1, "http://192.168.1.120:8000")
-        XCTAssertTrue(fixture.store.biometricEnabled)
-        XCTAssertFalse(fixture.store.offeringLANBiometrics)
-        fixture.store.acceptLANBiometrics()
-        XCTAssertEqual(saved.count, 1, "Consent cannot consume the same credential twice.")
+        XCTAssertTrue(fixture.store.api === oldClient)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.recoveringConnection)
+        XCTAssertEqual(fixture.store.address, oldAddress)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), oldAddress)
+        XCTAssertEqual(fixture.credentials.passwords[oldAddress], "old-protected-credential")
+        XCTAssertNil(fixture.credentials.passwords["http://192.168.1.120:8000"])
+        XCTAssertNotNil(fixture.store.errorMessage)
+    }
+
+    func testRecoveryFailedProtectedSaveDoesNotReplaceOldConnection() async throws {
+        let fixture = StoreFixture(saveCredential: { _, _ in throw VaultError.unavailable })
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        let oldClient = try XCTUnwrap(fixture.store.api)
+        let oldAddress = fixture.store.address
+        fixture.credentials.passwords[oldAddress] = "old-protected-credential"
+        await fixture.store.beginConnectionRecovery()
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(fixture.store.api === oldClient)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.recoveringConnection)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), oldAddress)
+        XCTAssertEqual(fixture.credentials.passwords[oldAddress], "old-protected-credential")
+        XCTAssertNil(fixture.credentials.passwords["http://192.168.1.120:8000"])
+    }
+
+    func testRecoveryCommitsOnlyAfterCandidateLoginAndProtectedSave() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        let oldClient = try XCTUnwrap(fixture.store.api)
+        let oldAddress = fixture.store.address
+        fixture.credentials.passwords[oldAddress] = "old-protected-credential"
+        await fixture.store.beginConnectionRecovery()
+        let gate = fixture.stub.hold(host: "192.168.1.120", path: "/api/auth/login", method: "POST")
+        let replacement = Task { await fixture.store.loginFromLANQRCode(lanQR) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        XCTAssertTrue(fixture.store.api === oldClient)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), oldAddress)
+        XCTAssertNil(fixture.credentials.passwords["http://192.168.1.120:8000"])
+        gate.release()
+        await replacement.value
+        XCTAssertFalse(fixture.store.api === oldClient)
+        XCTAssertEqual(fixture.store.address, "http://192.168.1.120:8000")
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), fixture.store.address)
+        XCTAssertEqual(fixture.credentials.passwords[fixture.store.address], "DemoPass12345678")
+        XCTAssertEqual(fixture.credentials.passwords[oldAddress], "old-protected-credential")
+        XCTAssertFalse(fixture.store.recoveringConnection)
+        XCTAssertTrue(fixture.store.credentialStored)
+        XCTAssertTrue(fixture.store.canMutate)
+        XCTAssertFalse(fixture.stub.requests.contains { $0.url?.host == "old-frame.local" && $0.url?.path == "/api/auth/logout" })
+    }
+
+    func testRecoveryCancelledDuringCandidateAuthenticationCannotCommitLate() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        let oldClient = try XCTUnwrap(fixture.store.api)
+        let oldAddress = fixture.store.address
+        fixture.credentials.passwords[oldAddress] = "old-protected-credential"
+        await fixture.store.beginConnectionRecovery()
+        let gate = fixture.stub.hold(host: "192.168.1.120", path: "/api/auth/login", method: "POST")
+        let replacement = Task { await fixture.store.loginFromLANQRCode(lanQR) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        fixture.store.cancelLogin()
+        gate.release()
+        await replacement.value
+        XCTAssertTrue(fixture.store.api === oldClient)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertEqual(fixture.store.address, oldAddress)
+        XCTAssertEqual(fixture.credentials.passwords[oldAddress], "old-protected-credential")
+        XCTAssertNil(fixture.credentials.passwords["http://192.168.1.120:8000"])
+    }
+
+    func testRecoveryNeverDowngradesAnAdoptedFrameToHTTP() async {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let selectedOwner = UUID().uuidString.lowercased()
+        fixture.defaults.set(selectedOwner, forKey: "frameOwnerID")
+        fixture.defaults.set("https://192.168.1.120:8443", forKey: "frameAddress")
+        fixture.store.address = "https://192.168.1.120:8443"
+        fixture.credentials.passwords["inky-frame:" + selectedOwner] = "selected-owner-credential"
+        await fixture.store.beginConnectionRecovery()
+        XCTAssertFalse(fixture.store.recoveringConnection)
+        XCTAssertFalse(fixture.store.canScanLANLoginCode)
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameOwnerID"), selectedOwner)
+        XCTAssertEqual(fixture.store.address, "https://192.168.1.120:8443")
+        XCTAssertEqual(fixture.credentials.passwords["inky-frame:" + selectedOwner], "selected-owner-credential")
+    }
+
+    func testForgetAuthorizationCancellationAndBackgroundPreserveSelectedAccess() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        let oldClient = try XCTUnwrap(fixture.store.api)
+        let oldAddress = fixture.store.address
+        fixture.credentials.passwords[oldAddress] = "old-protected-credential"
+        let requests = fixture.stub.requests.count
+        let authorized = await fixture.store.authorizeForgetCurrentFrame()
+        XCTAssertTrue(authorized)
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertFalse(fixture.store.canMutate)
+        fixture.store.cancelForgetCurrentFrame()
+        await fixture.store.forgetCurrentFrameAfterConfirmation()
+        XCTAssertTrue(fixture.store.api === oldClient)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), oldAddress)
+        let again = await fixture.store.authorizeForgetCurrentFrame()
+        XCTAssertTrue(again)
+        fixture.store.sceneChanged(.background)
+        await fixture.store.forgetCurrentFrameAfterConfirmation()
+        XCTAssertTrue(fixture.store.api === oldClient)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), oldAddress)
+        XCTAssertEqual(fixture.credentials.passwords[oldAddress], "old-protected-credential")
+        XCTAssertEqual(fixture.stub.requests.count, requests)
+    }
+
+    func testForgetAuthorizationDoesNotUnlockContentForAnAdoptedLiveSession() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        let client = try XCTUnwrap(fixture.store.api)
+        let owner = UUID().uuidString.lowercased()
+        let locator = "https://192.168.1.120:8443"
+        fixture.defaults.set(owner, forKey: "frameOwnerID")
+        fixture.defaults.set(locator, forKey: "frameAddress")
+        fixture.store.address = locator
+        fixture.store.lock()
+        let requests = fixture.stub.requests.count
+        let authorized = await fixture.store.authorizeForgetCurrentFrame()
+        XCTAssertTrue(authorized)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.localUnlocked, "Authorization to forget is not authorization to expose the dashboard")
+        XCTAssertFalse(fixture.store.canMutate)
+        fixture.store.cancelForgetCurrentFrame()
+        await fixture.store.forgetCurrentFrameAfterConfirmation()
+        XCTAssertTrue(fixture.store.api === client)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameOwnerID"), owner)
+        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), locator)
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertEqual(fixture.stub.requests.count, requests)
+    }
+
+    func testForgetConfirmationIsScopedToTheFreshlyAuthorizedSelectedAccount() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let selected = UUID().uuidString.lowercased()
+        let other = UUID().uuidString.lowercased()
+        fixture.defaults.set(selected, forKey: "frameOwnerID")
+        fixture.defaults.set("https://192.168.1.120:8443", forKey: "frameAddress")
+        fixture.store.address = "https://192.168.1.120:8443"
+        let selectedAccount = "inky-frame:" + selected
+        let otherAccount = "inky-frame:" + other
+        func query(_ account: String) -> [String: Any] {
+            [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: fixture.vaultService,
+             kSecAttrAccount as String: account]
+        }
+        for account in [selectedAccount, otherAccount] {
+            var item = query(account)
+            item[kSecValueData as String] = Data("synthetic-test-credential".utf8)
+            XCTAssertEqual(SecItemAdd(item as CFDictionary, nil), errSecSuccess)
+        }
+        // These are synthetic, unprotected legacy items solely to check deletion scope, not biometric behavior.
+        let authorized = await fixture.store.authorizeForgetCurrentFrame()
+        XCTAssertTrue(authorized)
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertFalse(fixture.store.canMutate)
+        fixture.store.cancelForgetCurrentFrame()
+        await fixture.store.forgetCurrentFrameAfterConfirmation()
+        XCTAssertEqual(SecItemCopyMatching(query(selectedAccount) as CFDictionary, nil), errSecSuccess)
+        let again = await fixture.store.authorizeForgetCurrentFrame()
+        XCTAssertTrue(again)
+        await fixture.store.forgetCurrentFrameAfterConfirmation()
+        XCTAssertEqual(SecItemCopyMatching(query(selectedAccount) as CFDictionary, nil), errSecItemNotFound)
+        XCTAssertEqual(SecItemCopyMatching(query(otherAccount) as CFDictionary, nil), errSecSuccess)
+        XCTAssertNil(fixture.defaults.string(forKey: "frameOwnerID"))
+        XCTAssertNil(fixture.defaults.string(forKey: "frameAddress"))
+        XCTAssertFalse(fixture.store.localUnlocked)
+    }
+
+    func testFirstQRAuthenticatesLocallyBeforeNetworkingAndStoresValidatedCredential() async {
+        let gate = LocalAuthGate()
+        let fixture = StoreFixture(authenticateLocal: { try await gate.wait() })
+        defer { fixture.dispose() }
+        let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertTrue(fixture.store.unlocking)
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+        gate.release()
+        await login.value
+        XCTAssertTrue(fixture.store.localUnlocked)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.credentialStored)
+        XCTAssertEqual(fixture.credentials.passwords["http://192.168.1.120:8000"], "DemoPass12345678")
         XCTAssertFalse(fixture.defaults.dictionaryRepresentation().description.contains("DemoPass12345678"))
     }
 
-    func testQRBiometricConsentIsDiscardedOnDismissBackgroundAndSessionChange() async {
-        var saved = 0
-        let fixture = StoreFixture(biometricCapability: { "Touch ID" },
-                                   saveBiometricPassword: { _, _ in saved += 1 })
-        defer { fixture.dispose() }
-        fixture.enterForegroundWithoutMonitoring()
-        await fixture.store.loginFromLANQRCode(lanQR)
-        XCTAssertEqual(fixture.store.biometricName, "Touch ID")
-        fixture.store.declineLANBiometrics()
-        fixture.store.acceptLANBiometrics()
-        XCTAssertEqual(saved, 0)
-        await fixture.store.logout()
-        fixture.enterForegroundWithoutMonitoring()
-        await fixture.store.loginFromLANQRCode(lanQR)
-        XCTAssertTrue(fixture.store.offeringLANBiometrics)
-        fixture.store.sceneActive(false)
-        fixture.store.acceptLANBiometrics()
-        XCTAssertEqual(saved, 0)
-        await fixture.store.logout()
-        fixture.enterForegroundWithoutMonitoring()
-        await fixture.store.loginFromLANQRCode(lanQR)
-        await fixture.store.logout()
-        await fixture.login("other-frame.local")
-        fixture.store.acceptLANBiometrics()
-        XCTAssertEqual(saved, 0)
+    func testMissingPasscodeOrCancelledLocalAuthenticationCannotSendTheQRSecret() async {
+        for error in [VaultError.passcodeRequired, .cancelled] {
+            let fixture = StoreFixture(authenticateLocal: { throw error })
+            defer { fixture.dispose() }
+            await fixture.store.loginFromLANQRCode(lanQR)
+            XCTAssertFalse(fixture.store.localUnlocked)
+            XCTAssertFalse(fixture.store.authenticated)
+            XCTAssertFalse(fixture.store.unlocking)
+            XCTAssertNotNil(fixture.store.localAuthenticationError)
+            XCTAssertTrue(fixture.stub.requests.isEmpty)
+            XCTAssertTrue(fixture.credentials.passwords.isEmpty)
+        }
     }
 
-    func testSlowQRReplyAfterBackgroundCannotRetainOrOfferBiometricCredential() async {
-        var saved = 0
-        let fixture = StoreFixture(biometricCapability: { "Face ID" },
-                                   saveBiometricPassword: { _, _ in saved += 1 })
+    func testBackgroundInvalidatesLateLocalAuthenticationButInactiveDoesNot() async {
+        let gate = LocalAuthGate()
+        let fixture = StoreFixture(authenticateLocal: { try await gate.wait() })
         defer { fixture.dispose() }
-        fixture.enterForegroundWithoutMonitoring()
-        let gate = fixture.stub.hold(host: "192.168.1.120", path: "/api/state")
         let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
         await fulfillment(of: [gate.started], timeout: 3)
-        fixture.store.sceneActive(false)
+        fixture.store.sceneChanged(.inactive)
+        XCTAssertTrue(fixture.store.unlocking)
+        fixture.store.sceneChanged(.active)
         gate.release()
         await login.value
         XCTAssertTrue(fixture.store.authenticated)
-        XCTAssertFalse(fixture.store.offeringLANBiometrics)
-        fixture.enterForegroundWithoutMonitoring()
-        fixture.store.acceptLANBiometrics()
-        XCTAssertEqual(saved, 0, "The late response must not retain a hidden QR credential for later consent.")
+        await fixture.store.logout()
+        XCTAssertFalse(fixture.store.localUnlocked)
+
+        let lateGate = LocalAuthGate()
+        let late = StoreFixture(authenticateLocal: { try await lateGate.wait() })
+        defer { late.dispose() }
+        let oldLogin = Task { await late.store.loginFromLANQRCode(lanQR) }
+        await fulfillment(of: [lateGate.started], timeout: 3)
+        late.store.sceneChanged(.background)
+        late.store.sceneChanged(.active)
+        lateGate.release()
+        await oldLogin.value
+        XCTAssertFalse(late.store.localUnlocked)
+        XCTAssertFalse(late.store.authenticated)
+        XCTAssertTrue(late.stub.requests.isEmpty)
     }
 
     func testCancelledQRTaskDuringInitialRefreshDoesNotPublishPartialSession() async {
         for path in ["/api/state", "/api/provisioning/capabilities"] {
-            let fixture = StoreFixture(biometricCapability: { "Face ID" })
+            let fixture = StoreFixture()
             defer { fixture.dispose() }
-            fixture.enterForegroundWithoutMonitoring()
             let gate = fixture.stub.hold(host: "192.168.1.120", path: path)
             let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
             await fulfillment(of: [gate.started], timeout: 3)
@@ -88,18 +307,239 @@ final class AppStoreTests: XCTestCase {
             XCTAssertFalse(fixture.store.authenticated)
             XCTAssertFalse(fixture.store.connected)
             XCTAssertFalse(fixture.store.connecting)
-            XCTAssertFalse(fixture.store.offeringLANBiometrics)
+            XCTAssertFalse(fixture.store.localUnlocked)
             XCTAssertTrue(fixture.store.canScanLANLoginCode)
         }
     }
 
-    func testQRWithoutAvailableBiometricsDoesNotOfferToSave() async {
-        let fixture = StoreFixture(biometricCapability: { nil })
+    func testCookieOnlySessionUnlockPreservesClientAndDoesNotRelogin() async throws {
+        var localChecks = 0
+        let fixture = StoreFixture(totals: ["frame.local": 1], authenticateLocal: { localChecks += 1 })
+        defer { fixture.dispose() }
+        await fixture.login("frame.local")
+        let client = try XCTUnwrap(fixture.store.api)
+        let logins = fixture.stub.requests.filter { $0.url?.path == "/api/auth/login" }.count
+        fixture.store.sceneChanged(.background)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.api === client)
+        fixture.store.sceneChanged(.active)
+        await fixture.store.unlock()
+        XCTAssertTrue(fixture.store.api === client)
+        XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == "/api/auth/login" }.count, logins)
+        XCTAssertEqual(localChecks, 2)
+        XCTAssertTrue(fixture.store.canMutate)
+        XCTAssertFalse(fixture.store.pairingNeedsCompletion)
+        XCTAssertFalse(fixture.store.credentialStored)
+        XCTAssertNotNil(fixture.store.credentialStorageError)
+    }
+
+    func testLockedSessionRejectsPhotoReadsMutationsRefreshAndEvents() async throws {
+        let fixture = StoreFixture(totals: ["frame.local": 1])
+        defer { fixture.dispose() }
+        await fixture.login("frame.local")
+        let photo = try XCTUnwrap(fixture.store.history.first?.photo)
+        fixture.store.lock()
+        let before = fixture.stub.requests.count
+        await fixture.store.refresh()
+        await fixture.store.loadMoreHistory()
+        await fixture.store.display(previous: false)
+        await fixture.store.saveSettings(FrameSettings())
+        await fixture.store.checkUpdate()
+        await fixture.store.startUpdate()
+        await fixture.store.receiveServerEvent(ServerEvent(type: "system_update", payload: ["message": .string("late")]))
+        let image = await fixture.store.image(for: photo)
+        XCTAssertNil(image)
+        do { try await fixture.store.upload(Data(), filename: "blocked.png"); XCTFail("Upload must be denied") }
+        catch { }
+        XCTAssertEqual(fixture.stub.requests.count, before)
+        XCTAssertNil(fixture.store.updateMessage)
+        XCTAssertFalse(fixture.store.canMutate)
+    }
+
+    func testBackgroundRejectsLateThumbnailAndUploadCompletionsWithoutReplay() async throws {
+        let fixture = StoreFixture(totals: ["frame.local": 1])
+        defer { fixture.dispose() }
+        await fixture.login("frame.local")
+        let photo = try XCTUnwrap(fixture.store.history.first?.photo)
+        let gate = fixture.stub.hold(host: "frame.local", path: "/api/photos/\(photo.id)")
+        let image = Task { await fixture.store.image(for: photo) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        fixture.store.sceneChanged(.background)
+        gate.release()
+        let late = await image.value
+        XCTAssertNil(late)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.localUnlocked)
+    }
+
+    func testBackgroundDropsLateSuccessfulUploadWithoutRefreshingOrReplaying() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("frame.local")
+        let photo: [String: Any] = ["id": "new-photo", "sha256": "new-digest", "original_filename": "new.png",
+            "mime": "image/png", "width": 800, "height": 480, "size_bytes": 10, "created_at": 1780000000]
+        fixture.stub.respondNextJSON(host: "frame.local", path: "/api/queue", method: "POST", status: 201,
+            body: ["photo": photo, "queue_entry": ["id": 1, "position": 0, "added_at": 1780000000, "photo": photo], "already_existed": false])
+        let gate = fixture.stub.hold(host: "frame.local", path: "/api/queue", method: "POST")
+        let upload = Task { try await fixture.store.upload(Data([0]), filename: "new.png") }
+        await fulfillment(of: [gate.started], timeout: 3)
+        fixture.store.sceneChanged(.background)
+        let requests = fixture.stub.requests.count
+        gate.release()
+        do { try await upload.value; XCTFail("A late completion cannot publish into a locked session") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertEqual(fixture.stub.requests.count, requests)
+        XCTAssertNil(fixture.store.notice)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertFalse(fixture.store.localUnlocked)
+    }
+
+    func testLockedPhotoCacheCannotReturnAThumbnailAndIsClearedForTheNextUnlock() async throws {
+        let fixture = StoreFixture(totals: ["frame.local": 1])
+        defer { fixture.dispose() }
+        await fixture.login("frame.local")
+        let photo = try XCTUnwrap(fixture.store.history.first?.photo)
+        let bytes = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWWQAAAAASUVORK5CYII="))
+        fixture.stub.setResponse(host: "frame.local", path: "/api/photos/\(photo.id)", data: bytes)
+        let before = fixture.stub.requests.count
+        let first = await fixture.store.image(for: photo)
+        XCTAssertNotNil(first)
+        fixture.store.lock()
+        let locked = await fixture.store.image(for: photo)
+        XCTAssertNil(locked)
+        await fixture.store.unlock()
+        let second = await fixture.store.image(for: photo)
+        XCTAssertNotNil(second)
+        let reads = fixture.stub.requests.dropFirst(before).filter { $0.url?.path == "/api/photos/\(photo.id)" }
+        XCTAssertEqual(reads.count, 2, "The next unlock must not reuse an image cached before the lock")
+    }
+
+    func testNewPairingSaveFailureBlocksWritesAndRetryOnlySavesWithoutRelogin() async {
+        var saves = 0
+        let fixture = StoreFixture(saveCredential: { _, _ in
+            saves += 1
+            if saves == 1 { throw VaultError.unavailable }
+        })
+        defer { fixture.dispose() }
+        fixture.credentials.passwords["http://192.168.1.120:8000"] = "older-protected-password"
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.localUnlocked)
+        XCTAssertFalse(fixture.store.credentialStored, "An older item cannot prove the new QR password was saved")
+        XCTAssertTrue(fixture.store.pairingNeedsCompletion)
+        XCTAssertFalse(fixture.store.canMutate)
+        XCTAssertTrue(fixture.store.canRetryCredentialStorage)
+        XCTAssertNotNil(fixture.store.credentialStorageError)
+        XCTAssertEqual(fixture.credentials.passwords["http://192.168.1.120:8000"], "older-protected-password")
+        let requests = fixture.stub.requests.count
+        await fixture.store.display(previous: false)
+        do { try await fixture.store.upload(Data(), filename: "blocked.png"); XCTFail("Unfinished pairing must block uploads") }
+        catch { }
+        await fixture.store.retryCredentialStorage()
+        XCTAssertEqual(fixture.stub.requests.count, requests)
+        XCTAssertEqual(saves, 2)
+        XCTAssertTrue(fixture.store.credentialStored)
+        XCTAssertTrue(fixture.store.canMutate)
+        XCTAssertFalse(fixture.store.pairingNeedsCompletion)
+        XCTAssertNil(fixture.store.credentialStorageError)
+    }
+
+    func testBackgroundDiscardsFailedPairingSecretAndForbidsStorageRetry() async {
+        var saves = 0
+        let fixture = StoreFixture(saveCredential: { _, _ in saves += 1; throw VaultError.unavailable })
         defer { fixture.dispose() }
         await fixture.store.loginFromLANQRCode(lanQR)
-        XCTAssertTrue(fixture.store.connected)
-        XCTAssertFalse(fixture.store.offeringLANBiometrics)
-        XCTAssertFalse(fixture.store.biometricEnabled)
+        fixture.store.sceneChanged(.background)
+        fixture.store.sceneChanged(.active)
+        await fixture.store.unlock()
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.pairingNeedsCompletion)
+        XCTAssertFalse(fixture.store.canMutate)
+        XCTAssertFalse(fixture.store.canRetryCredentialStorage)
+        XCTAssertTrue(fixture.store.canScanLANLoginCode)
+        let requests = fixture.stub.requests.count
+        await fixture.store.retryCredentialStorage()
+        XCTAssertEqual(saves, 1)
+        await fixture.store.loginFromLANQRCode(lanQR.replacingOccurrences(of: "192.168.1.120", with: "192.168.1.121"))
+        XCTAssertEqual(fixture.stub.requests.count, requests)
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertEqual(saves, 2, "The explicit same-frame QR path can complete an unfinished pairing without an intermediate logout")
+    }
+
+    func testColdSavedCredentialLoadFailureStaysLockedAndDoesNotRequestAnotherQR() async {
+        let fixture = StoreFixture(loadCredential: { _ in throw VaultError.cancelled })
+        defer { fixture.dispose() }
+        fixture.defaults.set("http://192.168.1.120:8000", forKey: "frameAddress")
+        fixture.store.address = "http://192.168.1.120:8000"
+        fixture.credentials.passwords[fixture.store.address] = "protected-password"
+        await fixture.store.unlock()
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertFalse(fixture.store.unlocking)
+        XCTAssertTrue(fixture.store.credentialStored)
+        XCTAssertNotNil(fixture.store.localAuthenticationError)
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+    }
+
+    func testConcurrentColdUnlockAndBackgroundCannotPublishLateCredentialRead() async {
+        let gate = LocalAuthGate()
+        var checks = 0
+        let fixture = StoreFixture(authenticateLocal: { checks += 1 }, loadCredential: { _ in
+            try await gate.wait()
+            return "protected-password"
+        })
+        defer { fixture.dispose() }
+        let address = "http://192.168.1.120:8000"
+        fixture.defaults.set(address, forKey: "frameAddress")
+        fixture.store.address = address
+        fixture.credentials.passwords[address] = "protected-password"
+        let unlock = Task { await fixture.store.unlock() }
+        await fulfillment(of: [gate.started], timeout: 3)
+        XCTAssertTrue(fixture.store.unlocking)
+        await fixture.store.unlock()
+        XCTAssertEqual(checks, 1)
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+        fixture.store.sceneChanged(.background)
+        gate.release()
+        await unlock.value
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+    }
+
+    func testBluetoothMissingOrCancelledCredentialPreservesCurrentPhotoSession() async throws {
+        for error in [VaultError.missing, .cancelled] {
+            let fixture = StoreFixture(loadCredential: { _ in throw error })
+            defer { fixture.dispose() }
+            await fixture.login("frame.local")
+            let client = try XCTUnwrap(fixture.store.api)
+            let address = fixture.store.address
+            let identity = try FrameIdentity(id: UUID(), spkiSHA256: Data(repeating: 7, count: 32))
+            let endpoint = try XCTUnwrap(URL(string: "https://192.168.1.120:8443"))
+            let owner = OwnershipRecord(identity: identity, certificateDER: Data(), ownerID: UUID(),
+                claimRequestID: UUID(), ownerToken: Data(repeating: 8, count: 32), endpoints: [endpoint], state: .claimed)
+            let requests = fixture.stub.requests.count
+            await fixture.store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
+            XCTAssertTrue(fixture.store.api === client)
+            XCTAssertTrue(fixture.store.authenticated)
+            XCTAssertEqual(fixture.store.address, address)
+            XCTAssertNil(fixture.defaults.string(forKey: "frameOwnerID"))
+            XCTAssertEqual(fixture.stub.requests.count, requests)
+            XCTAssertTrue(fixture.store.canMutate)
+        }
+    }
+
+    func testLogoutRequiresFreshLocalAuthenticationBeforeAnotherQR() async {
+        var checks = 0
+        let fixture = StoreFixture(authenticateLocal: { checks += 1; if checks > 1 { throw VaultError.cancelled } })
+        defer { fixture.dispose() }
+        await fixture.store.loginFromLANQRCode(lanQR)
+        await fixture.store.logout()
+        XCTAssertFalse(fixture.store.localUnlocked)
+        let requests = fixture.stub.requests.count
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertEqual(checks, 2)
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertEqual(fixture.stub.requests.count, requests)
     }
 
     func testDisplayState503KeepsOtherFrameDataAvailableWithoutClaimingScreenReady() async {
@@ -255,25 +695,15 @@ final class AppStoreTests: XCTestCase {
         XCTAssertFalse(fixture.store.connected, "Actual HTTP transport failure must still show offline.")
     }
 
-    func testLANQRUsesExistingLoginWithoutPersistingItsPassword() async throws {
+    func testLANQRStoresOnlyInProtectedCredentialStoreAndNeverUserDefaults() async throws {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
-        let store = fixture.store
-        await store.loginFromLANQRCode(lanQR)
-        XCTAssertTrue(store.authenticated)
-        XCTAssertTrue(store.connected)
-        XCTAssertEqual(store.address, "http://192.168.1.120:8000")
-        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), store.address)
-        XCTAssertNil(fixture.defaults.string(forKey: "frameOwnerID"))
-        XCTAssertFalse(store.biometricEnabled)
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertTrue(fixture.store.credentialStored)
+        XCTAssertEqual(fixture.credentials.passwords[fixture.store.address], "DemoPass12345678")
         XCTAssertFalse(fixture.defaults.dictionaryRepresentation().description.contains("DemoPass12345678"))
         let request = try XCTUnwrap(fixture.stub.requests.first { $0.url?.path == "/api/auth/login" })
         XCTAssertEqual(request.url?.host, "192.168.1.120")
-        // A QR never opts into Keychain persistence, even on a biometric device.
-        do {
-            _ = try await store.vault.load(address: store.address)
-            XCTFail("The QR password must remain ephemeral")
-        } catch { XCTAssertTrue(error is VaultError) }
     }
 
     func testLANQRDoesNotPersistBeforeAuthenticationAndFailureKeepsItEphemeral() async {
@@ -298,26 +728,22 @@ final class AppStoreTests: XCTestCase {
         XCTAssertFalse(fixture.defaults.dictionaryRepresentation().description.contains("DemoPass12345678"))
     }
 
-    func testFailedLANQRPreservesSavedFrameAddressAndBiometricOptIn() async {
+    func testFailedLANQRPreservesSavedFrameAddressAndProtectedCredential() async {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
         let saved = "http://192.168.1.100:8000"
         fixture.defaults.set(saved, forKey: "frameAddress")
-        fixture.defaults.set(true, forKey: "biometricEnabled")
         fixture.store.address = saved
-        fixture.store.biometricEnabled = true
+        fixture.credentials.passwords[saved] = "previous-credential"
         let gate = fixture.stub.hold(host: "192.168.1.120", path: "/api/auth/login", method: "POST")
         let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
         await fulfillment(of: [gate.started], timeout: 3)
-        XCTAssertEqual(fixture.store.address, saved)
-        XCTAssertTrue(fixture.store.biometricEnabled)
         gate.release(status: 401)
         await login.value
         XCTAssertFalse(fixture.store.authenticated)
-        XCTAssertEqual(fixture.store.address, saved)
         XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), saved)
-        XCTAssertTrue(fixture.store.biometricEnabled)
-        XCTAssertTrue(fixture.defaults.bool(forKey: "biometricEnabled"))
+        XCTAssertEqual(fixture.credentials.passwords[saved], "previous-credential")
+        XCTAssertNil(fixture.credentials.passwords["http://192.168.1.120:8000"])
     }
 
     func testCancelledLANQRPreservesSavedFrameAndCannotOverwriteANewerLogin() async {
@@ -325,9 +751,7 @@ final class AppStoreTests: XCTestCase {
         defer { fixture.dispose() }
         let saved = "http://192.168.1.100:8000"
         fixture.defaults.set(saved, forKey: "frameAddress")
-        fixture.defaults.set(true, forKey: "biometricEnabled")
         fixture.store.address = saved
-        fixture.store.biometricEnabled = true
         let gate = fixture.stub.hold(host: "192.168.1.120", path: "/api/auth/login", method: "POST")
         let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
         await fulfillment(of: [gate.started], timeout: 3)
@@ -335,8 +759,6 @@ final class AppStoreTests: XCTestCase {
         XCTAssertFalse(fixture.store.connecting)
         XCTAssertEqual(fixture.store.address, saved)
         XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), saved)
-        XCTAssertTrue(fixture.store.biometricEnabled)
-        XCTAssertTrue(fixture.defaults.bool(forKey: "biometricEnabled"))
         // A late response from B must not roll a subsequent manual login back.
         await fixture.login("new-frame.local")
         gate.release()
@@ -346,27 +768,16 @@ final class AppStoreTests: XCTestCase {
         XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), fixture.store.address)
     }
 
-    func testSuccessfulLANQRAtSavedAddressDisablesTheOldBiometricCredential() async throws {
+    func testSuccessfulLANQRUpdatesOnlyItsOwnProtectedAccount() async throws {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
-        let saved = "http://192.168.1.120:8000"
-        fixture.defaults.set(saved, forKey: "frameAddress")
-        fixture.defaults.set(true, forKey: "biometricEnabled")
-        let edited = "http://192.168.1.222:8000"
-        fixture.store.address = edited
-        fixture.store.biometricEnabled = true
-        try fixture.seedStoredPassword(account: saved)
-        try fixture.seedStoredPassword(account: edited)
+        let saved = "http://192.168.1.120:8000", other = "http://192.168.1.222:8000"
+        fixture.credentials.passwords[saved] = "previous"
+        fixture.credentials.passwords[other] = "other-frame-secret"
         await fixture.store.loginFromLANQRCode(lanQR)
-        XCTAssertTrue(fixture.store.authenticated)
-        XCTAssertEqual(fixture.store.address, saved)
-        XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), saved)
-        XCTAssertFalse(fixture.store.biometricEnabled)
-        XCTAssertFalse(fixture.defaults.bool(forKey: "biometricEnabled"))
-        XCTAssertFalse(fixture.defaults.dictionaryRepresentation().description.contains("DemoPass12345678"))
-        XCTAssertEqual(fixture.storedPasswordStatus(account: saved), errSecItemNotFound)
-        XCTAssertEqual(fixture.storedPasswordStatus(account: edited), errSecSuccess,
-                       "A successful QR must only remove the credential for its authenticated endpoint.")
+        XCTAssertTrue(fixture.store.credentialStored)
+        XCTAssertEqual(fixture.credentials.passwords[saved], "DemoPass12345678")
+        XCTAssertEqual(fixture.credentials.passwords[other], "other-frame-secret")
     }
 
     func testLANQRRejectsInvalidInputBeforeChangingAddressOrMakingRequests() async {
@@ -388,18 +799,16 @@ final class AppStoreTests: XCTestCase {
         fixture.defaults.set(ownerID, forKey: "frameOwnerID")
         fixture.defaults.set("https://192.168.1.120:8443", forKey: "frameAddress")
         fixture.store.address = "https://192.168.1.120:8443"
-        fixture.store.biometricEnabled = true
         XCTAssertFalse(fixture.store.canScanLANLoginCode)
         await fixture.store.loginFromLANQRCode(lanQR)
         XCTAssertEqual(fixture.defaults.string(forKey: "frameOwnerID"), ownerID)
         XCTAssertEqual(fixture.defaults.string(forKey: "frameAddress"), "https://192.168.1.120:8443")
         XCTAssertEqual(fixture.store.address, "https://192.168.1.120:8443")
-        XCTAssertTrue(fixture.store.biometricEnabled)
         XCTAssertTrue(fixture.stub.requests.isEmpty)
         XCTAssertEqual(fixture.store.errorMessage, LANLoginCodeError.adoptedFrame.localizedDescription)
     }
 
-    func testLANQRDoesNotInterruptAnExistingSessionOrDemo() async {
+    func testLANQRDoesNotInterruptAnExistingSession() async {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
         await fixture.login("frame.local")
@@ -407,12 +816,6 @@ final class AppStoreTests: XCTestCase {
         await fixture.store.loginFromLANQRCode(lanQR)
         XCTAssertEqual(fixture.store.address, "http://frame.local:8000")
         XCTAssertEqual(fixture.stub.requests.count, count)
-        await fixture.store.logout(forget: false)
-        await fixture.store.enterDemo()
-        let demoID = fixture.store.sessionIdentity
-        await fixture.store.loginFromLANQRCode(lanQR)
-        XCTAssertTrue(fixture.store.isDemo)
-        XCTAssertEqual(fixture.store.sessionIdentity, demoID)
     }
 
     func testCancelledRefreshPreservesConnectionAndLoadedState() async throws {
@@ -529,7 +932,7 @@ final class AppStoreTests: XCTestCase {
         let unexpectedRetry = fixture.stub.hold(host: "frame.local", path: "/api/state")
         unexpectedRetry.started.isInverted = true
 
-        store.sceneActive(false)
+        store.sceneChanged(.background)
         refresh.cancel()
         await refresh.value
         await fulfillment(of: [unexpectedRetry.started], timeout: 0.2)
@@ -551,7 +954,6 @@ final class AppStoreTests: XCTestCase {
         await fulfillment(of: [cancelledGate.started], timeout: 3)
         await store.refresh()
 
-        store.sceneActive(false)
         await fixture.login("new-frame.local")
         fixture.enterForegroundWithoutMonitoring()
         let unexpectedRetry = fixture.stub.hold(host: "new-frame.local", path: "/api/state")
@@ -586,7 +988,6 @@ final class AppStoreTests: XCTestCase {
         _ = await store.image(for: photo)
         await Task.yield()
         XCTAssertEqual(fixture.stub.requests.count, before, "Foreground refreshes must not use the old cookie during rotation.")
-        store.sceneActive(false)
         gate.release()
         guard case .success = await changing.value else { return XCTFail("Expected successful rotation") }
         XCTAssertTrue(store.authenticated)
@@ -633,7 +1034,7 @@ final class AppStoreTests: XCTestCase {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
         await fixture.login("frame.local")
-        fixture.store.biometricEnabled = true
+        await fixture.store.login(password: "synthetic-test-password", rememberBiometric: true)
         let gate = fixture.stub.hold(host: "frame.local", path: "/api/auth/password", method: "POST")
         let changing = Task { await fixture.store.changePassword(current: "previous-test-password", new: "new-test-password") }
         await fulfillment(of: [gate.started], timeout: 3)
@@ -641,7 +1042,7 @@ final class AppStoreTests: XCTestCase {
         guard case .failure(let message) = await changing.value else { return XCTFail("Expected uncertain result") }
         XCTAssertTrue(message.contains("nouveau mot de passe"))
         XCTAssertFalse(fixture.store.authenticated)
-        XCTAssertFalse(fixture.store.biometricEnabled)
+        XCTAssertFalse(fixture.store.credentialStored)
         XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == "/api/auth/password" }.count, 1)
     }
 
@@ -654,23 +1055,15 @@ final class AppStoreTests: XCTestCase {
         XCTAssertFalse(fixture.stub.requests.contains { $0.url?.path == "/api/auth/password" })
     }
 
-    func testBiometricPreferenceIsPreservedUnlessExplicitlyDisabledAfterSuccessfulLogin() async throws {
+    func testSyntheticReconnectCannotDisableOrEraseAnExistingProtectedCredential() async {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
-        let store = fixture.store
+        fixture.credentials.passwords["http://saved-frame.local:8000"] = "saved-secret"
         await fixture.login("saved-frame.local")
-        store.biometricEnabled = true
-        await store.login(password: "synthetic-test-password")
-        XCTAssertTrue(store.biometricEnabled, "A biometric reconnect preserves the opted-in credential.")
-        let gate = fixture.stub.hold(host: "saved-frame.local", path: "/api/auth/login", method: "POST")
-        let rejected = Task { await store.login(password: "wrong", rememberBiometric: false) }
-        await fulfillment(of: [gate.started], timeout: 3)
-        gate.release(status: 401)
-        await rejected.value
-        XCTAssertTrue(store.biometricEnabled, "A rejected password must not replace the saved preference.")
-        await store.login(password: "synthetic-test-password", rememberBiometric: false)
-        XCTAssertTrue(store.authenticated)
-        XCTAssertFalse(store.biometricEnabled)
+        await fixture.store.login(password: "synthetic-test-password", rememberBiometric: false)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.credentialStored)
+        XCTAssertEqual(fixture.credentials.passwords["http://saved-frame.local:8000"], "saved-secret")
     }
 
     func testCancelledLoginCannotRestoreSessionAfterNewConnection() async throws {
@@ -860,21 +1253,32 @@ private final class StoreFixture {
     let stub: StoreStub
     let store: AppStore
 
-    init(totals: [String: Int] = [:], biometricCapability: (@MainActor () -> String?)? = nil,
-         saveBiometricPassword: (@MainActor (String, String) throws -> Void)? = nil) {
+    let credentials = TestCredentials()
+
+    init(totals: [String: Int] = [:], authenticateLocal: (@MainActor () async throws -> Void)? = nil,
+         saveCredential: (@MainActor (String, String) throws -> Void)? = nil,
+         loadCredential: (@MainActor (String) async throws -> String)? = nil) {
         let defaults = UserDefaults(suiteName: suite)!
         self.defaults = defaults
         let stub = StoreStub(totals: totals)
         self.stub = stub
+        let credentialMemory = self.credentials
         store = AppStore(defaults: defaults,
                          makeAPI: { InkyAPI(baseURL: $0, configuration: stub.configuration()) },
                          vault: BiometricVault(service: vaultService),
-                         biometricCapability: biometricCapability,
-                         saveBiometricPassword: saveBiometricPassword,
+                         authenticateLocal: authenticateLocal ?? {},
+                         invalidateAuthentication: {},
+                         saveCredential: { password, address in
+                             try saveCredential?(password, address)
+                             credentialMemory.passwords[address] = password
+                         },
+                         loadCredential: loadCredential ?? { address in
+                             guard let password = credentialMemory.passwords[address] else { throw VaultError.missing }
+                             return password
+                         },
+                         containsCredential: { credentialMemory.passwords[$0] != nil },
+                         authenticationName: { "code iPhone" },
                          monitorsEvents: false)
-        // Monitoring is covered by integration tests; protocol tests control every
-        // HTTP completion and must not contact a real WebSocket endpoint.
-        store.sceneActive(false)
     }
 
     func login(_ host: String) async {
@@ -892,28 +1296,33 @@ private final class StoreFixture {
         store.authenticated = authenticated
     }
 
-    func seedStoredPassword(account: String) throws {
-        // Non-biometric synthetic items let this regression verify account
-        // selection without a biometric prompt or a device passcode dependency.
-        let status = SecItemAdd([kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: vaultService, kSecAttrAccount as String: account,
-            kSecValueData as String: Data("SyntheticOldPassword".utf8)] as CFDictionary, nil)
-        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
-    }
-
-    func storedPasswordStatus(account: String) -> OSStatus {
-        SecItemCopyMatching([kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: vaultService, kSecAttrAccount as String: account] as CFDictionary, nil)
-    }
+    func seedStoredPassword(account: String) throws { credentials.passwords[account] = "SyntheticOldPassword" }
+    func storedPasswordStatus(account: String) -> OSStatus { credentials.passwords[account] == nil ? errSecItemNotFound : errSecSuccess }
 
     func dispose() {
-        store.sceneActive(false)
+        store.lock()
         store.api?.clearSession()
         defaults.removePersistentDomain(forName: suite)
         SecItemDelete([kSecClass as String: kSecClassGenericPassword,
                        kSecAttrService as String: vaultService] as CFDictionary)
         stub.dispose()
     }
+}
+
+@MainActor
+private final class TestCredentials { var passwords: [String: String] = [:] }
+
+@MainActor
+private final class LocalAuthGate {
+    let started = XCTestExpectation(description: "Local authentication started")
+    private var continuation: CheckedContinuation<Void, Error>?
+    func wait() async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            started.fulfill()
+        }
+    }
+    func release() { continuation?.resume(); continuation = nil }
 }
 
 private final class StoreGate: @unchecked Sendable {

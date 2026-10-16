@@ -13,7 +13,7 @@ final class InkyStudioUITests: XCTestCase {
         app = XCUIApplication()
         // Resetting a protected resource terminates an already-running app.
         if resetCamera { app.resetAuthorizationStatus(for: .camera) }
-        app.launchArguments = ["--uitesting", "--legacy-login-fixture", "--frame-address", fixtureURL.absoluteString]
+        app.launchArguments = ["--uitesting", "--legacy-login-fixture", "--local-auth-fixture", "success", "--frame-address", fixtureURL.absoluteString]
         app.launch()
         let teardown: @MainActor @Sendable () -> Void = { [weak self] in
             self?.finish()
@@ -32,57 +32,28 @@ final class InkyStudioUITests: XCTestCase {
         app = nil
     }
 
-    /// Requires Xcode 27 and the fixture's opt-in --biometric-device mode.
-    func testFaceIDReconnectAndPasswordFallback() async throws {
-        let configurationRequest = URLRequest(url: fixtureURL.appendingPathComponent("__test/biometrics"), timeoutInterval: 5)
-        let (configuration, configurationResponse) = try await URLSession.shared.data(for: configurationRequest)
-        XCTAssertEqual((configurationResponse as? HTTPURLResponse)?.statusCode, 200)
-        let enabled = (try JSONSerialization.jsonObject(with: configuration) as? [String: Bool])?["enabled"] == true
-        try XCTSkipUnless(enabled, "Use mock-server.py --biometric-device <booted-simulator-UDID> for Face ID.")
+    /// The explicit success fixture tests UI gating and cookie reuse, not physical Face ID.
+    func testLocalLockHidesAllTabsUntilExplicitUnlock() {
         launchFixtureApp()
-        let remember = app.switches["Activer Face ID"]
-        XCTAssertTrue(remember.waitForExistence(timeout: 10), "Enrolled Face ID must be offered during the first connection.")
-        remember.tap()
-        XCTAssertEqual(remember.value as? String, "1")
         login()
+        selectTab("queue", fallback: "File")
+        XCTAssertTrue(element("queue.row.a11050000002").waitForExistence(timeout: 5))
         selectTab("settings", fallback: "Réglages")
-        let biometric = app.switches["settings.biometric"]
-        scrollTo(biometric)
-        XCTAssertEqual(biometric.value as? String, "1", "The opted-in password must be saved in the biometric Keychain.")
-        let logout = app.buttons["settings.logout"]
-        scrollTo(logout)
-        logout.tap()
-        let faceID = app.buttons["connection.biometric"]
-        XCTAssertTrue(faceID.waitForExistence(timeout: 10))
-        capture("04 Connexion Face ID")
-        faceID.tap()
-        // First Keychain access may ask for the app's Face ID permission.
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let permission = springboard.alerts.buttons["OK"]
-        if permission.waitForExistence(timeout: 3) { permission.tap() }
-        var request = URLRequest(url: fixtureURL.appendingPathComponent("__test/biometrics"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Data(#"{"event":"success"}"#.utf8)
-        request.timeoutInterval = 15
-        let (_, matchResponse) = try await URLSession.shared.data(for: request)
-        XCTAssertEqual((matchResponse as? HTTPURLResponse)?.statusCode, 200)
-        XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10), "A matching simulated face must retrieve the Keychain password and reconnect to the frame.")
-        selectTab("settings", fallback: "Réglages")
-        scrollTo(logout)
-        logout.tap()
-        XCTAssertTrue(faceID.waitForExistence(timeout: 10))
-        app.buttons["Utiliser le mot de passe"].tap()
-        XCTAssertTrue(app.secureTextFields["connection.password"].waitForExistence(timeout: 5))
-        login()
-        selectTab("settings", fallback: "Réglages")
-        scrollTo(biometric)
-        biometric.tap()
-        XCTAssertEqual(biometric.value as? String, "0")
-        scrollTo(logout)
-        logout.tap()
-        XCTAssertTrue(app.secureTextFields["connection.password"].waitForExistence(timeout: 10))
-        XCTAssertFalse(faceID.exists, "Disabling Face ID must remove the saved login action.")
+        let lock = app.buttons["settings.lock"]
+        scrollTo(lock)
+        lock.tap()
+        let unlock = app.buttons["lock.unlock"]
+        XCTAssertTrue(unlock.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        XCTAssertFalse(app.buttons["frame.next"].exists)
+        XCTAssertFalse(app.buttons["connection.scanLANQR"].exists)
+        capture("04 Verrou local")
+        unlock.tap()
+        XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10))
+        selectTab("queue", fallback: "File")
+        XCTAssertTrue(element("queue.row.a11050000002").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["2 photos dans la file"].exists)
+        XCTAssertFalse(app.secureTextFields["connection.password"].exists)
     }
 
     func testImportPhotoCropAndUpload() {
@@ -129,7 +100,7 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["3 photos dans la file"].waitForExistence(timeout: 10), "The newly cropped PNG must join the queue.")
     }
 
-    func testInvalidPasswordThenConnectAndVisitAllTabs() {
+    func testRejectedSyntheticCredentialThenConnectAndVisitAllTabs() {
         launchFixtureApp()
         let password = app.secureTextFields["connection.password"]
         XCTAssertTrue(password.waitForExistence(timeout: 10))
@@ -144,7 +115,6 @@ final class InkyStudioUITests: XCTestCase {
         password.typeText("test-password")
         app.buttons["connection.submit"].tap()
         XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10))
-        dismissPasswordSavePrompt()
         capture("01 Cadre")
 
         selectTab("queue", fallback: "File")
@@ -183,7 +153,7 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(element("queue.row.c0a570000001").waitForExistence(timeout: 10), "A displayed photo can be put back in the queue.")
     }
 
-    func testSettingsSaveAndLogout() {
+    func testSettingsSaveAndLocalLock() {
         launchFixtureApp()
         login()
         selectTab("settings", fallback: "Réglages")
@@ -195,16 +165,12 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(save.isHittable)
         save.tap()
         XCTAssertTrue(app.staticTexts["Réglages enregistrés."].waitForExistence(timeout: 10))
-        let logout = app.buttons["settings.logout"]
+        let logout = app.buttons["settings.lock"]
         scrollTo(logout)
         XCTAssertTrue(logout.isHittable)
         logout.tap()
-        if app.alerts.firstMatch.waitForExistence(timeout: 1) {
-            let confirm = app.alerts.buttons.matching(NSPredicate(format: "label CONTAINS[cd] %@", "déconnecter")).firstMatch
-            if confirm.exists { confirm.tap() }
-        }
-        XCTAssertTrue(app.secureTextFields["connection.password"].waitForExistence(timeout: 10))
-        XCTAssertFalse(element("frame.next").exists, "Authenticated actions must disappear after logout.")
+        XCTAssertTrue(app.buttons["lock.unlock"].waitForExistence(timeout: 5))
+        XCTAssertFalse(element("frame.next").exists, "Authenticated actions must disappear behind the local lock.")
     }
 
     func testSettingsSaveKeepsAccessibleLabelWhileSaving() {
@@ -248,6 +214,13 @@ final class InkyStudioUITests: XCTestCase {
         configureFixture("__test/availability", body: ["available": false, "mode": "transport"])
         defer { configureFixture("__test/availability", body: ["available": true]) }
         app.activate()
+        let unlock = app.buttons["lock.unlock"]
+        XCTAssertTrue(unlock.waitForExistence(timeout: 5))
+        XCTAssertFalse(firstPhoto.exists, "Private cached data must stay hidden until local unlock.")
+        unlock.tap()
+        // Unlock returns to the frame tab; explicitly revisit the preserved queue.
+        XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10))
+        selectTab("queue", fallback: "File")
         let offline = app.staticTexts["Raspberry injoignable · données précédentes"]
         XCTAssertTrue(offline.waitForExistence(timeout: 10), "Returning offline must show the cached-data banner.")
         XCTAssertTrue(firstPhoto.exists)
@@ -278,7 +251,7 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(app.buttons["queue.edit"].isEnabled)
         XCTAssertFalse(app.secureTextFields["connection.password"].exists, "Recovery must use the existing session without logging in again.")
         selectTab("frame", fallback: "Cadre")
-        XCTAssertTrue(app.staticTexts["Raspberry connecté"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Cadre connecté"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["frame.next"].isEnabled)
     }
 
@@ -298,7 +271,7 @@ final class InkyStudioUITests: XCTestCase {
     func testUnavailableFrameShowsRecoverableError() {
         launchFixtureApp()
         app.terminate()
-        app.launchArguments = ["--uitesting", "--legacy-login-fixture", "--frame-address", "http://127.0.0.1:8766"]
+        app.launchArguments = ["--uitesting", "--legacy-login-fixture", "--local-auth-fixture", "success", "--frame-address", "http://127.0.0.1:8766"]
         app.launch()
         let password = app.secureTextFields["connection.password"]
         XCTAssertTrue(password.waitForExistence(timeout: 10))
@@ -319,32 +292,6 @@ final class InkyStudioUITests: XCTestCase {
         password.typeText("test-password")
         app.buttons["connection.submit"].tap()
         XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10), "Login must reveal the frame dashboard.")
-        dismissPasswordSavePrompt()
-    }
-
-    private func dismissPasswordSavePrompt() {
-        if #available(iOS 27, *) {
-            let title = NSPredicate(format: "label BEGINSWITH %@", "Enregistrer le mot de passe")
-            let sheet = app.sheets.matching(title).firstMatch
-            let systemSheet = XCUIApplication(bundleIdentifier: "com.apple.springboard").sheets.matching(title).firstMatch
-            // The app-owned remote sheet can arrive while we are checking
-            // SpringBoard. Finish discovery first, then resolve both owners
-            // again so a late app sheet is not skipped.
-            _ = sheet.waitForExistence(timeout: 6) || systemSheet.waitForExistence(timeout: 2)
-            for prompt in [sheet, systemSheet] {
-                guard prompt.exists else { continue }
-                // The remote password UI can ignore a tap while it finishes
-                // presenting. Resolve the same dismiss button again, once.
-                for _ in 0..<2 {
-                    let later = prompt.buttons["Plus tard"]
-                    let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: later)
-                    guard XCTWaiter.wait(for: [hittable], timeout: 3) == .completed else { break }
-                    later.tap()
-                    if prompt.waitForNonExistence(timeout: 3) { return }
-                }
-            }
-            XCTAssertFalse(sheet.exists || systemSheet.exists, "The password-save sheet must close before testing app controls.")
-        }
     }
 
     func testPhotoSourceCameraPermissionAndCancel() {
@@ -407,52 +354,18 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertLessThanOrEqual(add.frame.maxY, app.tabBars.firstMatch.frame.minY + 1, "The main action must not be covered by the tab bar.")
     }
 
-    func testChangeFramePasswordAndReconnect() {
+    func testSettingsExposeRequiredLocalProtectionWithoutPasswordOrConsentControls() {
         launchFixtureApp()
         login()
         selectTab("settings", fallback: "Réglages")
-        let change = app.buttons["settings.password"]
-        scrollTo(change)
-        XCTAssertTrue(change.isHittable)
-        change.tap()
-        XCTAssertTrue(app.secureTextFields["password.current"].waitForExistence(timeout: 5))
-        capture("08a Changer le mot de passe")
-        for field in ["current", "new", "confirmation"] {
-            let input = app.secureTextFields["password.\(field)"]
-            XCTAssertTrue(input.waitForExistence(timeout: 5))
-            input.tap(); input.typeText("test-password")
-        }
-        let save = app.buttons["password.save"]
-        let unchanged = app.staticTexts["password.unchanged"]
-        XCTAssertTrue(unchanged.waitForExistence(timeout: 5))
-        XCTAssertFalse(save.isEnabled, "Keeping the same password must explain why saving is unavailable.")
-        // The keyboard's Done action must obey the same validation as the button.
-        app.secureTextFields["password.confirmation"].typeText("\n")
-        XCTAssertFalse(app.staticTexts["password.success"].exists)
-        XCTAssertFalse(app.staticTexts["password.error"].exists)
-        scrollTo(unchanged)
-        capture("08b Mot de passe identique expliqué")
-        for field in ["new", "confirmation"] {
-            let input = app.secureTextFields["password.\(field)"]
-            input.tap()
-            input.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "test-password".count))
-            input.typeText("my-new-frame-password")
-        }
-        XCTAssertFalse(unchanged.exists)
-        scrollTo(save)
-        XCTAssertTrue(save.isEnabled)
-        save.tap()
-        XCTAssertTrue(app.staticTexts["password.success"].waitForExistence(timeout: 10))
-        capture("08 Mot de passe personnalisé")
-        app.buttons["Terminer"].tap()
-        let logout = app.buttons["settings.logout"]
-        scrollTo(logout)
-        logout.tap()
-        let password = app.secureTextFields["connection.password"]
-        XCTAssertTrue(password.waitForExistence(timeout: 5))
-        password.tap(); password.typeText("my-new-frame-password")
-        app.buttons["connection.submit"].tap()
-        XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10))
+        let lock = app.buttons["settings.lock"]
+        scrollTo(lock)
+        XCTAssertTrue(lock.isHittable)
+        XCTAssertFalse(app.switches["settings.biometric"].exists)
+        XCTAssertFalse(app.buttons["settings.password"].exists)
+        XCTAssertFalse(app.secureTextFields["password.current"].exists)
+        XCTAssertFalse(app.buttons["connection.enableLANBiometrics"].exists)
+        capture("08 Protection iPhone obligatoire")
     }
 
     private func element(_ identifier: String) -> XCUIElement {
