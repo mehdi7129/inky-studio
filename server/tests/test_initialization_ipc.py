@@ -65,6 +65,8 @@ def serve():
         listener.settimeout(0.05)
         stop = threading.Event()
         requests, raw_requests, errors = [], [], []
+        active = set()
+        active_lock = threading.Lock()
 
         def run():
             while not stop.is_set():
@@ -74,9 +76,16 @@ def serve():
                     continue
                 except OSError:
                     return
+                with active_lock:
+                    if stop.is_set():
+                        connection.close()
+                        return
+                    active.add(connection)
                 try:
                     with connection:
-                        connection.settimeout(4)
+                        # A valid OS proof can occupy up to ten seconds before
+                        # the client sends its single request.
+                        connection.settimeout(16)
                         raw = bytearray()
                         while not raw.endswith(b"\n") and len(raw) <= ipc.MAX_REQUEST_BYTES:
                             chunk = connection.recv(1025)
@@ -91,13 +100,18 @@ def serve():
                 except (BrokenPipeError, ConnectionResetError):
                     pass  # Client may reject or hit its total deadline first.
                 except BaseException as exc:
-                    errors.append(exc)
+                    if not stop.is_set():
+                        errors.append(exc)
+                finally:
+                    with active_lock:
+                        active.discard(connection)
 
         thread = threading.Thread(target=run)
         thread.start()
         server = SimpleNamespace(path=path, requests=requests, raw_requests=raw_requests,
                                  errors=errors, thread=thread, stop=stop,
-                                 listener=listener, directory=directory)
+                                 listener=listener, directory=directory,
+                                 active=active, active_lock=active_lock)
         servers.append(server)
         return server
 
@@ -105,6 +119,13 @@ def serve():
     for server in servers:
         server.stop.set()
         server.listener.close()
+        with server.active_lock:
+            for connection in server.active:
+                try:
+                    connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                connection.close()
         server.thread.join(4)
         server.directory.cleanup()
         assert not server.thread.is_alive()
@@ -135,6 +156,81 @@ def test_every_operation_uses_a_new_connection_and_request_id(serve, root_peer):
     client.inspect_initialization()
     assert len(server.requests) == len(root_peer) == 2
     assert server.requests[0]["id"] != server.requests[1]["id"]
+
+
+def test_default_deadline_matches_shared_fifteen_second_budget():
+    assert VECTORS["deadline_seconds"] == ipc.DEADLINE_SECONDS == 15
+
+
+def test_valid_delayed_peer_guard_retains_budget_for_one_request(serve, root_peer):
+    """Real AF_UNIX exchange, portable proof double; no Linux UID qualification."""
+    events = []
+
+    @contextmanager
+    def guard(connection):
+        assert root_peer == [connection.fileno()]
+        time.sleep(4)
+        events.append("verified")
+        try:
+            yield
+        finally:
+            assert connection.fileno() == -1
+            events.append("released")
+
+    server = serve(lambda connection, request: connection.sendall(encode(success(request))))
+    started = time.monotonic()
+    assert ipc.InitializationIPCClient(server.path, peer_guard=guard).inspect_initialization() == {"status": "authorized"}
+    assert 4 <= time.monotonic() - started < 6
+    assert len(server.requests) == len(root_peer) == 1
+    assert events == ["verified", "released"]
+
+
+@pytest.mark.parametrize("begin", [False, True])
+def test_peer_guard_exhausting_budget_sends_no_request(serve, root_peer, monkeypatch, begin):
+    monkeypatch.setattr(ipc, "DEADLINE_SECONDS", 0.1)
+    events = []
+
+    @contextmanager
+    def guard(connection):
+        time.sleep(0.2)
+        events.append("verified")
+        try:
+            yield
+        finally:
+            assert connection.fileno() == -1
+            events.append("released")
+
+    server = serve(lambda *_: pytest.fail("An exhausted proof must precede request submission"))
+    client = ipc.InitializationIPCClient(server.path, peer_guard=guard)
+    with pytest.raises(ipc.InitializationIPCError) as caught:
+        client.begin_initialization(INTENT) if begin else client.inspect_initialization()
+    assert caught.value.code == "unavailable"
+    assert not caught.value.begin_submitted and not caught.value.uncertain
+    assert events == ["verified", "released"]
+    assert len(root_peer) == 1 and not server.requests
+
+
+@pytest.mark.parametrize("begin", [False, True])
+def test_peer_guard_and_response_share_one_absolute_budget(serve, root_peer, monkeypatch, begin):
+    monkeypatch.setattr(ipc, "DEADLINE_SECONDS", 0.3)
+
+    @contextmanager
+    def guard(_connection):
+        time.sleep(0.2)
+        yield
+
+    def respond(connection, request):
+        time.sleep(0.2)
+        connection.sendall(encode(success(request)))
+
+    server = serve(respond)
+    client = ipc.InitializationIPCClient(server.path, peer_guard=guard)
+    with pytest.raises(ipc.InitializationIPCError) as caught:
+        client.begin_initialization(INTENT) if begin else client.inspect_initialization()
+    # Resetting the deadline after proof would incorrectly accept this response.
+    assert caught.value.code == ("initialization_uncertain" if begin else "unavailable")
+    assert caught.value.begin_submitted is begin and caught.value.uncertain is begin
+    assert len(server.requests) == len(root_peer) == 1
 
 
 @pytest.mark.parametrize("error", VECTORS["errors"], ids=lambda item: item["error"])
@@ -300,7 +396,8 @@ def test_missing_service_does_not_submit_begin(tmp_path):
     assert not caught.value.begin_submitted and not caught.value.uncertain
 
 
-def test_dribbling_bytes_cannot_extend_the_total_deadline(serve, root_peer):
+def test_dribbling_bytes_cannot_extend_the_total_deadline(serve, root_peer, monkeypatch):
+    monkeypatch.setattr(ipc, "DEADLINE_SECONDS", 0.3)
     def dribble(connection, _request):
         for _ in range(100):
             connection.sendall(b" ")
@@ -311,8 +408,7 @@ def test_dribbling_bytes_cannot_extend_the_total_deadline(serve, root_peer):
     with pytest.raises(ipc.InitializationIPCError) as caught:
         ipc.InitializationIPCClient(server.path).begin_initialization(INTENT)
     elapsed = time.monotonic() - started
-    assert VECTORS["deadline_seconds"] == ipc.DEADLINE_SECONDS == 3
-    assert 2.5 <= elapsed < 4
+    assert 0.25 <= elapsed < 1
     assert caught.value.uncertain and caught.value.begin_submitted
     assert len(server.requests) == 1
 
@@ -328,16 +424,17 @@ def test_response_is_not_accepted_until_eof_and_rejects_late_bytes(serve, root_p
         ipc.InitializationIPCClient(server.path).inspect_initialization()
 
 
-def test_complete_response_without_eof_still_expires(serve, root_peer):
+def test_complete_response_without_eof_still_expires(serve, root_peer, monkeypatch):
+    monkeypatch.setattr(ipc, "DEADLINE_SECONDS", 0.3)
     def respond(connection, request):
         connection.sendall(encode(success(request)))
-        time.sleep(3.2)
+        time.sleep(0.5)
 
     server = serve(respond)
     started = time.monotonic()
     with pytest.raises(ipc.InitializationIPCError) as caught:
         ipc.InitializationIPCClient(server.path).begin_initialization(INTENT)
-    assert 2.5 <= time.monotonic() - started < 4
+    assert 0.25 <= time.monotonic() - started < 1
     assert caught.value.uncertain and caught.value.begin_submitted
     assert len(server.requests) == 1
 
