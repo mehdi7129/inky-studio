@@ -10,7 +10,7 @@ import json
 import os
 import sqlite3
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import copy_context
 from types import SimpleNamespace
 from uuid import uuid4
@@ -180,6 +180,37 @@ def assert_closed(harness):
     assert len(harness.admission.acquisitions) == len(harness.admission.releases)
 
 
+async def test_standalone_phase_a_acquires_only_its_owned_lease(harness, monkeypatch):
+    load, imports = factory_writer._installed_runtime, []
+
+    def installed():
+        imports.append(True)
+        return load()
+
+    monkeypatch.setattr(factory_writer, "_installed_runtime", installed)
+    await terminal(run(harness))
+    assert_closed(harness)
+    assert len(harness.admission.acquisitions) == 1
+    assert len(imports) == 1
+
+
+async def test_owned_phase_a_lease_is_independent_of_live_caller(harness):
+    with factory_writer.main_writer_guard() as caller:
+        def runtime_factory(result, controller, verify):
+            owned = factory_writer.validate_inherited_main_lease()
+            assert owned is harness.admission.acquisitions[-1] and owned is not caller
+            caller.check()
+            return harness.runtime_factory(result, controller, verify)
+
+        await terminal(run(harness, runtime_factory=runtime_factory))
+        assert len(harness.admission.acquisitions) == 2
+        assert len(harness.admission.releases) == 1
+        assert factory_writer.validate_inherited_main_lease() is caller
+        assert not harness.admission.child_available()
+        caller.check()
+    assert_closed(harness)
+
+
 async def test_prepares_once_and_serves_same_loop_then_exits_pending(harness):
     before_credentials = (harness.data / "credentials.json").read_bytes()
     await terminal(run(harness))
@@ -225,21 +256,21 @@ async def test_legacy_refuses_without_importing_os_or_selecting(tmp_path, monkey
     ), "factory_runtime_refused")
 
 
-@pytest.mark.parametrize("failure", ["outer", "owned"])
-async def test_guard_refusal_precedes_coordinator_and_hardware(harness, monkeypatch, failure):
-    load, calls = factory_writer._installed_runtime, []
+@pytest.mark.parametrize("inherited", [False, True])
+async def test_owned_guard_refusal_precedes_coordinator_and_hardware(harness, monkeypatch, inherited):
+    calls = []
 
     def installed():
         calls.append(True)
-        if failure == "outer" or len(calls) == 2:
-            raise ValueError("private-guard-secret")
-        return load()
+        raise ValueError("private-guard-secret")
 
-    monkeypatch.setattr(factory_writer, "_installed_runtime", installed)
-    before = snapshot(harness.configured.root)
-    await terminal(run(harness), "factory_runtime_refused")
-    assert not harness.events and not harness.prepared and not harness.configured.adapter.inspect_calls
-    assert snapshot(harness.configured.root) == before
+    with (factory_writer.main_writer_guard() if inherited else nullcontext()):
+        monkeypatch.setattr(factory_writer, "_installed_runtime", installed)
+        before = snapshot(harness.configured.root)
+        await terminal(run(harness), "factory_runtime_refused")
+        assert calls == [True]
+        assert not harness.events and not harness.prepared and not harness.configured.adapter.inspect_calls
+        assert snapshot(harness.configured.root) == before
     assert_closed(harness)
 
 
@@ -249,15 +280,22 @@ async def test_closed_inherited_guard_refuses_before_owned_start(harness):
     task = asyncio.create_task(run(harness), context=context)
     await terminal(task, "factory_runtime_refused")
     assert not harness.events and not harness.configured.adapter.inspect_calls
+    assert len(harness.admission.acquisitions) == 1
     assert_closed(harness)
 
 
-async def test_changed_inherited_environment_refuses_before_owned_start(harness, monkeypatch):
-    with factory_writer.main_writer_guard():
-        context = copy_context()
-    monkeypatch.setenv("INKYOS_WRITER_ROLE", "helper")
-    await terminal(asyncio.create_task(run(harness), context=context), "factory_runtime_refused")
-    assert not harness.events and not harness.configured.adapter.inspect_calls
+@pytest.mark.parametrize("name,value", [("INKYOS_WRITER_UNKNOWN", ""),
+                                        ("INKYOS_WRITER_ROLE", "helper"),
+                                        ("INKY_STUDIO_FACTORY_REQUIRED", "")])
+async def test_changed_inherited_environment_refuses_before_owned_start(harness, monkeypatch, name, value):
+    with factory_writer.main_writer_guard() as caller:
+        monkeypatch.setenv(name, value)
+        caller.check()
+        await terminal(run(harness), "factory_runtime_refused")
+        caller.check()
+        assert len(harness.admission.acquisitions) == 1
+        assert not harness.events and not harness.configured.adapter.inspect_calls
+        assert not harness.admission.child_available()
     assert_closed(harness)
 
 
@@ -590,7 +628,8 @@ async def test_store_cleanup_error_after_cancel_is_observed_before_lease_closes(
 
 
 @pytest.mark.parametrize("early_stop", [False, True])
-async def test_final_validation_rejects_epoch_change_in_last_store_drain(harness, monkeypatch, early_stop):
+@pytest.mark.parametrize("failure", ["epoch", "unknown_environment", "writer_environment", "lease"])
+async def test_final_validation_rejects_invalid_state_in_last_store_drain(harness, monkeypatch, early_stop, failure):
     def prepare(config, **hooks):
         result = harness.prepare(config, **hooks)
         original = result.ownership.close
@@ -598,8 +637,16 @@ async def test_final_validation_rejects_epoch_change_in_last_store_drain(harness
         def close():
             assert not harness.admission.child_available()
             original()
-            path = harness.data / "credentials.json"
-            path.write_text(json.dumps(json.loads(path.read_text()) | {"hash": "f" * 64}))
+            lease = harness.admission.acquisitions[-1]
+            if failure == "epoch":
+                path = harness.data / "credentials.json"
+                path.write_text(json.dumps(json.loads(path.read_text()) | {"hash": "f" * 64}))
+            elif failure == "lease":
+                lease.close()
+            else:
+                name = "INKYOS_WRITER_UNKNOWN" if failure == "unknown_environment" else "INKYOS_WRITER_ROLE"
+                monkeypatch.setenv(name, "helper")
+                lease.check()  # The environment changed while the owned descriptor stayed live.
 
         monkeypatch.setattr(result.ownership, "close", close)
         if early_stop:

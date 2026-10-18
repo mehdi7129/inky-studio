@@ -12,6 +12,7 @@ import json
 import os
 import threading
 from contextlib import contextmanager
+from contextvars import copy_context
 from types import SimpleNamespace
 
 import pytest
@@ -38,6 +39,17 @@ def test_legacy_guard_never_imports_os(monkeypatch):
     monkeypatch.setattr(writer, "_installed_runtime", lambda: pytest.fail("OS imported in legacy"))
     with writer.main_writer_guard() as lease:
         assert lease is None
+
+
+@pytest.mark.parametrize("factory_signal", [False, True])
+def test_validate_absent_inherited_lease_never_acquires_or_imports(monkeypatch, factory_signal):
+    if factory_signal:
+        monkeypatch.setenv("INKY_STUDIO_FACTORY_REQUIRED", "1")
+    monkeypatch.setattr(writer, "_installed_runtime", lambda: pytest.fail("Validation imported OS"))
+    monkeypatch.setattr(writer, "_environment_snapshot", lambda: pytest.fail("Absent lease imposed factory policy"))
+    before = dict(copy_context())
+    assert writer.validate_inherited_main_lease() is None
+    assert dict(copy_context()) == before
 
 
 @pytest.mark.parametrize("signal", ["INKY_STUDIO_FACTORY_REQUIRED", *environment.WRITER_ENV_NAMES,
@@ -182,6 +194,43 @@ def test_nested_entries_reuse_owned_lease_and_preserve_body_exception(real_lease
                 assert inner is outer
                 raise factory_runtime.FactoryRuntimeError("factory_runtime_pending")
     assert len(real_lease.acquisitions) == len(real_lease.releases) == 1
+    assert real_lease.available()
+
+
+def test_inherited_validation_reuses_live_lease_without_acquisition_or_context_change(real_lease, monkeypatch):
+    with writer.main_writer_guard() as current:
+        monkeypatch.setattr(writer, "_installed_runtime", lambda: pytest.fail("Validation reacquired authority"))
+        before = dict(copy_context())
+        assert writer.validate_inherited_main_lease() is current
+        assert dict(copy_context()) == before
+        assert len(real_lease.acquisitions) == 1 and not real_lease.available()
+        current.check()
+    assert real_lease.available()
+
+
+def test_inherited_validation_refuses_closed_lease_without_environment_change(real_lease, monkeypatch):
+    with writer.main_writer_guard():
+        inherited = copy_context()
+    monkeypatch.setattr(writer, "_installed_runtime", lambda: pytest.fail("Closed lease reacquired authority"))
+    with pytest.raises(writer.FactoryWriterRefused, match="^factory_runtime_refused$") as caught:
+        inherited.run(writer.validate_inherited_main_lease)
+    assert caught.value.__cause__ is None
+    assert len(real_lease.acquisitions) == len(real_lease.releases) == 1
+
+
+@pytest.mark.parametrize("name,value", [("INKYOS_WRITER_UNKNOWN", ""),
+                                        ("INKYOS_WRITER_ROLE", "helper"),
+                                        ("INKY_STUDIO_FACTORY_REQUIRED", "")])
+def test_inherited_validation_refuses_changed_environment_with_live_lease(real_lease, monkeypatch, name, value):
+    with writer.main_writer_guard() as current:
+        monkeypatch.setenv(name, value)
+        monkeypatch.setattr(writer, "_installed_runtime", lambda: pytest.fail("Changed lease reacquired authority"))
+        current.check()  # Isolate the environment refusal from a closed descriptor.
+        with pytest.raises(writer.FactoryWriterRefused, match="^factory_runtime_refused$") as caught:
+            writer.validate_inherited_main_lease()
+        assert caught.value.__cause__ is None
+        current.check()
+        assert len(real_lease.acquisitions) == 1 and not real_lease.available()
     assert real_lease.available()
 
 

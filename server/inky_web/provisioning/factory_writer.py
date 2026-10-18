@@ -115,9 +115,8 @@ def _environment_snapshot() -> tuple:
     return tuple((name, os.environ.get(name)) for name in WRITER_ENV_NAMES)
 
 
-@contextmanager
-def main_writer_guard() -> Iterator[Any | None]:
-    """Keep one main lease through startup, admitted workers and final drain."""
+def validate_inherited_main_lease() -> Any | None:
+    """Check an existing lease only; never acquire or import OS authority."""
     current = _main_lease.get()
     if current is not None:
         try:
@@ -125,6 +124,14 @@ def main_writer_guard() -> Iterator[Any | None]:
             current.check()
         except Exception:
             raise FactoryWriterRefused() from None
+    return current
+
+
+@contextmanager
+def main_writer_guard() -> Iterator[Any | None]:
+    """Keep one main lease through startup, admitted workers and final drain."""
+    current = validate_inherited_main_lease()
+    if current is not None:
         yield current
         return
     if not factory_signals_present():

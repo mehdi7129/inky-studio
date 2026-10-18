@@ -19,7 +19,7 @@ from inky_web.inky.display import DisplayController
 from .connected_peer import ConnectedPeerGuard
 from .factory_runtime import FactoryRuntimeError, _verified_epoch, prepare_factory, select_runtime
 from .factory_session import FactorySessionRuntime, serve_prepared_factory
-from .factory_writer import main_writer_guard
+from .factory_writer import main_writer_guard, validate_inherited_main_lease
 from .first_boot import FirstBootResult
 
 
@@ -282,15 +282,12 @@ async def serve_factory_phase_a(
     try:
         if not callable(admission_check) or not callable(initialization_peer_guard):
             raise FactoryRuntimeError()
-        with main_writer_guard() as caller_lease:
-            if caller_lease is None:
-                raise FactoryRuntimeError()
-            caller_lease.check()
-            task = asyncio.create_task(_serve_owned(
-                Path(data_directory), lifetime, display_factory, runtime_factory,
-                admission_check, initialization_peer_guard,
-            ), context=Context())
-            await _drain(task, lifetime.close_admission)
+        validate_inherited_main_lease()
+        task = asyncio.create_task(_serve_owned(
+            Path(data_directory), lifetime, display_factory, runtime_factory,
+            admission_check, initialization_peer_guard,
+        ), context=Context())
+        await _drain(task, lifetime.close_admission)
     except FactoryRuntimeError:
         raise
     except Exception:
