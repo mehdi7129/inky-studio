@@ -31,6 +31,7 @@ def helper_socket():
         listener.settimeout(0.05)
         stop = threading.Event()
         accepted = threading.Event()
+        request_read = threading.Event()
         raw_requests, errors = [], []
 
         def run():
@@ -52,6 +53,7 @@ def helper_socket():
                                 break
                             raw.extend(chunk)
                         raw_requests.append(bytes(raw))
+                        request_read.set()
                         if raw:
                             handler(connection, json.loads(raw))
                 except (BrokenPipeError, ConnectionResetError):
@@ -63,7 +65,7 @@ def helper_socket():
         thread.start()
         server = SimpleNamespace(path=path, listener=listener, stop=stop, thread=thread,
                                  directory=directory, raw_requests=raw_requests,
-                                 errors=errors, accepted=accepted)
+                                 errors=errors, accepted=accepted, request_read=request_read)
         servers.append(server)
         return server
 
@@ -232,9 +234,8 @@ async def test_guard_remains_live_while_complete_line_waits_for_eof(helper_socke
 
 
 @pytest.mark.parametrize("mode", ["sync", "async"])
-async def test_attested_complete_line_without_eof_expires_under_existing_deadline(helper_socket, monkeypatch, mode):
-    assert network._SYNC_DEADLINE_SECONDS == 15 and network._ASYNC_DEADLINE_SECONDS == 20
-    name = "_SYNC_DEADLINE_SECONDS" if mode == "sync" else "_ASYNC_DEADLINE_SECONDS"
+async def test_attested_complete_line_without_eof_expires_under_attested_deadline(helper_socket, monkeypatch, mode):
+    name = "_ATTESTED_SYNC_DEADLINE_SECONDS" if mode == "sync" else "_ATTESTED_ASYNC_DEADLINE_SECONDS"
     monkeypatch.setattr(network, name, 0.08)
     active = []
 
@@ -255,6 +256,107 @@ async def test_attested_complete_line_without_eof_expires_under_existing_deadlin
     with pytest.raises(network.NetworkUnavailable, match="^network_unavailable$"):
         await request(network.NetworkClient(server.path, peer_guard=guard), mode)
     assert not active and len(server.raw_requests) == 1
+
+
+def test_legacy_and_attested_deadline_budgets_remain_distinct():
+    assert network._SYNC_DEADLINE_SECONDS == 15
+    assert network._ASYNC_DEADLINE_SECONDS == 20
+    assert network._ATTESTED_SYNC_DEADLINE_SECONDS == 20
+    assert network._ATTESTED_ASYNC_DEADLINE_SECONDS == 25
+
+
+@pytest.mark.parametrize("mode", ["sync", "async"])
+async def test_legacy_requests_do_not_select_attested_budget(helper_socket, monkeypatch, mode):
+    name = "_ATTESTED_SYNC_DEADLINE_SECONDS" if mode == "sync" else "_ATTESTED_ASYNC_DEADLINE_SECONDS"
+    monkeypatch.setattr(network, name, 0.001)
+
+    def respond(connection, _request):
+        time.sleep(0.03)
+        connection.sendall(GOOD)
+
+    server = helper_socket(respond)
+    result = await request(network.NetworkClient(server.path), mode)
+    assert result == (None if mode == "sync" else {"cancelled": True})
+    assert server.raw_requests == [b'{"op":"cancel_pending"}\n']
+
+
+@pytest.mark.parametrize("mode", ["sync", "async"])
+async def test_attested_guard_and_response_succeed_within_selected_budget(helper_socket, monkeypatch, mode):
+    legacy = "_SYNC_DEADLINE_SECONDS" if mode == "sync" else "_ASYNC_DEADLINE_SECONDS"
+    attested = "_ATTESTED_SYNC_DEADLINE_SECONDS" if mode == "sync" else "_ATTESTED_ASYNC_DEADLINE_SECONDS"
+    monkeypatch.setattr(network, legacy, 0.02)
+    monkeypatch.setattr(network, attested, 0.4)
+    events = []
+
+    @contextmanager
+    def guard(connection):
+        assert connection.fileno() >= 0
+        time.sleep(0.12)  # Exceeds the scaled legacy budget, fits the attested one.
+        events.append("proved")
+        try:
+            yield
+        finally:
+            assert connection.fileno() == -1
+            events.append("closed")
+
+    def respond(connection, _request):
+        time.sleep(0.08)
+        connection.sendall(GOOD)
+
+    server = helper_socket(respond)
+    result = await request(network.NetworkClient(server.path, peer_guard=guard), mode)
+    assert result == (None if mode == "sync" else {"cancelled": True})
+    assert events == ["proved", "closed"]
+    assert server.raw_requests == [b'{"op":"cancel_pending"}\n']
+
+
+@pytest.mark.parametrize("mode", ["sync", "async"])
+async def test_attested_guard_exhausting_budget_sends_zero_bytes(helper_socket, monkeypatch, mode):
+    name = "_ATTESTED_SYNC_DEADLINE_SECONDS" if mode == "sync" else "_ATTESTED_ASYNC_DEADLINE_SECONDS"
+    monkeypatch.setattr(network, name, 0.06)
+    released = []
+
+    @contextmanager
+    def guard(connection):
+        time.sleep(0.1)
+        try:
+            yield
+        finally:
+            assert connection.fileno() == -1
+            released.append(True)
+
+    server = helper_socket(lambda *_: pytest.fail("An expired proof must send no request"))
+    with pytest.raises(network.NetworkUnavailable, match="^network_unavailable$"):
+        await request(network.NetworkClient(server.path, peer_guard=guard), mode)
+    assert await asyncio.to_thread(server.request_read.wait, 1)
+    assert server.raw_requests == [b""] and released == [True]
+
+
+@pytest.mark.parametrize("mode", ["sync", "async"])
+async def test_attested_guard_and_response_share_one_deadline_without_reset(helper_socket, monkeypatch, mode):
+    name = "_ATTESTED_SYNC_DEADLINE_SECONDS" if mode == "sync" else "_ATTESTED_ASYNC_DEADLINE_SECONDS"
+    monkeypatch.setattr(network, name, 0.3)
+    released = []
+
+    @contextmanager
+    def guard(connection):
+        time.sleep(0.18)
+        try:
+            yield
+        finally:
+            assert connection.fileno() == -1
+            released.append(True)
+
+    def respond(connection, _request):
+        # Each phase fits 0.3 s separately, but their sum exceeds the one deadline.
+        time.sleep(0.18)
+        connection.sendall(GOOD)
+
+    server = helper_socket(respond)
+    with pytest.raises(network.NetworkUnavailable, match="^network_unavailable$"):
+        await request(network.NetworkClient(server.path, peer_guard=guard), mode)
+    assert released == [True]
+    assert server.raw_requests == [b'{"op":"cancel_pending"}\n']
 
 
 @pytest.mark.parametrize("mode", ["sync", "async"])

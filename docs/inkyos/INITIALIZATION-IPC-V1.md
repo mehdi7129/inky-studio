@@ -27,9 +27,9 @@ existing network-helper v1 and Bluetooth v1 remain unchanged.
 - UTF-8 JSON followed by one LF, with a maximum of **1024 request bytes** and
   **2048 response bytes, including LF**. Reject duplicate object keys, non-finite
   numbers, unknown fields, wrong primitive types and noncanonical UUIDs.
-- Client and server use the same **15-second absolute monotonic budget** per
+- Client and server use the same **20-second absolute monotonic budget** per
   connection: client starts before connect; server starts at accept. This
-  includes the connected-peer proof (up to 10 seconds), 3 seconds for the
+  includes the connected-peer proof (up to 15 seconds), 3 seconds for the
   exchange and 2 seconds of margin. Connect, peer check, send, response and EOF
   share that budget; completing the proof or receiving a byte never resets it.
   Server never interprets a caller timeout/disconnect as permission to undo

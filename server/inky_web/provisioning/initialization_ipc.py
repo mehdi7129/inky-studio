@@ -18,9 +18,9 @@ from .first_boot import _receipt_response
 from .identity import canonical_uuid
 
 SOCKET_PATH = "/run/inkyos-bootstrap/control.sock"
-# Shared client/server budget: up to ten seconds for the OS peer proof,
+# Shared client/server budget: up to fifteen seconds for the OS peer proof,
 # three for the exchange, plus two seconds of margin. Never reset after proof.
-DEADLINE_SECONDS = 15.0
+DEADLINE_SECONDS = 20.0
 MAX_REQUEST_BYTES = 1024
 MAX_RESPONSE_BYTES = 2048
 ERROR_CODES = frozenset({"invalid_request", "forbidden", "unavailable", "intent_conflict",

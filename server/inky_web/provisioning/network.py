@@ -12,6 +12,8 @@ from .connected_peer import ConnectedPeerGuard, connected_peer_scope
 _RESPONSE_LIMIT = 16384
 _SYNC_DEADLINE_SECONDS = 15
 _ASYNC_DEADLINE_SECONDS = 20
+_ATTESTED_SYNC_DEADLINE_SECONDS = 20
+_ATTESTED_ASYNC_DEADLINE_SECONDS = 25
 
 
 def _response_complete(raw: bytes) -> bool:
@@ -89,19 +91,22 @@ class NetworkClient:
         commit on behalf of a newly revoked owner.
         """
         try:
-            deadline = time.monotonic() + _SYNC_DEADLINE_SECONDS
+            peer_guard = self.peer_guard
+            attested = peer_guard is not None
+            budget = _ATTESTED_SYNC_DEADLINE_SECONDS if attested else _SYNC_DEADLINE_SECONDS
+            deadline = time.monotonic() + budget
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-                connection.settimeout(_SYNC_DEADLINE_SECONDS)
+                connection.settimeout(budget)
                 connection.connect(self.path)
-                with connected_peer_scope(connection, self.peer_guard):
+                with connected_peer_scope(connection, peer_guard):
                     try:
-                        if self.peer_guard is not None:
+                        if attested:
                             remaining = deadline - time.monotonic()
                             if remaining <= 0:
                                 raise TimeoutError
                             connection.settimeout(remaining)
                         connection.sendall(b'{"op":"cancel_pending"}\n')
-                        if self.peer_guard is None:
+                        if not attested:
                             with connection.makefile("rb") as source:
                                 raw = source.readline(16385)
                         else:
@@ -120,14 +125,17 @@ class NetworkClient:
         writer = None
         closed = False
         cancelled = False
-        deadline = asyncio.get_running_loop().time() + _ASYNC_DEADLINE_SECONDS
+        peer_guard = self.peer_guard
+        attested = peer_guard is not None
+        budget = _ATTESTED_ASYNC_DEADLINE_SECONDS if attested else _ASYNC_DEADLINE_SECONDS
+        deadline = asyncio.get_running_loop().time() + budget
         try:
             async with asyncio.timeout_at(deadline):
                 reader, writer = await asyncio.open_unix_connection(self.path, limit=16385)
             connection = writer.get_extra_info("socket")
-            if self.peer_guard is not None and connection is None:
+            if attested and connection is None:
                 raise NetworkUnavailable("network_unavailable")
-            with connected_peer_scope(connection, self.peer_guard):
+            with connected_peer_scope(connection, peer_guard):
                 try:
                     async with asyncio.timeout_at(deadline):
                         payload = json.dumps({"op": operation, **arguments}, separators=(",", ":"), allow_nan=False).encode()
@@ -137,7 +145,7 @@ class NetworkClient:
                             raise TimeoutError
                         writer.write(payload + b"\n")
                         await writer.drain()
-                        raw = (await reader.readline() if self.peer_guard is None
+                        raw = (await reader.readline() if not attested
                                else await _read_attested_async(reader))
                         if not raw.endswith(b"\n") or len(raw) > 16384:
                             raise NetworkUnavailable("network_response_invalid")

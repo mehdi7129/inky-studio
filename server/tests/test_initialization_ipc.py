@@ -83,9 +83,9 @@ def serve():
                     active.add(connection)
                 try:
                     with connection:
-                        # A valid OS proof can occupy up to ten seconds before
-                        # the client sends its single request.
-                        connection.settimeout(16)
+                        # The delayed-proof regression must not expire in the
+                        # fixture before the production client budget.
+                        connection.settimeout(25)
                         raw = bytearray()
                         while not raw.endswith(b"\n") and len(raw) <= ipc.MAX_REQUEST_BYTES:
                             chunk = connection.recv(1025)
@@ -158,8 +158,8 @@ def test_every_operation_uses_a_new_connection_and_request_id(serve, root_peer):
     assert server.requests[0]["id"] != server.requests[1]["id"]
 
 
-def test_default_deadline_matches_shared_fifteen_second_budget():
-    assert VECTORS["deadline_seconds"] == ipc.DEADLINE_SECONDS == 15
+def test_default_deadline_matches_shared_twenty_second_budget():
+    assert VECTORS["deadline_seconds"] == ipc.DEADLINE_SECONDS == 20
 
 
 def test_valid_delayed_peer_guard_retains_budget_for_one_request(serve, root_peer):
@@ -181,6 +181,43 @@ def test_valid_delayed_peer_guard_retains_budget_for_one_request(serve, root_pee
     started = time.monotonic()
     assert ipc.InitializationIPCClient(server.path, peer_guard=guard).inspect_initialization() == {"status": "authorized"}
     assert 4 <= time.monotonic() - started < 6
+    assert len(server.requests) == len(root_peer) == 1
+    assert events == ["verified", "released"]
+
+
+def test_sixteen_second_peer_guard_retains_budget_for_one_request(serve, root_peer, request):
+    """Real AF_UNIX exchange; the 16-second proof is a portable timing double."""
+    events = []
+
+    @contextmanager
+    def guard(connection):
+        assert root_peer == [connection.fileno()]
+        time.sleep(16)
+        events.append("verified")
+        try:
+            yield
+        finally:
+            assert connection.fileno() == -1
+            events.append("released")
+
+    server = serve(lambda connection, request: connection.sendall(encode(success(request))))
+    started = time.monotonic()
+    try:
+        result = ipc.InitializationIPCClient(server.path, peer_guard=guard).inspect_initialization()
+    except ipc.InitializationIPCError as error:
+        request.node.user_properties.extend([
+            ("guard_delay_seconds", 16), ("observed_request_count", len(server.requests)),
+            ("begin_submitted", error.begin_submitted), ("uncertain", error.uncertain),
+        ])
+        assert not server.requests and len(root_peer) == 1
+        assert error.code == "unavailable" and not error.begin_submitted and not error.uncertain
+        assert events == ["verified", "released"]
+        raise
+    request.node.user_properties.extend([
+        ("guard_delay_seconds", 16), ("observed_request_count", len(server.requests)),
+    ])
+    assert result == {"status": "authorized"}
+    assert 16 <= time.monotonic() - started < 20
     assert len(server.requests) == len(root_peer) == 1
     assert events == ["verified", "released"]
 

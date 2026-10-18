@@ -3,7 +3,7 @@
   "synthetic": true,
   "request_limit_including_lf": 1024,
   "response_limit_including_lf": 2048,
-  "deadline_seconds": 15,
+  "deadline_seconds": 20,
   "success": [
     {
       "name": "authorized",

@@ -45,6 +45,10 @@ from uuid import UUID, uuid4
 
 REQUEST_LIMIT = 8192
 RESPONSE_LIMIT = 16384
+LEGACY_REQUEST_READ_SECONDS = 2
+# The factory client sends nothing until its OS peer proof (up to 15 s) returns.
+FACTORY_REQUEST_READ_SECONDS = 20
+RESPONSE_WRITE_SECONDS = 2
 JOURNAL_LIMIT = 131072
 HISTORY_LIMIT = 64
 CHECKPOINT_SECONDS = 180
@@ -1041,7 +1045,9 @@ class Provisioner:
 
 class Handler(socketserver.StreamRequestHandler):
     def handle(self):
-        self.request.settimeout(2)
+        self.request.settimeout(FACTORY_REQUEST_READ_SECONDS
+                                if self.server.factory_stop is not None
+                                else LEGACY_REQUEST_READ_SECONDS)
         try:
             request = parse_request(self.rfile.readline(REQUEST_LIMIT + 2))
             if self.server.factory_stop is not None and self.server.factory_stop.requested:
@@ -1060,6 +1066,7 @@ class Handler(socketserver.StreamRequestHandler):
         if len(output) > RESPONSE_LIMIT:
             output = b'{"ok":false,"error":"network_failed"}\n'
         try:
+            self.request.settimeout(RESPONSE_WRITE_SECONDS)
             self.wfile.write(output)
         except OSError:
             pass
