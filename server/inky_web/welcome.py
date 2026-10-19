@@ -42,7 +42,12 @@ FONT_CANDIDATES = [
 
 
 def _find_font(size: int, bold: bool = False, mono: bool = False) -> ImageFont.ImageFont:
-    candidates = []
+    # Pillow's scalable default omits accented letters (including é and è).
+    # Prefer packaged Sans unless a monospaced font is explicitly requested.
+    bundled = Path(__file__).with_name("fonts") / (
+        "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    )
+    candidates = [] if mono else [str(bundled)]
     if mono and bold:
         candidates.append("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf")
     elif mono:
@@ -52,14 +57,17 @@ def _find_font(size: int, bold: bool = False, mono: bool = False) -> ImageFont.I
     else:
         candidates.append("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
     candidates.extend(FONT_CANDIDATES)
+    if mono:
+        candidates.append(str(bundled))
 
     for path in candidates:
-        if Path(path).is_file():
+        if path == str(bundled) or Path(path).is_file():
             try:
                 return ImageFont.truetype(path, size)
             except OSError:
                 continue
-    # Pillow bundles a scalable font: minimal OS images need no system TTF.
+    # Last-resort scalable font if both packaged and system TTFs are unavailable.
+    # It preserves sizing, but cannot render the complete French welcome copy.
     return ImageFont.load_default(size=size)
 
 

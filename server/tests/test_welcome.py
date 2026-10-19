@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import stat
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -160,6 +161,89 @@ def test_missing_system_fonts_preserves_requested_font_size(monkeypatch):
     small, large = welcome._find_font(12), welcome._find_font(48)
     assert large.getbbox("Inky Studio")[3] - large.getbbox("Inky Studio")[1] > 30
     assert large.getlength("1234567890") > 3 * small.getlength("1234567890")
+
+
+@pytest.mark.parametrize("bold", [False, True])
+@pytest.mark.parametrize("mono", [False, True])
+def test_missing_system_fonts_preserves_french_glyphs(monkeypatch, bold, mono):
+    from inky_web import welcome
+
+    monkeypatch.setattr(welcome.Path, "is_file", lambda path: False)
+    font = welcome._find_font(26, bold=bold, mono=mono)
+    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    assert Path(font.path) == Path(welcome.__file__).with_name("fonts") / name
+    missing = font.getmask("\u0378")  # Unassigned codepoint, hence .notdef.
+    missing_pixels = (missing.size, bytes(missing))
+    glyphs = [(font.getmask(char).size, bytes(font.getmask(char))) for char in "éèàçœ’"]
+    assert all(glyph != missing_pixels for glyph in glyphs)
+    assert len(set(glyphs)) == len(glyphs)
+
+
+@pytest.mark.parametrize("bold", [False, True])
+def test_packaged_font_takes_priority_over_system_fonts(monkeypatch, bold):
+    from inky_web import welcome
+
+    def unexpected(path):
+        pytest.fail("An intact packaged font must precede system font discovery")
+
+    monkeypatch.setattr(welcome.Path, "is_file", unexpected)
+    font = welcome._find_font(26, bold=bold)
+    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    assert Path(font.path) == Path(welcome.__file__).with_name("fonts") / name
+
+
+@pytest.mark.parametrize("bold", [False, True])
+def test_monospace_request_preserves_system_font_priority(monkeypatch, bold):
+    from inky_web import welcome
+
+    system_font = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono"
+    system_font += "-Bold.ttf" if bold else ".ttf"
+    selected = welcome._find_font(26, bold=bold)
+    calls = []
+
+    def truetype(path, size):
+        calls.append(path)
+        assert path == system_font
+        return selected
+
+    monkeypatch.setattr(welcome.ImageFont, "truetype", truetype)
+    monkeypatch.setattr(welcome.Path, "is_file", lambda path: str(path) == system_font)
+    assert welcome._find_font(26, bold=bold, mono=True) is selected
+    assert calls == [system_font]
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError("missing"), OSError("corrupt font")])
+def test_missing_or_corrupt_packaged_font_falls_back_to_system_font(monkeypatch, error):
+    from inky_web import welcome
+
+    fallback = welcome._find_font(26)
+    system_font = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+    def truetype(path, size):
+        if Path(path).parent == Path(welcome.__file__).with_name("fonts"):
+            raise error
+        assert path == system_font
+        return fallback
+
+    monkeypatch.setattr(welcome.ImageFont, "truetype", truetype)
+    monkeypatch.setattr(welcome.Path, "is_file", lambda path: str(path) == system_font)
+    assert welcome._find_font(26) is fallback
+
+
+def test_unavailable_packaged_and_system_fonts_keep_scalable_emergency_fallback(monkeypatch):
+    from inky_web import welcome
+
+    original = welcome.ImageFont.truetype
+
+    def truetype(path, *args, **kwargs):
+        if isinstance(path, str):
+            raise OSError("unavailable font")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(welcome.ImageFont, "truetype", truetype)
+    monkeypatch.setattr(welcome.Path, "is_file", lambda path: False)
+    font = welcome._find_font(48)
+    assert font.getbbox("Inky Studio")[3] - font.getbbox("Inky Studio")[1] > 30
 
 
 @pytest.mark.parametrize("size", [(800, 480), (600, 448), (250, 122), (1600, 1200)])

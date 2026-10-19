@@ -3,8 +3,9 @@ from pathlib import Path
 
 import pytest
 import qrcode
-from PIL import Image, ImageChops, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw
 
+from inky_web import welcome
 from inky_web.provisioning import bootstrap_screen, bootstrap_wire, screen
 
 from .test_bootstrap_runtime import FakeDisplay
@@ -68,8 +69,7 @@ def test_large_factory_bento_keeps_readable_copy_inside_separate_cards(
 
     monkeypatch.setattr(ImageDraw.ImageDraw, "rounded_rectangle", rectangle)
     if bundled_font:
-        monkeypatch.setattr(bootstrap_screen, "_find_font",
-                            lambda size, **_: ImageFont.load_default(size=size))
+        monkeypatch.setattr(welcome.Path, "is_file", lambda path: False)
     image = bootstrap_screen.render_qr(PAYLOAD, width, height)
     assert image.size == (width, height)
     assert len(cards) == 3
