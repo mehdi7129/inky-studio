@@ -223,6 +223,36 @@ def test_held_high_blind_sleep_is_unverified(driver_factory, family):
     assert trace[-1] == ("show_returned",)
 
 
+@pytest.mark.parametrize("phase", [phase for _, phase, _ in CONTRACTS["ac073"]])
+@pytest.mark.parametrize("outcome", ["edge_unverified", "unrecognized", "error"])
+def test_explicit_ac073_timed_wait_requires_recognized_outcome_in_every_phase(driver_factory, phase, outcome):
+    driver, _, _, _ = driver_factory("ac073")
+    observed = BusyObserver(driver, "ac073").run_show()
+    next(item for item in observed if item["phase"] == phase)["outcome"] = outcome
+    with pytest.raises(DisplayUnavailableError) as caught:
+        validate_observations(observed, "ac073", allow_ac073_timed_wait=True)
+    assert caught.value.code == "display_busy_unverified"
+
+
+@pytest.mark.parametrize("phase", [phase for _, phase, _ in CONTRACTS["ac073"]])
+@pytest.mark.filterwarnings("ignore:Busy Wait")
+def test_explicit_ac073_timed_wait_still_refuses_each_real_edge_timeout(driver_factory, phase):
+    driver, _, trace, _ = driver_factory("ac073", {phase: {"edge": None}})
+    observed = BusyObserver(driver, "ac073").run_show()
+    with pytest.raises(DisplayUnavailableError) as caught:
+        validate_observations(observed, "ac073", allow_ac073_timed_wait=True)
+    assert caught.value.code == "display_busy_timeout" and trace[-1] == ("show_returned",)
+
+
+@pytest.mark.parametrize("family", [family for family in CONTRACTS if family != "ac073"])
+def test_ac073_timed_wait_opt_in_does_not_authorize_another_driver_family(driver_factory, family):
+    driver, _, _, _ = driver_factory(family)
+    observed = BusyObserver(driver, family).run_show()
+    with pytest.raises(DisplayUnavailableError) as caught:
+        validate_observations(observed, family, allow_ac073_timed_wait=True)
+    assert caught.value.code == "display_busy_unverified"
+
+
 @pytest.mark.parametrize("values", [[Value.ACTIVE, Value.ACTIVE, Value.INACTIVE, Value.INACTIVE, Value.ACTIVE],
                                     [Value.INACTIVE, Value.ACTIVE]])
 def test_el_refresh_accepts_only_observed_low_then_high(driver_factory, values):

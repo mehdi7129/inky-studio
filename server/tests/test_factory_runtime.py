@@ -12,6 +12,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -70,6 +71,7 @@ def record():
 
 @pytest.fixture
 def configured(tmp_path, monkeypatch, record):
+    monkeypatch.setattr(guard, "_bootstrap_verification", None)
     marker = tmp_path / "etc" / "factory-v1.json"
     marker.parent.mkdir()
     data = tmp_path / "data"
@@ -97,6 +99,19 @@ def configured(tmp_path, monkeypatch, record):
     monkeypatch.setattr(guard, "InitializationIPCClient", lambda **_hooks: adapter)
     return SimpleNamespace(data=data, marker=marker, marker_value=value,
                            adapter=adapter, uid=uid, root=tmp_path)
+
+
+@pytest.fixture
+def derivations(monkeypatch):
+    derive = auth._derive
+    calls = []
+
+    def counted(password, salt):
+        calls.append(None)  # Count operations without retaining their inputs.
+        return derive(password, salt)
+
+    monkeypatch.setattr(auth, "_derive", counted)
+    return calls
 
 
 def invoke(configured, code="factory_runtime_pending"):
@@ -416,6 +431,143 @@ def test_callback_rereads_credentials_epoch_without_writing(configured, record, 
     assert seen == [credential_epoch(bytes.fromhex(r["salt"]), bytes.fromhex(r["hash"])) for r in records]
     assert seen[0] != seen[1]
     assert not (configured.data / "provisioning").exists()
+
+
+def test_bootstrap_cache_reuses_only_derivation_not_policy_or_file_read(configured, monkeypatch, derivations):
+    config = guard.select_runtime(configured.data)
+    select, read = guard.select_runtime, guard._read_file
+    selections, reads = [], []
+
+    def selected(path):
+        selections.append(None)
+        return select(path)
+
+    def read_file(directory, name, limit, **policy):
+        if name == "credentials.json":
+            reads.append(None)
+        return read(directory, name, limit, **policy)
+
+    monkeypatch.setattr(guard, "select_runtime", selected)
+    monkeypatch.setattr(guard, "_read_file", read_file)
+    epochs = [guard._verified_epoch(config) for _ in range(8)]
+    assert len(set(epochs)) == 1
+    assert len(derivations) == 1
+    assert len(selections) == len(reads) == 8
+
+
+@pytest.mark.parametrize("encoding", ["whitespace", "order"])
+def test_bootstrap_cache_compares_exact_bytes_and_retains_one_entry(configured, record, derivations, encoding):
+    path = configured.data / "credentials.json"
+    original = path.read_bytes()
+    config = guard.select_runtime(configured.data)
+    epoch = guard._verified_epoch(config)
+    if encoding == "whitespace":
+        different = json.dumps(record, indent=2).encode()
+    else:
+        different = json.dumps(dict(reversed(list(record.items())))).encode()
+    assert different != original
+    path.write_bytes(different)
+    assert guard._verified_epoch(config) == epoch
+    assert guard._verified_epoch(config) == epoch
+    assert len(derivations) == 2
+    path.write_bytes(original)
+    assert guard._verified_epoch(config) == epoch
+    assert len(derivations) == 3  # The first record was not kept as a second entry.
+
+
+@pytest.mark.parametrize("mutation", [
+    {"bootstrap_password": "different-synthetic-password"},
+    {"hash": "a" * 64}, {"salt": "b" * 32},
+])
+def test_bootstrap_cache_does_not_accept_changed_secret_or_digest(configured, record, derivations, mutation):
+    path = configured.data / "credentials.json"
+    original = path.read_bytes()
+    config = guard.select_runtime(configured.data)
+    epoch = guard._verified_epoch(config)
+    write_json(path, record | mutation)
+    with pytest.raises(auth.CredentialFormatError):
+        guard._verified_epoch(config)
+    assert len(derivations) == 2
+    assert guard._bootstrap_verification is None
+    path.write_bytes(original)
+    assert guard._verified_epoch(config) == epoch
+    assert len(derivations) == 3
+
+
+def test_bootstrap_cache_revalidates_new_valid_epoch(configured, derivations):
+    config = guard.select_runtime(configured.data)
+    first = guard._verified_epoch(config)
+    replacement = auth._new_credentials(configured.data, "other-synthetic-password", bootstrap=True)
+    assert len(derivations) == 2  # Initial verification and replacement generation.
+    write_json(configured.data / "credentials.json", replacement.record())
+    current = guard._verified_epoch(config)
+    assert current == credential_epoch(replacement.salt, replacement.digest)
+    assert current != first
+    assert guard._verified_epoch(config) == current
+    assert len(derivations) == 3  # Exactly one verification of the replacement.
+
+
+@pytest.mark.parametrize("kind", ["schema", "json", "public", "symlink", "hardlink", "missing", "uid", "admission"])
+def test_warm_bootstrap_cache_still_refuses_invalid_candidate_and_invalidates(configured, record, monkeypatch, derivations, kind):
+    config = guard.select_runtime(configured.data)
+    path = configured.data / "credentials.json"
+    original = path.read_bytes()
+    epoch = guard._verified_epoch(config)
+    target = path.with_name("source")
+    with monkeypatch.context() as changed:
+        if kind == "schema":
+            write_json(path, record | {"extra": "invalid"})
+        elif kind == "json":
+            path.write_bytes(b"{")
+        elif kind == "public":
+            path.chmod(0o644)
+        elif kind in {"symlink", "missing"}:
+            path.rename(target)
+            if kind == "symlink":
+                path.symlink_to(target)
+        elif kind == "hardlink":
+            os.link(path, target)
+        elif kind == "uid":
+            changed.setattr(guard.os, "geteuid", lambda: configured.uid + 1)
+        else:
+            changed.setenv("INKY_STUDIO_DISABLE_AUTH", "1")
+        with pytest.raises((ValueError, OSError, guard.FactoryRuntimeError)):
+            guard._verified_epoch(config)
+        assert guard._bootstrap_verification is None
+        assert len(derivations) == 1
+    if path.is_symlink():
+        path.unlink()
+    if target.exists():
+        if kind == "hardlink":
+            target.unlink()
+        else:
+            target.rename(path)
+    path.write_bytes(original)
+    path.chmod(0o600)
+    assert guard._verified_epoch(config) == epoch
+    assert len(derivations) == 2
+
+
+def test_bootstrap_cache_never_caches_login_verification(configured, record, derivations):
+    config = guard.select_runtime(configured.data)
+    guard._verified_epoch(config)
+    assert len(derivations) == 1
+    credentials = auth.Credentials(configured.data / "credentials.json",
+                                   bytes.fromhex(record["salt"]), bytes.fromhex(record["hash"]))
+    for _ in range(3):
+        assert credentials.verify(record["bootstrap_password"])
+        assert not credentials.verify("incorrect-synthetic-password")
+    assert len(derivations) == 7
+    guard._verified_epoch(config)
+    assert len(derivations) == 7
+
+
+def test_concurrent_bootstrap_checks_share_one_derivation(configured, derivations):
+    config = guard.select_runtime(configured.data)
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        epochs = list(executor.map(lambda _: guard._verified_epoch(config), range(8)))
+    assert len(set(epochs)) == 1
+    assert len(derivations) == 1
 
 
 def test_credentials_becoming_invalid_after_begin_remain_uncertain(configured):

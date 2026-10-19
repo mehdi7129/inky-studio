@@ -15,7 +15,7 @@ import pytest
 
 from inky_web.db import data_dir
 from inky_web.inky.confirmation import NAME, ConfirmationBarrier
-from inky_web.inky.display import DisplayController
+from inky_web.inky.display import AC073_TIMED_WAIT_PROFILE, DisplayController
 from inky_web.inky.errors import DisplayConfirmationPending, DisplayUnavailableError
 from inky_web.models import SettingsUpdate
 from inky_web.provisioning import screen
@@ -25,17 +25,17 @@ from tests.test_display_busy import driver_factory as driver_factory
 from tests.test_display_hardware import install_auto
 
 
-def controlled(monkeypatch, driver_factory, *, scenarios=None):
+def controlled(monkeypatch, driver_factory, *, scenarios=None, profile="ac073-800x480", color=4):
     if scenarios is None:
         scenarios = {phase: {"values": [Value.ACTIVE]}
                      for phase in ("setup", "power_on", "refresh", "power_off")}
     driver, gpio, trace, _ = driver_factory("ac073", scenarios)
     type(driver).__module__ = "inky.inky_ac073tc1a"
     driver.width, driver.height = 800, 480
-    driver.eeprom = SimpleNamespace(width=800, height=480, display_variant=20, color=4)
+    driver.eeprom = SimpleNamespace(width=800, height=480, display_variant=20, color=color)
     driver.set_image = Mock()
     install_auto(monkeypatch, driver=driver)
-    monkeypatch.setenv("INKY_STUDIO_DISPLAY_PROFILE", "ac073-800x480")
+    monkeypatch.setenv("INKY_STUDIO_DISPLAY_PROFILE", profile)
     monkeypatch.setattr("inky_web.inky.display.version", lambda name: "2.5.0")
     display = DisplayController(mode="hardware")
     display.initialize()
@@ -53,6 +53,76 @@ def attach(client, display):
     client.app.state.display = display
     client.app.state.scheduler = scheduler.Scheduler(display, client.app.state.bus)
     client.app.state.bus.broadcast = Mock()
+
+
+@pytest.mark.parametrize("color", [4, 5])
+@pytest.mark.parametrize("held_phases", [
+    ("setup", "power_on", "refresh", "power_off"), ("refresh",), ("setup",), (),
+])
+@pytest.mark.filterwarnings("ignore:Busy Wait")
+def test_explicit_timed_wait_profile_completes_driver_operation_without_claiming_physical_confirmation(
+    client, png_factory, monkeypatch, driver_factory, color, held_phases,
+):
+    scenarios = {phase: {"values": [Value.ACTIVE]} for phase in held_phases}
+    display, driver, _, trace = controlled(
+        monkeypatch, driver_factory, scenarios=scenarios, profile=AC073_TIMED_WAIT_PROFILE, color=color,
+    )
+    baseline, _, baseline_trace, _ = driver_factory("ac073", scenarios)
+    baseline.show()
+    attach(client, display)
+    photo, _ = photos.save(content=png_factory(), original_filename="retained.png")
+    queue.add(photo.id)
+
+    response = client.post("/api/display/next")
+
+    assert response.status_code == 202 and driver.show_calls == 1
+    assert trace == baseline_trace and trace[-1] == ("show_returned",)
+    assert [item[1] for item in trace if item[0] == "sleep"] == [
+        duration for phase, duration in (("setup", 1.0), ("power_on", .4), ("refresh", 45.0), ("power_off", .4))
+        if phase in held_phases
+    ]
+    status = client.get("/api/display/status").json()
+    assert status["profile"] == AC073_TIMED_WAIT_PROFILE
+    assert status["state"] == "ready" and status["error"] is None and status["warning"] is None
+    assert status["confirmation"] == ("timed_wait_unverified" if held_phases else "edge_received")
+    assert [item["outcome"] for item in status["observations"]] == [
+        "held_high_unverified" if phase in held_phases else "edge_received"
+        for phase in ("setup", "power_on", "refresh", "power_off")
+    ]
+    assert not status["automatic_rotation_paused"]
+    assert ConfirmationBarrier(data_dir()).load() is None
+    assert history.current().photo.id == photo.id and queue.count() == 0
+    assert [call.args[0] for call in client.app.state.bus.broadcast.call_args_list] == [
+        "display_changed", "queue_updated",
+    ]
+
+
+@pytest.mark.filterwarnings("ignore:Busy Wait")
+def test_completed_timed_wait_leaves_a_fresh_reboot_without_a_confirmation_barrier(
+    monkeypatch, driver_factory, png_factory,
+):
+    display, driver, _, _ = controlled(monkeypatch, driver_factory, profile=AC073_TIMED_WAIT_PROFILE)
+    photo, _ = photos.save(content=png_factory(), original_filename="welcome-like.png")
+    display.display_image(photos.path_for(photo.id))
+    assert ConfirmationBarrier(data_dir()).load() is None
+
+    restarted = DisplayController(mode="hardware")
+    restarted.initialize()
+    assert restarted.status()["state"] == "ready" and not restarted.automatic_rotation_paused
+    restarted.display_image(photos.path_for(photo.id))
+    assert driver.show_calls == 2 and ConfirmationBarrier(data_dir()).load() is None
+    assert restarted.status()["confirmation"] == "timed_wait_unverified"
+
+
+def test_timed_wait_profile_never_ignores_a_historical_pending_barrier(
+    data_dir, monkeypatch, driver_factory, png_factory,
+):
+    ConfirmationBarrier(data_dir).write("pending")
+    display, driver, _, _ = controlled(monkeypatch, driver_factory, profile=AC073_TIMED_WAIT_PROFILE)
+    photo, _ = photos.save(content=png_factory(), original_filename="welcome-like.png")
+    with pytest.raises(DisplayConfirmationPending):
+        display.display_image(photos.path_for(photo.id))
+    assert driver.show_calls == 0 and ConfirmationBarrier(data_dir).load() == "pending"
 
 
 @pytest.mark.filterwarnings("ignore:Busy Wait")
@@ -152,7 +222,8 @@ def test_pending_manual_requests_without_a_candidate_do_not_claim_success(client
 
 
 @pytest.mark.parametrize("kind", ["in_progress", "malformed", "permissions", "symlink"])
-def test_interrupted_or_unsafe_barrier_blocks_new_controller_without_show(kind, data_dir, monkeypatch, driver_factory, png_factory):
+@pytest.mark.parametrize("profile", ["ac073-800x480", AC073_TIMED_WAIT_PROFILE])
+def test_interrupted_or_unsafe_barrier_blocks_new_controller_without_show(kind, data_dir, monkeypatch, driver_factory, png_factory, profile):
     barrier = ConfirmationBarrier(data_dir)
     path = data_dir / NAME
     if kind == "in_progress":
@@ -167,7 +238,7 @@ def test_interrupted_or_unsafe_barrier_blocks_new_controller_without_show(kind, 
     else:
         path.write_bytes(b"malformed")
         path.chmod(0o600)
-    display, driver, _, _ = controlled(monkeypatch, driver_factory)
+    display, driver, _, _ = controlled(monkeypatch, driver_factory, profile=profile)
     assert display.status()["state"] == "error"
     code = "display_confirmation_interrupted" if kind == "in_progress" else "display_confirmation_storage_failed"
     assert display.status()["error"]["code"] == code
@@ -225,18 +296,19 @@ def test_barrier_io_failure_prevents_ack_and_restart_never_retries(client, png_f
         assert driver.show_calls == 1
 
 
-@pytest.mark.parametrize("mutation", ["timeout", "exception", "phase", "duration", "sequence", "extra", "unknown_outcome"])
+@pytest.mark.parametrize("profile", ["ac073-800x480", AC073_TIMED_WAIT_PROFILE])
+@pytest.mark.parametrize("mutation", ["timeout", "exception", "phase", "duration", "sequence", "extra", "incomplete", "unknown_outcome"])
 @pytest.mark.filterwarnings("ignore:Busy Wait")
-def test_true_faults_and_unrecognized_sequences_remain_sticky(client, png_factory, monkeypatch, driver_factory, mutation):
+def test_true_faults_and_unrecognized_sequences_remain_sticky(client, png_factory, monkeypatch, driver_factory, mutation, profile):
     scenarios = {phase: {"values": [Value.ACTIVE]}
                  for phase in ("setup", "power_on", "refresh", "power_off")}
     if mutation == "timeout":
         scenarios["refresh"] = {"values": [Value.INACTIVE], "edge": None}
     if mutation == "exception":
         scenarios["refresh"] = {"values": [OSError("private GPIO failure")]}
-    display, driver, _, _ = controlled(monkeypatch, driver_factory, scenarios=scenarios)
+    display, driver, _, _ = controlled(monkeypatch, driver_factory, scenarios=scenarios, profile=profile)
     attach(client, display)
-    if mutation in {"phase", "duration", "sequence", "extra", "unknown_outcome"}:
+    if mutation in {"phase", "duration", "sequence", "extra", "incomplete", "unknown_outcome"}:
         original = display._busy_observer.run_show
 
         def observe():
@@ -249,6 +321,8 @@ def test_true_faults_and_unrecognized_sequences_remain_sticky(client, png_factor
                 result[0]["sequence"] = 2
             elif mutation == "extra":
                 result.append(dict(result[-1]))
+            elif mutation == "incomplete":
+                result.pop()
             else:
                 result[0]["outcome"] = "edge_unverified"
             return result

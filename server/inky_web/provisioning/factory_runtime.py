@@ -12,9 +12,10 @@ import re
 import sqlite3
 import stat
 import sys
+import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NoReturn
 
@@ -47,6 +48,20 @@ class FactoryRuntimeError(Exception):
 class FactoryRuntimeConfig:
     data_dir: Path
     app_uid: int
+
+
+@dataclass(frozen=True)
+class _BootstrapVerification:
+    config: FactoryRuntimeConfig
+    raw: bytes = field(repr=False)
+    epoch: str
+
+
+# Only one successful bootstrap record is retained, never a login result or an
+# admission grant. Serialize observation/invalidation so an invalid candidate
+# cannot race with another call and leave an older success reusable.
+_bootstrap_verification: _BootstrapVerification | None = None
+_bootstrap_verification_lock = threading.Lock()
 
 
 def _root_directory(info: os.stat_result) -> None:
@@ -213,14 +228,31 @@ def select_runtime(data_directory: Path) -> FactoryRuntimeConfig | None:
 
 
 def _verified_epoch(config: FactoryRuntimeConfig) -> str:
+    global _bootstrap_verification
+
+    with _bootstrap_verification_lock:
+        try:
+            return _verified_epoch_locked(config)
+        except Exception:
+            _bootstrap_verification = None
+            raise
+
+
+def _verified_epoch_locked(config: FactoryRuntimeConfig) -> str:
+    global _bootstrap_verification
+
     # Import lazily: auth CLI uses this guard before its normal credential APIs.
     from inky_web import auth
 
     if select_runtime(config.data_dir) != config:
         raise ValueError
     with _directory(config.data_dir, protected=True, leaf_uid=config.app_uid) as directory:
-        record = _json(_read_file(directory, "credentials.json", MAX_CREDENTIAL_BYTES,
-                                  uid=config.app_uid, mode=0o600))
+        raw = _read_file(directory, "credentials.json", MAX_CREDENTIAL_BYTES,
+                         uid=config.app_uid, mode=0o600)
+    if (_bootstrap_verification is not None
+            and (_bootstrap_verification.config != config or _bootstrap_verification.raw != raw)):
+        _bootstrap_verification = None
+    record = _json(raw)
     required = {"version", "algorithm", "n", "r", "p", "salt", "hash"}
     if set(record) not in (required, required | {"bootstrap_password"}):
         raise ValueError
@@ -235,10 +267,18 @@ def _verified_epoch(config: FactoryRuntimeConfig) -> str:
             raise ValueError
     if "bootstrap_password" in record and not auth._valid_password(record["bootstrap_password"]):
         raise ValueError
+    # FD, metadata, installed policy and the entire strict schema above are
+    # checked on every call. Exact bytes include the bootstrap secret; even a
+    # harmless JSON reserialization requires a fresh bootstrap verification.
+    if "bootstrap_password" in record and _bootstrap_verification is not None:
+        return _bootstrap_verification.epoch
     # The permissive legacy parser only receives this strictly validated v2
     # shape, so it can neither migrate nor choose arbitrary scrypt parameters.
     credentials = auth._parse_record(config.data_dir / "credentials.json", record)
-    return credential_epoch(credentials.salt, credentials.digest)
+    epoch = credential_epoch(credentials.salt, credentials.digest)
+    if "bootstrap_password" in record:
+        _bootstrap_verification = _BootstrapVerification(config, raw, epoch)
+    return epoch
 
 
 def prepare_factory(

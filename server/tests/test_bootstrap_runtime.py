@@ -2,6 +2,7 @@
 import asyncio
 import copy
 import json
+import logging
 import threading
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -14,6 +15,7 @@ from inky_web.provisioning.bootstrap_identity import PREPARED_IDENTITY_FILENAME,
 from inky_web.provisioning.bootstrap_runtime import BootstrapRuntime
 from inky_web.provisioning.factory import FactoryRecoveryRequired, FactoryState
 from inky_web.provisioning.first_boot import FirstBootCoordinator
+from tests.test_display_busy import driver_factory as driver_factory
 
 EPOCH = "e" * 64
 
@@ -232,14 +234,22 @@ async def test_display_failure_after_commit_keeps_owner_for_recovery(factory, mo
     await second.stop()
 
 
-async def test_display_failure_before_advertising_closes_window(factory, monkeypatch):
+async def test_display_failure_before_advertising_closes_window(factory, monkeypatch, caplog):
     *_, result, display, runtime = factory
+    close_window = result.ownership.close_window
+
+    def close_after_diagnostic():
+        assert "Factory bootstrap qr_refused code=unclassified observations=[]" in caplog.text
+        return close_window()
+
+    monkeypatch.setattr(result.ownership, "close_window", close_after_diagnostic)
     display.failed = True
     with pytest.raises(OSError, match="private display detail"):
         await runtime.start()
     assert not runtime.available and not runtime.bluez.started
     assert display.reservation is None and not runtime.operations.tasks
     assert result.ownership._closed
+    assert "private display detail" not in caplog.text
 
 
 async def test_cancelled_claim_and_shutdown_drain_real_sqlite_work(factory, monkeypatch):
@@ -423,3 +433,206 @@ async def test_window_cleanup_failure_closes_admission_immediately(factory, monk
     with pytest.raises(error_type):
         await runtime.stop()
     assert runtime.bluez.stopped and runtime.display.reservation is None
+
+
+
+def _ac073_runtime(factory, monkeypatch, driver_factory, *, continuation, profile=None, scenarios=None):
+    from inky_web.inky import display as hardware
+    from tests import test_display_confirmation as fixtures
+
+    directory, _, epoch, _, result, _, _ = factory
+    state = directory.parent / "hardware-state"
+    state.mkdir(exist_ok=True)
+    monkeypatch.setattr(hardware, "data_dir", lambda: state)
+    monkeypatch.setattr(fixtures, "data_dir", lambda: state)
+    display, driver, gpio, trace = fixtures.controlled(
+        monkeypatch, driver_factory, scenarios=scenarios,
+        profile=profile or hardware.AC073_TIMED_WAIT_PROFILE,
+    )
+    if continuation:
+        from inky_web.provisioning.factory_continuation import FactoryContinuationRuntime
+        from tests.test_factory_system_setup import Native, Network
+
+        runtime = FactoryContinuationRuntime(
+            result, lambda: epoch[0], display, directory, system_setup=Native(), network=Network(),
+            server_factory=FakeBlueZ,
+        )
+    else:
+        runtime = BootstrapRuntime(result, lambda: epoch[0], display, directory, server_factory=FakeBlueZ)
+    return runtime, driver, gpio, trace
+
+
+def _capture_qr(monkeypatch, runtime):
+    payloads = []
+    show = runtime.screen.show_qr
+
+    def record(payload):
+        payloads.append(json.loads(payload))
+        show(payload)
+
+    monkeypatch.setattr(runtime.screen, "show_qr", record)
+    return payloads
+
+
+@pytest.mark.filterwarnings("ignore:Busy Wait")
+@pytest.mark.parametrize("continuation", [False, True])
+async def test_ac073_timed_wait_qr_precedes_ble_and_claim_status_expiry_still_work(
+    factory, monkeypatch, driver_factory, continuation, caplog,
+):
+    runtime, driver, _, trace = _ac073_runtime(
+        factory, monkeypatch, driver_factory, continuation=continuation,
+    )
+    caplog.set_level(logging.INFO, logger="inky_web.provisioning.bootstrap_runtime")
+    payloads = _capture_qr(monkeypatch, runtime)
+    await runtime.start()
+    try:
+        messages = [record.getMessage() for record in caplog.records
+                    if record.name == "inky_web.provisioning.bootstrap_runtime"]
+        assert messages == ["Factory bootstrap qr_ready", "Factory bootstrap ble_advertised"]
+        assert trace[-1] == ("show_returned",)
+        assert driver.show_calls == 1 and runtime.bluez.started and runtime.available
+        assert runtime.display.status()["confirmation"] == "timed_wait_unverified"
+        assert runtime.display.pending_confirmation is None
+        claim = claim_message(payloads[0]["t"])
+        assert (await runtime.command(claim))["ok"]
+        assert (await runtime.command(status_message(claim)))["ok"]
+        await runtime._expire_screen()
+        assert driver.show_calls == 3 and runtime.available
+        assert runtime.display.status()["confirmation"] == "timed_wait_unverified"
+        for private in (json.dumps(payloads[0]), payloads[0]["t"], payloads[0]["id"],
+                        payloads[0]["k"], claim["id"], claim["owner_id"], claim["owner_token"]):
+            assert private not in caplog.text
+    finally:
+        await runtime.stop()
+    assert runtime.bluez.stopped and not runtime.display.reserved
+
+
+@pytest.mark.filterwarnings("ignore:Busy Wait")
+@pytest.mark.parametrize("continuation", [False, True])
+@pytest.mark.parametrize("failure", ["timeout", "incomplete", "strict"])
+async def test_ac073_refused_qr_never_advertises_and_logs_only_bounded_observations(
+    factory, monkeypatch, driver_factory, continuation, failure, caplog,
+):
+    from inky_web.inky.errors import DisplayUnavailableError
+
+    runtime, driver, _, _ = _ac073_runtime(
+        factory, monkeypatch, driver_factory, continuation=continuation,
+        profile="ac073-800x480" if failure == "strict" else None,
+        scenarios={"refresh": {"edge": None}} if failure == "timeout" else None,
+    )
+    if failure == "incomplete":
+        show = runtime.display._busy_observer.run_show
+
+        def incomplete():
+            observations = show()
+            observations.pop()
+            return observations
+
+        monkeypatch.setattr(runtime.display._busy_observer, "run_show", incomplete)
+    payloads = _capture_qr(monkeypatch, runtime)
+    with pytest.raises(DisplayUnavailableError) as caught:
+        await runtime.start()
+    expected = {"timeout": "display_busy_timeout", "incomplete": "display_busy_unverified",
+                "strict": "display_confirmation_pending"}[failure]
+    assert caught.value.code == expected
+    assert driver.show_calls == 1
+    assert not runtime.bluez.started and runtime.bluez.stopped and not runtime.available
+    assert not runtime.display.reserved and not runtime.operations.tasks
+    messages = [record.getMessage() for record in caplog.records
+                if record.name == "inky_web.provisioning.bootstrap_runtime"]
+    assert len(messages) == 1 and messages[0].startswith("Factory bootstrap qr_refused code=" + expected)
+    observations = json.loads(messages[0].split("observations=", 1)[1])
+    assert 1 <= len(observations) <= 4
+    assert all(set(item) == {"phase", "sequence", "outcome", "timeout"} for item in observations)
+    for private in (json.dumps(payloads[0]), payloads[0]["t"], payloads[0]["id"], payloads[0]["k"]):
+        assert private not in caplog.text
+
+
+@pytest.mark.filterwarnings("ignore:Busy Wait")
+@pytest.mark.parametrize("continuation", [False, True])
+async def test_ac073_fresh_controller_repaints_fresh_qr_after_expiry_and_restart(
+    factory, monkeypatch, driver_factory, continuation,
+):
+    runtime, first_driver, _, _ = _ac073_runtime(
+        factory, monkeypatch, driver_factory, continuation=continuation,
+    )
+    first_payloads = _capture_qr(monkeypatch, runtime)
+    await runtime.start()
+    runtime._cancel_window_timer()
+    await runtime._expire_screen()
+    assert (await runtime.command(claim_message(first_payloads[0]["t"])))["error"] == "qr_unavailable"
+    assert first_driver.show_calls == 2
+    await runtime.stop()
+    result = factory[3].initialize()
+    restarted_factory = (*factory[:4], result, *factory[5:])
+    second, second_driver, _, _ = _ac073_runtime(
+        restarted_factory, monkeypatch, driver_factory, continuation=continuation,
+    )
+    second_payloads = _capture_qr(monkeypatch, second)
+    await second.start()
+    try:
+        assert second_driver is not first_driver and second_driver.show_calls == 1
+        assert first_payloads[0]["t"] != second_payloads[0]["t"]
+        assert first_payloads[0]["id"] == second_payloads[0]["id"]
+        assert first_payloads[0]["k"] == second_payloads[0]["k"]
+        assert (await second.command(claim_message(first_payloads[0]["t"])))["error"] == "unauthorized"
+        assert (await second.command(claim_message(second_payloads[0]["t"])))["ok"]
+    finally:
+        await second.stop()
+
+
+def test_bootstrap_diagnostics_discard_private_unknown_and_unbounded_fields(caplog):
+    from inky_web.inky.errors import DisplayUnavailableError
+    from inky_web.provisioning.bootstrap_runtime import _log_bootstrap_event
+
+    private = "private-qr-token-owner-id-exception"
+    display = SimpleNamespace(status=lambda: {"private": private, "observations": [
+        {"phase": private, "sequence": private, "outcome": private, "timeout": float("nan"),
+         "payload": private, "error_type": private} for _ in range(100)
+    ]})
+    _log_bootstrap_event("qr_refused", display, DisplayUnavailableError(private, private))
+    assert private not in caplog.text and "code=unclassified" in caplog.text
+    message = caplog.records[-1].getMessage()
+    observations = json.loads(message.split("observations=", 1)[1])
+    assert len(observations) == 8
+    assert all(item == {"phase": "unrecognized", "sequence": None,
+                        "outcome": "unrecognized", "timeout": None} for item in observations)
+    assert len(message) < 1000
+
+
+@pytest.mark.filterwarnings("ignore:Busy Wait")
+@pytest.mark.parametrize("continuation", [False, True])
+async def test_ac073_failed_bluez_registration_never_logs_advertised(
+    factory, monkeypatch, driver_factory, continuation, caplog,
+):
+    runtime, driver, _, _ = _ac073_runtime(
+        factory, monkeypatch, driver_factory, continuation=continuation,
+    )
+
+    class FailingBlueZ(FakeBlueZ):
+        async def start(self):
+            raise RuntimeError("private D-Bus failure")
+
+    runtime.server_factory = FailingBlueZ
+    caplog.set_level(logging.INFO, logger="inky_web.provisioning.bootstrap_runtime")
+    with pytest.raises(RuntimeError, match="private D-Bus failure"):
+        await runtime.start()
+    messages = [record.getMessage() for record in caplog.records
+                if record.name == "inky_web.provisioning.bootstrap_runtime"]
+    assert messages == ["Factory bootstrap qr_ready"]
+    assert "private D-Bus failure" not in caplog.text
+    assert driver.show_calls == 1 and runtime.bluez.stopped and not runtime.available
+    assert not runtime.display.reserved
+
+
+def test_bootstrap_diagnostics_do_not_replace_a_failure_when_status_is_unavailable(caplog):
+    from inky_web.inky.errors import DisplayUnavailableError
+    from inky_web.provisioning.bootstrap_runtime import _log_bootstrap_event
+
+    def unavailable():
+        raise RuntimeError("private status failure")
+
+    _log_bootstrap_event("qr_refused", SimpleNamespace(status=unavailable),
+                         DisplayUnavailableError("private exception detail", "display_busy_timeout"))
+    assert "code=display_busy_timeout observations=[]" in caplog.text
+    assert "private" not in caplog.text

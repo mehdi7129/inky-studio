@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import math
 import struct
 import time
 from collections import deque
@@ -25,6 +27,52 @@ from .first_boot import FirstBootResult
 from .identity import validate_token
 from .ownership import OwnershipError
 from .transport import BOOTSTRAP_PROFILE, MAX_MESSAGE, GATTTransport, TransportError
+
+logger = logging.getLogger(__name__)
+_DISPLAY_CODES = frozenset({
+    "display_unavailable", "display_stopping", "display_busy_timeout", "display_busy_unverified",
+    "display_refresh_failed", "display_confirmation_pending", "display_confirmation_interrupted",
+    "display_confirmation_storage_failed",
+})
+_BUSY_PHASES = frozenset({"setup", "power_on", "refresh", "power_off", "standby", "unrecognized"})
+_BUSY_OUTCOMES = frozenset({
+    "edge_received", "held_high_unverified", "edge_timeout", "edge_unverified", "unrecognized",
+    "level_released", "level_timeout", "idle_low_unverified", "refresh_assert_timeout",
+    "refresh_completed", "refresh_timeout", "error",
+})
+
+
+def _log_bootstrap_event(stage, display=None, error=None):
+    """Fixed startup milestones; refusal diagnostics never format private values."""
+    if stage in {"qr_ready", "ble_advertised"}:
+        logger.info("Factory bootstrap %s", stage)
+        return
+    if stage != "qr_refused":
+        return
+    code = getattr(error, "code", None)
+    code = code if type(code) is str and code in _DISPLAY_CODES else "unclassified"
+    observations = []
+    try:
+        snapshot = display.status()
+        raw = snapshot.get("observations") if type(snapshot) is dict else None
+        if type(raw) is list:
+            for item in raw[:8]:
+                if type(item) is not dict:
+                    continue
+                phase, outcome = item.get("phase"), item.get("outcome")
+                sequence, timeout = item.get("sequence"), item.get("timeout")
+                observations.append({
+                    "phase": phase if type(phase) is str and phase in _BUSY_PHASES else "unrecognized",
+                    "sequence": sequence if type(sequence) is int and 1 <= sequence <= 8 else None,
+                    "outcome": outcome if type(outcome) is str and outcome in _BUSY_OUTCOMES else "unrecognized",
+                    "timeout": timeout if type(timeout) in (int, float) and math.isfinite(timeout)
+                    and 0 <= timeout <= 120 else None,
+                })
+    except Exception:
+        # Diagnostic access must neither replace the failure nor expose its text.
+        observations = []
+    logger.warning("Factory bootstrap qr_refused code=%s observations=%s",
+                   code, json.dumps(observations, separators=(",", ":")))
 
 
 class BootstrapApplicationPeer(BootstrapTLSPeer):
@@ -186,6 +234,14 @@ class BootstrapRuntime:
             await self.stop()
             raise
 
+    async def _show_qr(self, payload):
+        try:
+            await asyncio.to_thread(self.screen.show_qr, payload)
+        except Exception as error:
+            _log_bootstrap_event("qr_refused", self.display, error)
+            raise
+        _log_bootstrap_event("qr_ready")
+
     async def _start(self):
         async with self.mutation_lock:
             prepared, status, epoch = await asyncio.to_thread(self._verify)
@@ -200,7 +256,7 @@ class BootstrapRuntime:
                 deadline = self.monotonic() + 600
                 try:
                     payload = wire.encode_qr(prepared.frame_id, prepared.binding.spki_sha256, token.value)
-                    await asyncio.to_thread(self.screen.show_qr, payload)
+                    await self._show_qr(payload)
                 except BaseException:
                     await asyncio.to_thread(self.owners.close_window)
                     raise
@@ -216,6 +272,7 @@ class BootstrapRuntime:
             if self._stopping:
                 return
             await self.bluez.start()
+            _log_bootstrap_event("ble_advertised")
             if not self._stopping:
                 await asyncio.to_thread(self._verified_epoch)
             if not self._stopping:

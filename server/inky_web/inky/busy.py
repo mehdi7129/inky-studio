@@ -48,10 +48,34 @@ def _raise_busy_failure(timeout: bool) -> None:
     )
 
 
-def validate_observations(observations: list[dict[str, Any]], family: str) -> None:
-    """A return from show() alone never proves these Impression refreshes."""
+def completed_ac073_waits(observations: list[dict[str, Any]]) -> bool:
+    """Recognize the complete pinned AC073 sequence, including timed fallbacks.
+
+    The caller must also have observed show() return normally. This identifies
+    the driver's completion contract, never physical image confirmation.
+    """
+    expected = [(phase, timeout, index) for index, (_, phase, timeout)
+                in enumerate(CONTRACTS["ac073"], 1)]
+    sequence = [(item.get("phase"), item.get("timeout"), item.get("sequence"))
+                for item in observations]
+    return sequence == expected and all(
+        type(item.get("sequence")) is int
+        and type(item.get("timeout")) in {int, float}
+        and item.get("outcome") in {"edge_received", "held_high_unverified"}
+        for item in observations
+    )
+
+
+def validate_observations(
+    observations: list[dict[str, Any]], family: str, *, allow_ac073_timed_wait: bool = False,
+) -> None:
+    """Validate BUSY evidence, or the explicitly selected AC073 driver contract."""
     if any(item.get("outcome") in _TIMEOUTS for item in observations):
         _raise_busy_failure(True)
+    if allow_ac073_timed_wait:
+        if family != "ac073" or not completed_ac073_waits(observations):
+            _raise_busy_failure(False)
+        return
     expected = CONTRACTS[family]
     if ([(item.get("phase"), item.get("timeout")) for item in observations]
             != [(phase, timeout) for _, phase, timeout in expected]):

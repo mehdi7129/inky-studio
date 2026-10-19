@@ -28,6 +28,7 @@ from .bootstrap_runtime import (
     BootstrapApplicationPeer,
     BootstrapPublicIdentity,
     BootstrapRuntime,
+    _log_bootstrap_event,
 )
 from .factory import FactoryRecoveryRequired, FactoryState
 from .network import NetworkUnavailable
@@ -281,11 +282,12 @@ class FactoryContinuationRuntime(BootstrapRuntime):
             epoch = await asyncio.to_thread(self._verified_epoch)
             token = await asyncio.to_thread(self.owners.open_factory_window, expected_epoch=epoch)
             payload = bootstrap_wire.encode_qr(prepared.frame_id, prepared.binding.spki_sha256, token.value)
-            await asyncio.to_thread(self.screen.show_qr, payload)
+            await self._show_qr(payload)
             self._window_task = asyncio.create_task(self._expire_window(self.monotonic() + 600))
         await asyncio.to_thread(self._verified_epoch)
         if not self._stopping:
             await self.bluez.start()
+            _log_bootstrap_event("ble_advertised")
             self.available = self._admitting = True
 
     def _accept_snapshot(self, snapshot):

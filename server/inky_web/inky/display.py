@@ -42,6 +42,11 @@ MOCK_SPEC = DisplaySpec(
 # set_image() the panel's measured (most faithful) palette.
 SATURATION = 1.0
 
+# This opt-in accepts only the known driver's full timed fallback, without
+# claiming that a BUSY edge or the physical image has been confirmed.
+AC073_TIMED_WAIT_PROFILE = "ac073-800x480-timed-wait"
+_AC073_PROFILES = {"ac073-800x480", AC073_TIMED_WAIT_PROFILE}
+
 
 class DisplayController:
     """Owns the active display driver (real or mock).
@@ -56,7 +61,7 @@ class DisplayController:
             raise ValueError("INKY_STUDIO_DISPLAY_MODE must be auto, hardware or mock")
         self._mode = ("hardware" if platform.system() == "Linux" else "mock") if requested == "auto" else requested
         self._profile = os.environ.get("INKY_STUDIO_DISPLAY_PROFILE", "")
-        if self._profile not in {"", "ac073-800x480"}:
+        if self._profile not in {"", *_AC073_PROFILES}:
             raise ValueError("Unknown INKY_STUDIO_DISPLAY_PROFILE")
         if self._profile and self._mode != "hardware":
             raise ValueError("A display hardware profile requires hardware mode")
@@ -172,7 +177,7 @@ class DisplayController:
             fields = (*eeprom_size, variant, color, impl.width, impl.height)
             if not all(type(value) is int for value in fields) or eeprom_size != (800, 480) or variant != 20 or color not in {4, 5}:
                 raise ValueError("Unexpected raw EEPROM tuple for the AC073 observer")
-            if color == 4 and self._profile != "ac073-800x480":
+            if color == 4 and self._profile not in _AC073_PROFILES:
                 raise ValueError("Unmapped EEPROM color 4 requires the explicit bench profile")
         if selected is not None:
             family, dimensions = selected
@@ -356,19 +361,14 @@ class DisplayController:
                 self._observations = [dict(item) for item in self._busy_observer.observations]
             # Each driver owns its clocks/waits. EL133 refuses an unproved
             # refresh before POF; all other verdicts follow the full show().
-            from inky_web.inky.busy import CONTRACTS, validate_observations
+            from inky_web.inky.busy import completed_ac073_waits, validate_observations
+            timed_wait = self._profile == AC073_TIMED_WAIT_PROFILE
             try:
-                validate_observations(observations, family)
+                validate_observations(observations, family, allow_ac073_timed_wait=timed_wait)
             except DisplayUnavailableError as exc:
-                expected = [(phase, timeout, index) for index, (_, phase, timeout)
-                            in enumerate(CONTRACTS["ac073"], 1)]
-                sequence = [(item.get("phase"), item.get("timeout"), item.get("sequence"))
-                            for item in observations]
                 recoverable = (
                     family == "ac073" and exc.code == "display_busy_unverified"
-                    and sequence == expected
-                    and all(item.get("outcome") in {"edge_received", "held_high_unverified"}
-                            for item in observations)
+                    and completed_ac073_waits(observations)
                     and observations[2]["outcome"] == "held_high_unverified"
                 )
                 if not recoverable:
@@ -381,8 +381,11 @@ class DisplayController:
             if family == "ac073":
                 assert self._confirmation_barrier is not None
                 self._confirmation_barrier.clear()
-            self._confirmation = next(item["outcome"] for item in observations
-                                      if item["phase"] == "refresh")
+            if timed_wait and any(item["outcome"] == "held_high_unverified" for item in observations):
+                self._confirmation = "timed_wait_unverified"
+            else:
+                self._confirmation = next(item["outcome"] for item in observations
+                                          if item["phase"] == "refresh")
         logger.info("Displayed %s (sat=%s, boost=%s)", path, pimoroni_sat, color_factor)
 
 

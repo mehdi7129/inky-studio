@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import pytest
 from fastapi.testclient import TestClient
 
-from inky_web.inky.display import DisplayController
+from inky_web.inky.display import AC073_TIMED_WAIT_PROFILE, DisplayController
 from inky_web.inky.errors import DisplayUnavailableError
 from inky_web.services import history, photos, queue, scheduler
 
@@ -85,10 +85,11 @@ def ac073_driver(monkeypatch, *, color=4, width=800, height=480, variant=20, mod
 
 
 @pytest.mark.parametrize("color", [4, 5])
-def test_explicit_bench_profile_preserves_raw_eeprom_and_uses_driver_palette(monkeypatch, color):
+@pytest.mark.parametrize("profile", ["ac073-800x480", AC073_TIMED_WAIT_PROFILE])
+def test_explicit_bench_profile_preserves_raw_eeprom_and_uses_driver_palette(monkeypatch, color, profile):
     driver = ac073_driver(monkeypatch, color=color)
     before = dict(vars(driver.eeprom))
-    monkeypatch.setenv("INKY_STUDIO_DISPLAY_PROFILE", "ac073-800x480")
+    monkeypatch.setenv("INKY_STUDIO_DISPLAY_PROFILE", profile)
     display = DisplayController(mode="hardware")
     display.initialize()
     assert display.info()["colors"] == 7
@@ -114,9 +115,10 @@ def test_unmapped_color_requires_explicit_profile(monkeypatch):
     {"width": 800.0}, {"height": 480.0}, {"variant": 20.0}, {"color": 4.0},
     {"module": "inky.inky_e673"},
 ])
-def test_bench_profile_rejects_mismatching_or_noninteger_tuple(monkeypatch, overrides):
+@pytest.mark.parametrize("profile", ["ac073-800x480", AC073_TIMED_WAIT_PROFILE])
+def test_bench_profile_rejects_mismatching_or_noninteger_tuple(monkeypatch, overrides, profile):
     ac073_driver(monkeypatch, **overrides)
-    monkeypatch.setenv("INKY_STUDIO_DISPLAY_PROFILE", "ac073-800x480")
+    monkeypatch.setenv("INKY_STUDIO_DISPLAY_PROFILE", profile)
     display = DisplayController(mode="hardware")
     display.initialize()
     assert display.status()["state"] == "error"
@@ -124,8 +126,10 @@ def test_bench_profile_rejects_mismatching_or_noninteger_tuple(monkeypatch, over
 
 
 @pytest.mark.parametrize("installed", ["2.3.0", "2.4.0", "2.5.1"])
-def test_busy_observer_rejects_unqualified_library_upgrade(monkeypatch, installed):
+@pytest.mark.parametrize("profile", ["", "ac073-800x480", AC073_TIMED_WAIT_PROFILE])
+def test_busy_observer_rejects_unqualified_library_upgrade(monkeypatch, installed, profile):
     ac073_driver(monkeypatch, color=5)
+    monkeypatch.setenv("INKY_STUDIO_DISPLAY_PROFILE", profile)
     monkeypatch.setattr("inky_web.inky.display.version", lambda name: installed)
     display = DisplayController(mode="hardware")
     display.initialize()
