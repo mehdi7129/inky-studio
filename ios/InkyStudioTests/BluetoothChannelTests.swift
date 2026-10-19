@@ -1,6 +1,56 @@
 import Foundation
 import XCTest
+import CoreBluetooth
 @testable import InkyStudio
+
+final class BluetoothDiscoveryLifecycleTests: XCTestCase {
+    func testRequestedScanSurvivesPowerOffAndResumesWhenPoweredOn() {
+        var lifecycle = BluetoothDiscoveryLifecycle()
+        lifecycle.start()
+        XCTAssertEqual(lifecycle.action(for: .poweredOff), .failure(.poweredOff))
+        XCTAssertTrue(lifecycle.isRequested)
+        XCTAssertEqual(lifecycle.action(for: .poweredOn), .scan)
+    }
+
+    func testRequestedScanSurvivesPermissionAndResettingChanges() {
+        var lifecycle = BluetoothDiscoveryLifecycle()
+        lifecycle.start()
+        XCTAssertEqual(lifecycle.action(for: .unauthorized), .failure(.unauthorized))
+        XCTAssertEqual(lifecycle.action(for: .resetting), .wait)
+        XCTAssertEqual(lifecycle.action(for: .poweredOn), .scan)
+    }
+
+    func testStoppedScanDoesNotResumeWithoutExplicitRequest() {
+        var lifecycle = BluetoothDiscoveryLifecycle()
+        lifecycle.start()
+        XCTAssertEqual(lifecycle.action(for: .poweredOff), .failure(.poweredOff))
+        lifecycle.stop() // stopScan is also used by cancellation and connection.
+        XCTAssertNil(lifecycle.action(for: .poweredOn))
+        XCTAssertNil(lifecycle.action(for: .poweredOff))
+        lifecycle.start()
+        XCTAssertEqual(lifecycle.action(for: .poweredOn), .scan)
+    }
+
+    @MainActor
+    func testNearbyScanStopsWhileInactiveAndRestartsWhenActive() {
+        var lifecycle = BluetoothDiscoveryLifecycle()
+        for isActive in [true, false, true] {
+            if BluetoothDiscoveryPresentation.shouldScan(stage: .nearby, isActive: isActive, isUITestFixture: false) {
+                lifecycle.start()
+            } else { lifecycle.stop() }
+            XCTAssertEqual(lifecycle.action(for: .poweredOn), isActive ? .scan : nil)
+        }
+    }
+
+    @MainActor
+    func testReturningToAppNeverStartsDiscoveryOutsideNearbyOrInFixtures() {
+        let stages: [BluetoothSetupCoordinator.Stage] = [.scanQR, .connecting, .claiming, .suspended, .networks, .applying, .completed]
+        for stage in stages {
+            XCTAssertFalse(BluetoothDiscoveryPresentation.shouldScan(stage: stage, isActive: true, isUITestFixture: false))
+        }
+        XCTAssertFalse(BluetoothDiscoveryPresentation.shouldScan(stage: .nearby, isActive: true, isUITestFixture: true))
+    }
+}
 
 final class BluetoothRecordTests: XCTestCase {
     func testFragmentSizesAcknowledgementsAndNonzeroDataIndices() throws {

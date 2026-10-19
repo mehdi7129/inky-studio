@@ -1,5 +1,11 @@
 import SwiftUI
 
+enum BluetoothDiscoveryPresentation {
+    static func shouldScan(stage: BluetoothSetupCoordinator.Stage, isActive: Bool, isUITestFixture: Bool) -> Bool {
+        stage == .nearby && isActive && !isUITestFixture
+    }
+}
+
 @MainActor
 struct BluetoothSetupView: View {
     @Environment(\.dismiss) private var dismiss
@@ -95,8 +101,7 @@ struct BluetoothSetupView: View {
                 }
             }
             .onChange(of: coordinator.stage) { _, stage in
-                if stage == .nearby && !coordinator.isUITestFixture { transport.startScan(profile: coordinator.discoveryProfile) }
-                else { transport.stopScan() }
+                updateDiscovery(stage: stage, isActive: scenePhase == .active)
                 if stage == .credentials { ssid = coordinator.selectedSSID }
                 if stage == .suspended || stage == .completed { password = "" }
             }
@@ -104,12 +109,18 @@ struct BluetoothSetupView: View {
                 if phase == .background {
                     transport.stopScan(); onClose?(); coordinator.suspend(); password = ""
                     initialBootstrapCode = nil
-                } else if phase == .inactive { transport.stopScan() }
-                else if coordinator.stage == .suspended { Task { await coordinator.resume() } }
+                } else if phase == .active, coordinator.stage == .suspended { Task { await coordinator.resume() } }
+                updateDiscovery(stage: coordinator.stage, isActive: phase == .active)
             }
             .onDisappear { transport.stopScan(); onClose?(); coordinator.close(); password = ""; initialBootstrapCode = nil }
         }
         .preferredColorScheme(uiTestColorScheme)
+    }
+
+    private func updateDiscovery(stage: BluetoothSetupCoordinator.Stage, isActive: Bool) {
+        if BluetoothDiscoveryPresentation.shouldScan(stage: stage, isActive: isActive, isUITestFixture: coordinator.isUITestFixture) {
+            transport.startScan(profile: coordinator.discoveryProfile)
+        } else { transport.stopScan() }
     }
 
     private var uiTestColorScheme: ColorScheme? {

@@ -408,11 +408,19 @@ final class BluetoothSetupCoordinator: ObservableObject {
     }
 
     func suspend() {
+        let needsBootstrapRescan = bootstrapCode != nil && owner == nil && discoveryProfile == .bootstrap
         bootstrapCode = nil
         guard !isUITestFixture else { return }
         guard ![.introduction, .scanQR, .completed, .rolledBack].contains(stage) else { return }
         resetChannel()
         scanningNetworks = false
+        if needsBootstrapRescan {
+            // The physical QR secret was purged. Do not resume as a normal
+            // connection when no durable bootstrap owner exists yet.
+            errorMessage = "Scannez à nouveau le QR du cadre pour reprendre la configuration."
+            stage = .scanQR
+            return
+        }
         // Preparing the e-ink QR may take long enough for the phone to lock.
         // Without a scanned identity, discovery cannot safely select a frame.
         stage = identity == nil ? .scanQR : .suspended

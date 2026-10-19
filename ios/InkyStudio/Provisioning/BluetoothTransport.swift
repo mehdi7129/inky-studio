@@ -40,6 +40,28 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
     }
 }
 
+/// Discovery may wait for power or permission, but a stopped request stays stopped.
+/// Keeping this decision independent of CBCentralManager also makes the lifecycle
+/// testable without fabricating CoreBluetooth objects.
+struct BluetoothDiscoveryLifecycle {
+    enum Action: Equatable { case scan, wait, failure(BluetoothTransportError) }
+    private(set) var isRequested = false
+
+    mutating func start() { isRequested = true }
+    mutating func stop() { isRequested = false }
+
+    func action(for power: CBManagerState) -> Action? {
+        guard isRequested else { return nil }
+        switch power {
+        case .poweredOn: return .scan
+        case .unknown, .resetting: return .wait
+        case .poweredOff: return .failure(.poweredOff)
+        case .unauthorized: return .failure(.unauthorized)
+        default: return .failure(.unavailable)
+        }
+    }
+}
+
 /// One ordered write/read exchange. Neither advertisements nor identity bytes establish trust.
 @MainActor protocol BluetoothExchanging: AnyObject {
     var maxFrameLength: Int { get }
@@ -82,7 +104,7 @@ extension BluetoothExchanging {
 
     private enum Phase { case waitingPower, connecting, services, characteristics, identity, certificate0, certificate1, writing, reading }
     private var manager: CBCentralManager?
-    private var wantsScan = false
+    private var discovery = BluetoothDiscoveryLifecycle()
     private var peripherals: [UUID: CBPeripheral] = [:]
     private var peripheral: CBPeripheral?
     private var peripheralDelegate: PeripheralCallbacks?
@@ -106,13 +128,13 @@ extension BluetoothExchanging {
         self.profile = profile
         error = nil
         lastFailure = nil
-        wantsScan = true
+        discovery.start()
         ensureManager()
         updatePowerState()
     }
 
     func stopScan() {
-        wantsScan = false
+        discovery.stop()
         if manager?.state == .poweredOn { manager?.stopScan() }
         isScanning = false
         if state == .scanning { state = .idle }
@@ -179,6 +201,31 @@ extension BluetoothExchanging {
 
     private func updatePowerState() {
         guard let manager else { return }
+        if continuation == nil, peripheral == nil, let action = discovery.action(for: manager.state) {
+            // A discovery request owns no connection or secret exchange. Keep
+            // this manager's delegate so poweredOn can resume that same request.
+            // Connection failures still retire their entire generation below.
+            switch action {
+            case .scan:
+                error = nil
+                lastFailure = nil
+                manager.scanForPeripherals(withServices: [profile.serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+                isScanning = true
+                state = .scanning
+            case .wait, .failure:
+                peripherals.removeAll()
+                discoveredFrames.removeAll()
+                isScanning = false
+                if case .failure(let reason) = action {
+                    error = reason.localizedDescription
+                    lastFailure = reason
+                    state = .unavailable
+                } else {
+                    state = .idle
+                }
+            }
+            return
+        }
         switch manager.state {
         case .poweredOn:
             if phase == .waitingPower, let targetID {
@@ -191,10 +238,6 @@ extension BluetoothExchanging {
                 found.delegate = proxy
                 phase = .connecting
                 manager.connect(found, options: nil)
-            } else if wantsScan, continuation == nil, peripheral == nil {
-                manager.scanForPeripherals(withServices: [profile.serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
-                isScanning = true
-                state = .scanning
             }
         case .unknown, .resetting: break // Bounded by the active operation's deadline.
         case .unauthorized: fail(.unauthorized)
@@ -388,7 +431,7 @@ extension BluetoothExchanging {
         peripherals.removeAll()
         discoveredFrames.removeAll()
         isScanning = false
-        wantsScan = false
+        discovery.stop()
         initialMaxFrameLength = 20
     }
 }

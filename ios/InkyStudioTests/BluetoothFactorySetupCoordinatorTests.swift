@@ -4,6 +4,53 @@ import XCTest
 /// Coordinator state/protocol tests with synthetic peers. No physical BLE, TLS handshake or Keychain ACL is qualified here.
 @MainActor
 final class BluetoothFactorySetupCoordinatorTests: XCTestCase {
+    func testBackgroundBeforeBootstrapOwnershipRequiresNewScanWithoutConnectingOnResume() async throws {
+        let h = try FactoryCoordinatorHarness()
+        h.coordinator.acceptBootstrapCode(h.code)
+        XCTAssertEqual(h.coordinator.stage, .nearby)
+        h.coordinator.suspend()
+        XCTAssertEqual(h.coordinator.stage, .scanQR)
+        XCTAssertNotNil(h.coordinator.errorMessage)
+        XCTAssertFalse(h.coordinator.isFactory, "The QR secret must still be purged")
+        await h.coordinator.resume()
+        XCTAssertEqual(h.coordinator.stage, .scanQR)
+        XCTAssertEqual(h.peer.bootstrapConnections, 0)
+        XCTAssertEqual(h.peer.normalConnections, 0)
+        XCTAssertTrue(h.peer.operations.isEmpty)
+        XCTAssertNil(h.vault.record)
+
+        let rescanned = try FrameBootstrapCode(identity: h.identity, adoptionToken: Data(repeating: 0x2a, count: 32))
+        h.coordinator.acceptBootstrapCode(rescanned)
+        XCTAssertEqual(h.coordinator.stage, .nearby)
+        XCTAssertTrue(h.coordinator.isFactory)
+        XCTAssertEqual(h.coordinator.discoveryProfile, .bootstrap)
+        XCTAssertNil(h.coordinator.errorMessage)
+        XCTAssertEqual(h.peer.bootstrapConnections, 0, "A new scan still requires an explicit connection")
+        XCTAssertEqual(h.peer.normalConnections, 0)
+        XCTAssertTrue(h.peer.operations.isEmpty)
+        h.coordinator.close()
+    }
+
+    func testBackgroundWithSavedBootstrapOwnerPreservesOwnershipAndResume() async throws {
+        let h = try FactoryCoordinatorHarness()
+        h.installClaimedBootstrap()
+        let saved = try XCTUnwrap(h.vault.record)
+        h.coordinator.acceptBootstrapCode(h.code)
+        h.coordinator.suspend()
+        XCTAssertEqual(h.coordinator.stage, .suspended)
+        XCTAssertTrue(h.coordinator.isFactory)
+        XCTAssertEqual(h.coordinator.owner, saved)
+        await h.coordinator.resume()
+        XCTAssertEqual(h.coordinator.stage, .nearby)
+        XCTAssertEqual(h.coordinator.discoveryProfile, .bootstrap)
+        XCTAssertEqual(h.coordinator.owner, saved)
+        XCTAssertEqual(h.vault.record, saved)
+        XCTAssertEqual(h.peer.bootstrapConnections, 0)
+        XCTAssertEqual(h.peer.normalConnections, 0)
+        XCTAssertTrue(h.peer.operations.isEmpty)
+        h.coordinator.close()
+    }
+
     func testFactoryAuthorizationFailureSendsNothing() async throws {
         let h = try FactoryCoordinatorHarness(authorize: { false })
         h.coordinator.acceptBootstrapCode(h.code)
