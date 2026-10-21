@@ -99,6 +99,30 @@ def test_invalidated_claim_stays_refused_after_clock_or_epoch_is_restored(window
     assert caught.value.code == "qr_unavailable"
 
 
+@pytest.mark.parametrize("consumer", ["claim", "remaining"])
+@pytest.mark.parametrize("clock_name", ["wall", "monotonic"])
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")],
+                         ids=["nan", "positive_inf", "negative_inf"])
+def test_nonfinite_claim_invalidation_survives_clock_restoration(
+    window, consumer, clock_name, bad,
+):
+    v = window
+    original = getattr(v.clocks, clock_name)
+    setattr(v.clocks, clock_name, bad)
+    with pytest.raises(OwnershipError) as caught:
+        v.store.claim(v.token, str(uuid4()), "b" * 64, str(uuid4()), EPOCH)
+    assert caught.value.code == "qr_unavailable"
+    # Restore before either original TTL has expired: only the observed bad
+    # clock, rather than passage of time, can explain the permanent refusal.
+    setattr(v.clocks, clock_name, original)
+    with pytest.raises(OwnershipError) as caught:
+        if consumer == "claim":
+            v.store.claim(v.token, str(uuid4()), "b" * 64, str(uuid4()), EPOCH)
+        else:
+            remaining(v)
+    assert caught.value.code == "qr_unavailable"
+
+
 @pytest.mark.parametrize("clock_name", ["wall", "monotonic"])
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
 def test_nonfinite_clock_is_a_refusal_and_never_ordinary_expiry(window, clock_name, bad):

@@ -389,6 +389,9 @@ class OwnershipStore:
     def _window_valid(self, row: sqlite3.Row | None, epoch: str) -> bool:
         now, monotonic_now = self._clock(), self._monotonic()
         if row is None or not math.isfinite(now) or not math.isfinite(monotonic_now):
+            # A rejected clock observation revokes the in-process window even
+            # if that clock is subsequently restored to a finite value.
+            self._window_deadline = None
             self._window_expired = False
             return False
         # A backwards wall clock invalidates a window even within one process.

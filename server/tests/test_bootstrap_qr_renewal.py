@@ -38,6 +38,7 @@ class ManualClocks:
     def __init__(self):
         self.elapsed = 0.0
         self.wall_shift = 0.0
+        self.owner_shift = 0.0
         self.waits = asyncio.Queue()
         self.pending = []
 
@@ -45,7 +46,7 @@ class ManualClocks:
         return 1_790_000_000.0 + self.elapsed + self.wall_shift
 
     def owner(self):
-        return 50.0 + self.elapsed
+        return 50.0 + self.elapsed + self.owner_shift
 
     def runtime(self):
         return 10_000.0 + self.elapsed
@@ -242,6 +243,32 @@ async def test_invalidated_scan_cannot_become_ordinary_expiry_after_restoration(
     v.epoch[0] = EPOCH
     await expire(v)
     assert len(v.payloads) == 1 and not v.runtime.available and not v.runtime._admitting
+    assert v.runtime._window_task is None or v.runtime._window_task.done()
+
+
+@pytest.mark.parametrize("clock_name", ["wall", "monotonic"])
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")],
+                         ids=["nan", "positive_inf", "negative_inf"])
+async def test_nonfinite_claim_invalidation_closes_callback_after_clock_restoration(
+    factory_qr, clock_name, bad,
+):
+    v = factory_qr
+    await v.runtime.start()
+    await v.clocks.next_wait()
+    shift_name = "wall_shift" if clock_name == "wall" else "owner_shift"
+    setattr(v.clocks, shift_name, bad)
+    assert (await v.runtime.command(claim_message(v.payloads[0]["t"])))["error"] == "qr_unavailable"
+    setattr(v.clocks, shift_name, 0.0)
+    v.clocks.advance(20)
+    v.runtime._cancel_window_timer()
+    # An early callback must distinguish invalidation from a still-live QR or
+    # ordinary expiry; no 600-second timeout has occurred in either clock.
+    await v.runtime._expire_screen()
+    assert len(v.payloads) == 1 and not v.runtime.available and not v.runtime._admitting
+    assert (await v.runtime.command(claim_message(v.payloads[0]["t"])))["error"] == "service_stopping"
+    with pytest.raises(OwnershipError) as caught:
+        v.result.ownership.factory_window_remaining(expected_epoch=EPOCH)
+    assert caught.value.code == "qr_unavailable"
     assert v.runtime._window_task is None or v.runtime._window_task.done()
 
 
