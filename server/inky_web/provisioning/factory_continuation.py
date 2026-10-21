@@ -278,17 +278,19 @@ class FactoryContinuationRuntime(BootstrapRuntime):
         self.transport = GATTTransport(context, self.command, profile=BOOTSTRAP_PROFILE,
                                        peer_factory=self._peer_factory())
         self.bluez = self.server_factory(self.transport, public, profile=BOOTSTRAP_PROFILE)
-        if status.state == FactoryState.FACTORY:
-            epoch = await asyncio.to_thread(self._verified_epoch)
-            token = await asyncio.to_thread(self.owners.open_factory_window, expected_epoch=epoch)
-            payload = bootstrap_wire.encode_qr(prepared.frame_id, prepared.binding.spki_sha256, token.value)
-            await self._show_qr(payload)
-            self._window_task = asyncio.create_task(self._expire_window(self.monotonic() + 600))
+        deadline = await self._open_factory_qr() if status.state == FactoryState.FACTORY else None
         await asyncio.to_thread(self._verified_epoch)
         if not self._stopping:
             await self.bluez.start()
             _log_bootstrap_event("ble_advertised")
-            self.available = self._admitting = True
+            if not self._stopping:
+                await asyncio.to_thread(self._verified_epoch)
+            if not self._stopping and deadline is not None:
+                deadline = await self._check_factory_qr_ready()
+            if not self._stopping:
+                self.available = self._admitting = True
+                if deadline is not None:
+                    self._window_task = asyncio.create_task(self._expire_window(deadline))
 
     def _accept_snapshot(self, snapshot):
         # inspect, status and resume deliberately have different closed shapes.

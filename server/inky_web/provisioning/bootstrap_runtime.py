@@ -242,9 +242,69 @@ class BootstrapRuntime:
             raise
         _log_bootstrap_event("qr_ready")
 
+    def _verify_factory_qr(self):
+        prepared, status, epoch = self._verify()
+        if (status.state != FactoryState.FACTORY
+                or prepared.verify_current_or_unpublished() is not None
+                or prepared.initial_publication() is not None):
+            raise FactoryRecoveryRequired()
+        return prepared, epoch
+
+    def _factory_window_timing(self, expected_epoch):
+        # Capture the local clock before querying the store so the translation
+        # cannot extend the lifetime across distinct monotonic clock domains.
+        now = self.monotonic()
+        remaining = self.owners.factory_window_remaining(expected_epoch=expected_epoch)
+        if not math.isfinite(now):
+            raise FactoryRecoveryRequired()
+        return now + remaining, remaining
+
+    def _require_factory_window_deadline(self, expected_epoch=None):
+        _, epoch = self._verify_factory_qr()
+        if expected_epoch is not None and epoch != expected_epoch:
+            raise FactoryRecoveryRequired()
+        deadline, remaining = self._factory_window_timing(epoch)
+        if remaining <= 0:
+            raise OwnershipError("qr_unavailable")
+        return deadline
+
+    async def _check_factory_qr_ready(self):
+        try:
+            return await asyncio.to_thread(self._require_factory_window_deadline)
+        except BaseException:
+            self._fail_closed()
+            await asyncio.to_thread(self.owners.close_window)
+            raise
+
+    async def _open_factory_qr(self):
+        prepared, epoch = await asyncio.to_thread(self._verify_factory_qr)
+        if self._stopping:
+            return None
+        if self.display.closing:
+            raise OwnershipError("service_stopping")
+        try:
+            token = await asyncio.to_thread(self.owners.open_factory_window, expected_epoch=epoch)
+            if self._stopping:
+                await asyncio.to_thread(self.owners.close_window)
+                return None
+            payload = wire.encode_qr(prepared.frame_id, prepared.binding.spki_sha256, token.value)
+            await self._show_qr(payload)
+            if self._stopping:
+                await asyncio.to_thread(self.owners.close_window)
+                return None
+            if self.display.closing:
+                raise OwnershipError("service_stopping")
+            # Never advertise a QR whose complete hardware refresh outlived
+            # its actual store window. This failure must not become a loop.
+            return await asyncio.to_thread(self._require_factory_window_deadline, epoch)
+        except BaseException:
+            self._fail_closed()
+            await asyncio.to_thread(self.owners.close_window)
+            raise
+
     async def _start(self):
         async with self.mutation_lock:
-            prepared, status, epoch = await asyncio.to_thread(self._verify)
+            prepared, status, _ = await asyncio.to_thread(self._verify)
             await asyncio.to_thread(self.screen.reserve)
             context = await asyncio.to_thread(prepared.bootstrap_tls_context)
             identity = BootstrapPublicIdentity(prepared.frame_id, prepared.bootstrap_certificate_der)
@@ -252,16 +312,9 @@ class BootstrapRuntime:
                                            peer_factory=BootstrapApplicationPeer)
             self.bluez = self.server_factory(self.transport, identity, profile=BOOTSTRAP_PROFILE)
             if status.state == FactoryState.FACTORY:
-                token = await asyncio.to_thread(self.owners.open_factory_window, expected_epoch=epoch)
-                deadline = self.monotonic() + 600
-                try:
-                    payload = wire.encode_qr(prepared.frame_id, prepared.binding.spki_sha256, token.value)
-                    await self._show_qr(payload)
-                except BaseException:
-                    await asyncio.to_thread(self.owners.close_window)
-                    raise
-                self._window_task = asyncio.create_task(self._expire_window(deadline))
+                deadline = await self._open_factory_qr()
             else:
+                deadline = None
                 await asyncio.to_thread(self.screen.show_status, adopted=True)
             if self._stopping:
                 return
@@ -275,8 +328,12 @@ class BootstrapRuntime:
             _log_bootstrap_event("ble_advertised")
             if not self._stopping:
                 await asyncio.to_thread(self._verified_epoch)
+            if not self._stopping and deadline is not None:
+                deadline = await self._check_factory_qr_ready()
             if not self._stopping:
                 self.available = self._admitting = True
+                if deadline is not None:
+                    self._window_task = asyncio.create_task(self._expire_window(deadline))
 
     async def _expire_window(self, deadline):
         try:
@@ -288,16 +345,31 @@ class BootstrapRuntime:
 
     async def _expire_screen(self):
         async with self.mutation_lock:
+            if self._stopping or not self._admitting:
+                return
             try:
-                await asyncio.to_thread(self.owners.close_window)
-                if not self._stopping:
-                    status = await asyncio.to_thread(self.owners.factory_status)
-                    await asyncio.to_thread(self.screen.show_status,
-                                            adopted=status.state == FactoryState.ADOPTED)
+                if self.display.closing:
+                    raise OwnershipError("service_stopping")
+                prepared, status, epoch = await asyncio.to_thread(self._verify)
+                if status.state != FactoryState.FACTORY or self._stopping:
+                    return
+                if (await asyncio.to_thread(prepared.verify_current_or_unpublished) is not None
+                        or await asyncio.to_thread(prepared.initial_publication) is not None):
+                    raise FactoryRecoveryRequired()
+                deadline, remaining = await asyncio.to_thread(self._factory_window_timing, epoch)
+                if remaining <= 0:
+                    await asyncio.to_thread(self.owners.close_window)
+                    deadline = await self._open_factory_qr()
+                if deadline is not None and not self._stopping and self._admitting:
+                    self._window_task = asyncio.create_task(self._expire_window(deadline))
             except Exception:
-                # Corrupt durable state may prevent even window deletion. Keep
-                # no radio admission open while recovery is required.
                 self._fail_closed()
+                # Revoke a newly opened token even when its refresh or epoch
+                # check failed. Corrupt storage still leaves radio closed.
+                try:
+                    await asyncio.to_thread(self.owners.close_window)
+                except Exception:
+                    pass
 
     def _fail_closed(self):
         self._admitting = self.available = False

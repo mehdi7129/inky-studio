@@ -145,6 +145,11 @@ async def start_with_token(factory, monkeypatch):
     return payloads[0]["t"]
 
 
+def expire_factory_window(runtime, monkeypatch):
+    monotonic = runtime.owners._monotonic() + 601
+    monkeypatch.setattr(runtime.owners, "_monotonic", lambda: monotonic)
+
+
 async def test_claim_replay_and_status_use_only_durable_store(factory, monkeypatch):
     directory, _, _, _, result, display, runtime = factory
     token = await start_with_token(factory, monkeypatch)
@@ -402,13 +407,17 @@ async def test_bad_verified_epoch_is_recovery_not_client_error(factory, monkeypa
     await runtime.stop()
 
 
-async def test_expired_window_cleanup_does_not_reopen_qr(factory, monkeypatch):
-    token = await start_with_token(factory, monkeypatch)
+async def test_expired_factory_window_repaints_a_new_qr_without_reboot(factory, monkeypatch):
     runtime = factory[-1]
+    payloads = _capture_qr(monkeypatch, runtime)
+    await runtime.start()
     runtime._cancel_window_timer()
+    expire_factory_window(runtime, monkeypatch)
     await runtime._expire_window(runtime.monotonic() - 1)
-    monkeypatch.setattr(runtime.owners, "open_factory_window", lambda **_: pytest.fail("Expiry must not reopen QR"))
-    assert (await runtime.command(claim_message(token)))["error"] == "qr_unavailable"
+    assert len(payloads) == 2 and payloads[0]["t"] != payloads[1]["t"]
+    assert runtime.available and runtime._window_task is not None
+    assert (await runtime.command(claim_message(payloads[0]["t"])))["error"] == "unauthorized"
+    assert (await runtime.command(claim_message(payloads[1]["t"])))["ok"]
     await runtime.stop()
 
 
@@ -424,6 +433,7 @@ async def test_window_cleanup_failure_closes_admission_immediately(factory, monk
         raise error_type()
 
     monkeypatch.setattr(runtime.owners, "close_window", corrupt_window)
+    expire_factory_window(runtime, monkeypatch)
     await runtime._expire_screen()
     assert not runtime.available and not runtime._admitting
     assert not runtime.transport.sessions
@@ -497,7 +507,7 @@ async def test_ac073_timed_wait_qr_precedes_ble_and_claim_status_expiry_still_wo
         assert (await runtime.command(claim))["ok"]
         assert (await runtime.command(status_message(claim)))["ok"]
         await runtime._expire_screen()
-        assert driver.show_calls == 3 and runtime.available
+        assert driver.show_calls == 2 and runtime.available
         assert runtime.display.status()["confirmation"] == "timed_wait_unverified"
         for private in (json.dumps(payloads[0]), payloads[0]["t"], payloads[0]["id"],
                         payloads[0]["k"], claim["id"], claim["owner_id"], claim["owner_token"]):
@@ -559,8 +569,10 @@ async def test_ac073_fresh_controller_repaints_fresh_qr_after_expiry_and_restart
     first_payloads = _capture_qr(monkeypatch, runtime)
     await runtime.start()
     runtime._cancel_window_timer()
+    expire_factory_window(runtime, monkeypatch)
     await runtime._expire_screen()
-    assert (await runtime.command(claim_message(first_payloads[0]["t"])))["error"] == "qr_unavailable"
+    assert len(first_payloads) == 2 and first_payloads[0]["t"] != first_payloads[1]["t"]
+    assert (await runtime.command(claim_message(first_payloads[0]["t"])))["error"] == "unauthorized"
     assert first_driver.show_calls == 2
     await runtime.stop()
     result = factory[3].initialize()
@@ -576,6 +588,7 @@ async def test_ac073_fresh_controller_repaints_fresh_qr_after_expiry_and_restart
         assert first_payloads[0]["id"] == second_payloads[0]["id"]
         assert first_payloads[0]["k"] == second_payloads[0]["k"]
         assert (await second.command(claim_message(first_payloads[0]["t"])))["error"] == "unauthorized"
+        assert (await second.command(claim_message(first_payloads[1]["t"])))["error"] == "unauthorized"
         assert (await second.command(claim_message(second_payloads[0]["t"])))["ok"]
     finally:
         await second.stop()

@@ -220,6 +220,7 @@ class OwnershipStore:
         self._lock = threading.RLock()
         self._window_deadline: float | None = None
         self._window_wall_highwater: float | None = None
+        self._window_expired = False
         self._closed = False
         try:
             if receipt is not None and not create_factory and not Path(private_dir).is_dir():
@@ -388,6 +389,7 @@ class OwnershipStore:
     def _window_valid(self, row: sqlite3.Row | None, epoch: str) -> bool:
         now, monotonic_now = self._clock(), self._monotonic()
         if row is None or not math.isfinite(now) or not math.isfinite(monotonic_now):
+            self._window_expired = False
             return False
         # A backwards wall clock invalidates a window even within one process.
         highwater = self._window_wall_highwater
@@ -396,6 +398,12 @@ class OwnershipStore:
                  and (highwater is None or now >= highwater)
                  and self._window_deadline is not None and monotonic_now < self._window_deadline)
         if not valid:
+            self._window_expired = (
+                row["epoch"] == epoch and row["created_at"] <= now
+                and (highwater is None or now >= highwater)
+                and (self._window_expired or (self._window_deadline is not None
+                     and (now >= row["expires_at"] or monotonic_now >= self._window_deadline)))
+            )
             self._window_deadline = None
         return valid
 
@@ -423,6 +431,57 @@ class OwnershipStore:
         """
         return self._open_window(ttl_seconds, expected_epoch=expected_epoch, factory=True)
 
+    def factory_window_remaining(self, *, expected_epoch: str) -> float:
+        """Local timer observation of the current factory window, never a grant.
+
+        Both store clocks remain authoritative. Missing windows, changed epochs
+        and invalid clocks must not look like ordinary expiry to a QR renewer.
+        No token, durable timestamp or clock-domain-specific deadline escapes.
+        """
+        with self._transaction() as connection:
+            if self._factory_status(connection).state != FactoryState.FACTORY:
+                raise OwnershipError("factory_unavailable")
+            epoch = self._current_epoch(expected_epoch)
+            row = connection.execute("SELECT * FROM window WHERE id = 1").fetchone()
+            if row is None:
+                raise OwnershipError("qr_unavailable")
+            try:
+                validate_token(row["token_hash"])
+                row_epoch = _epoch(row["epoch"])
+                created, expires = row["created_at"], row["expires_at"]
+                if (type(created) not in (int, float) or type(expires) not in (int, float)
+                        or not math.isfinite(created) or not math.isfinite(expires)
+                        or not 0 < expires - created <= MAX_WINDOW_SECONDS):
+                    raise ValueError
+            except (ValueError, TypeError):
+                raise FactoryRecoveryRequired() from None
+            if not secrets.compare_digest(row_epoch, epoch):
+                raise OwnershipError("epoch_changed")
+            now, monotonic_now = self._clock(), self._monotonic()
+            highwater = self._window_wall_highwater
+            if (not math.isfinite(now) or not math.isfinite(monotonic_now)
+                    or now < created or (highwater is not None and now < highwater)):
+                self._window_deadline = None
+                self._window_expired = False
+                raise OwnershipError("invalid_clock")
+            self._window_wall_highwater = now if highwater is None else max(highwater, now)
+            deadline = self._window_deadline
+            # Only a positively observed expiry may survive a claim attempt's
+            # clearing of the deadline. Other invalidations stay closed even
+            # if a bad wall clock or epoch has since been restored.
+            if deadline is None:
+                if self._window_expired:
+                    return 0.0
+                raise OwnershipError("qr_unavailable")
+            if not math.isfinite(deadline):
+                raise OwnershipError("invalid_clock")
+            remaining = min(expires - now, deadline - monotonic_now)
+            if remaining <= 0:
+                self._window_deadline = None
+                self._window_expired = True
+                return 0.0
+            return remaining
+
     def _open_window(self, ttl_seconds: float, *, expected_epoch: str | None,
                      factory: bool) -> SecretToken:
         if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, (float, int)) or not 0 < ttl_seconds <= MAX_WINDOW_SECONDS:
@@ -449,12 +508,14 @@ class OwnershipStore:
                                (_hash_token(token), epoch, now, now + ttl_seconds))
             self._window_deadline = monotonic_now + ttl_seconds
             self._window_wall_highwater = now
+            self._window_expired = False
             return token
 
     def close_window(self) -> None:
         with self._transaction() as connection:
             connection.execute("DELETE FROM window")
             self._window_deadline = self._window_wall_highwater = None
+            self._window_expired = False
 
     @staticmethod
     def _authorized(connection: sqlite3.Connection, owner_id: str, token_hash: str,
@@ -534,6 +595,7 @@ class OwnershipStore:
                 )
             connection.execute("DELETE FROM window")
             self._window_deadline = self._window_wall_highwater = None
+            self._window_expired = False
             return ClaimResult(owner_id, request_id)
 
     def status(self, owner_id: str, owner_token: str | SecretToken,
