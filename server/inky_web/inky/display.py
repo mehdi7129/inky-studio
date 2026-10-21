@@ -356,7 +356,11 @@ class DisplayController:
                     self._confirmation_barrier = ConfirmationBarrier(data_dir())
                 self._confirmation_barrier.write("in_progress")
             try:
-                observations = self._busy_observer.run_show()
+                if family == "ac073":
+                    from inky_web.inky.spi import AC073BulkSPI
+                    observations = AC073BulkSPI(self._impl).run_show(self._busy_observer.run_show)
+                else:
+                    observations = self._busy_observer.run_show()
             finally:
                 self._observations = [dict(item) for item in self._busy_observer.observations]
             # Each driver owns its clocks/waits. EL133 refuses an unproved
