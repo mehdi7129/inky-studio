@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import secrets
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -35,7 +37,11 @@ from .network import NetworkUnavailable
 from .ownership import OwnershipError
 from .runtime import ProvisioningRuntime
 from .system_setup_ipc import SetupUnavailable
-from .transport import BOOTSTRAP_PROFILE, GATTTransport, TLSPeer
+from .transport import BOOTSTRAP_PROFILE, TLSPeer
+
+logger = logging.getLogger(__name__)
+_SOFTAP_SETTLE_SECONDS = 30
+_SOFTAP_SETTLE_RETRY_SECONDS = 1
 
 
 @dataclass(eq=False)
@@ -49,9 +55,15 @@ class SetupSession:
     channel: object | None = None
     binding: dict | None = None
     opening: asyncio.Lock = field(default_factory=asyncio.Lock)
+    after_response: object | None = None
+    response_discarded: object | None = None
 
     def close(self):
         self.active = self.negotiated = False
+        discarded, self.response_discarded = self.response_discarded, None
+        self.after_response = None
+        if discarded is not None:
+            discarded()
         if self.channel is not None:
             self.channel.close()
 
@@ -98,8 +110,13 @@ class SetupIntents:
 
 class FactoryContinuationRuntime(BootstrapRuntime):
     def __init__(self, result, verify_epoch, display, directory, *, system_setup, network,
-                 server_factory=None, normal_service_factory=None, monotonic=None):
+                 server_factory=None, normal_service_factory=None, monotonic=None, softap=None):
         kwargs = {}
+        if softap is not None:
+            from .softap_transport import SoftAPServer, SoftAPTransport
+            kwargs.update(transport_factory=SoftAPTransport, qr_encoder=softap.encode_qr)
+            if server_factory is None:
+                server_factory = SoftAPServer
         if server_factory is not None:
             kwargs["server_factory"] = server_factory
         if monotonic is not None:
@@ -108,6 +125,7 @@ class FactoryContinuationRuntime(BootstrapRuntime):
         if system_setup is None or network is None:
             raise TypeError("Attested system and network clients are required")
         self.system_setup, self.network = system_setup, network
+        self.softap = softap
         self.normal_service_factory = normal_service_factory
         self.normal_service = None
         self.provisioning = None
@@ -117,6 +135,8 @@ class FactoryContinuationRuntime(BootstrapRuntime):
         self._sessions = set()
         self._session_generation = 0
         self._apply_tasks = {}
+        self._handoffs = {}
+        self._handoff_channels = set()
         self._challenges = {}
         self._loop = None
         self._normal_lock = asyncio.Lock()
@@ -149,6 +169,8 @@ class FactoryContinuationRuntime(BootstrapRuntime):
                     session.close()
                     if session.channel is not None:
                         self.operations.create(session.channel.drain())
+                for channel in tuple(self._handoff_channels):
+                    channel.close()
             finally:
                 closed.set()
         try:
@@ -245,6 +267,12 @@ class FactoryContinuationRuntime(BootstrapRuntime):
                 runtime._sessions.discard(self.session)
                 super().close()
 
+            async def response_drained(self):
+                callback, self.session.after_response = self.session.after_response, None
+                self.session.response_discarded = None
+                if callback is not None:
+                    callback()
+
         return Peer
 
     async def _start(self):
@@ -264,21 +292,31 @@ class FactoryContinuationRuntime(BootstrapRuntime):
                     # Retain NORMAL + photo while WLAN remains closed by OS.
                     self.snapshot = {**snapshot, "live": {**snapshot["live"],
                         "readiness": "wlan_closed", "https_origin": None}}
+                if self.softap is not None and self.snapshot["live"]["readiness"] != "network_ready":
+                    await self._show_recovery_qr(prepared)
                 await self._start_normal(prepared.load_current_identity())
                 return
             current = prepared.verify_current_or_unpublished()
             if current is not None:
+                if self.softap is not None:
+                    await self._show_recovery_qr(prepared)
                 await self._start_normal(current)
                 return
         # Fresh factory is the only branch that may paint/reopen a QR. An
         # adopted continuation never overwrites a last photo on reboot.
         await asyncio.to_thread(self.screen.reserve)
+        if self.softap is not None:
+            # The OS supplies the installed FR policy and checks actual AP/STA
+            # state. This grants a carrier, never a claim or setup capability.
+            await self.softap.start(self.workflow)
         context = await asyncio.to_thread(prepared.bootstrap_tls_context)
         public = BootstrapPublicIdentity(prepared.frame_id, prepared.bootstrap_certificate_der)
-        self.transport = GATTTransport(context, self.command, profile=BOOTSTRAP_PROFILE,
-                                       peer_factory=self._peer_factory())
+        self.transport = self.transport_factory(context, self.command, profile=BOOTSTRAP_PROFILE,
+                                               peer_factory=self._peer_factory())
         self.bluez = self.server_factory(self.transport, public, profile=BOOTSTRAP_PROFILE)
         deadline = await self._open_factory_qr() if status.state == FactoryState.FACTORY else None
+        if status.state == FactoryState.ADOPTED and self.softap is not None:
+            await self._paint_recovery_qr(prepared)
         await asyncio.to_thread(self._verified_epoch)
         if not self._stopping:
             await self.bluez.start()
@@ -291,6 +329,24 @@ class FactoryContinuationRuntime(BootstrapRuntime):
                 self.available = self._admitting = True
                 if deadline is not None:
                     self._window_task = asyncio.create_task(self._expire_window(deadline))
+
+    async def _open_factory_qr(self):
+        if self.softap is not None:
+            await self.softap.ensure_active()
+        return await super()._open_factory_qr()
+
+    async def _paint_recovery_qr(self, prepared):
+        await self.softap.ensure_active()
+        # Syntactically compatible QR token, with no window or persisted claim
+        # authority. Only the previously stored owner can resume after reboot.
+        payload = self.softap.encode_qr(prepared.frame_id, prepared.binding.spki_sha256,
+                                        secrets.token_hex(32))
+        await self._show_qr(payload)
+
+    async def _show_recovery_qr(self, prepared):
+        await self.softap.start(self.workflow)
+        await asyncio.to_thread(self.screen.reserve)
+        await self._paint_recovery_qr(prepared)
 
     def _accept_snapshot(self, snapshot):
         # inspect, status and resume deliberately have different closed shapes.
@@ -348,6 +404,10 @@ class FactoryContinuationRuntime(BootstrapRuntime):
                 frame_status=self._frame_status, network_admission=self._network_admission,
                 adoption_admission=self._adoption_admission,
                 owns_store=False, server_factory=self.server_factory,
+                transport_factory=self.transport_factory,
+                qr_encoder=None if self.softap is None else self.softap.encode_qr,
+                wifi_handoff=self.softap,
+                wifi_expected_origin=self.candidate_origin,
                 # Renewals require a current time policy; the old completion is
                 # not such an attestation. Maintenance is enabled after real setup.
                 renew_certificate=False,
@@ -366,6 +426,18 @@ class FactoryContinuationRuntime(BootstrapRuntime):
             return None
         live = self.snapshot["live"]
         if live["readiness"] != "network_ready" or live["origin_status"] != "avahi_current":
+            return None
+        return live["https_origin"]
+
+    def candidate_origin(self):
+        # The hostname is generated independently of the frame UUID. The AP's
+        # current Avahi/kernel observation supplies a candidate destination;
+        # this says nothing about reachability on the future domestic LAN.
+        if self.snapshot is None:
+            return None
+        live = self.snapshot["live"]
+        if (live["readiness"] not in {"country_radio_ready", "network_ready"}
+                or live["origin_status"] != "avahi_current"):
             return None
         return live["https_origin"]
 
@@ -397,7 +469,114 @@ class FactoryContinuationRuntime(BootstrapRuntime):
     async def session_command(self, session, message, normal_handler):
         if type(message) is dict and (message.get("v") == 2 or str(message.get("op", "")).startswith("system_setup.")):
             return await self._setup_command(session, message)
-        return await normal_handler(message)
+        result = await normal_handler(message)
+        if (self.softap is not None and message.get("op") == "wifi.activate"
+                and result.get("ok") is True):
+            try:
+                await self._register_handoff(session, message)
+            except Exception:
+                return {"v": 1, "id": message.get("id"), "ok": False, "error": "not_ready"}
+        return result
+
+    def _handoff_authority(self, message, epoch=None):
+        self._verify()
+        if self._stopping or self.display.closing:
+            raise OwnershipError("service_stopping")
+        authorization = self.owners.authenticate(message["owner_id"], message["owner_token"])
+        if epoch is not None and authorization.epoch != epoch:
+            raise OwnershipError("epoch_changed")
+        snapshot = self.snapshot
+        if snapshot is None:
+            raise OwnershipError("unauthorized")
+        operation = snapshot.get("operation")
+        record = operation["binding"] if operation is not None else snapshot.get("completion")
+        if record is None or record["owner_id"] != authorization.owner_id:
+            raise OwnershipError("unauthorized")
+        return {**self.workflow, "owner_id": authorization.owner_id,
+                "credential_epoch": authorization.epoch, "claim_request_id": record["claim_request_id"],
+                "session_id": str(uuid4())}
+
+    async def _register_handoff(self, session, message):
+        transaction = message["transaction_id"]
+        for key, task in tuple(self._handoffs.items()):
+            if task.done():
+                self._handoffs.pop(key, None)
+        if len(self._handoffs) >= 2:
+            raise OwnershipError("unavailable")
+        existing = self._handoffs.get(transaction)
+        if existing is not None and not existing.done():
+            raise OwnershipError("unavailable")
+        binding = await asyncio.to_thread(self._handoff_authority, message)
+        delivered = asyncio.get_running_loop().create_future()
+        def complete(value):
+            if not delivered.done():
+                delivered.set_result(value)
+        session.after_response = lambda: complete(True)
+        session.response_discarded = lambda: complete(False)
+        # The operation is owned before reply serialization/drain. A vanished
+        # peer discards an unsent response; a drained explicit activate is the
+        # phone's acknowledgment of the earlier durable prepare response.
+        task = self.operations.create(self._activate_handoff(delivered, binding, dict(message)))
+        self._handoffs[transaction] = task
+
+    async def _activate_handoff(self, delivered, binding, message):
+        channel = None
+        restoring = False
+        try:
+            if not await delivered:
+                return
+            await asyncio.to_thread(self._handoff_authority, message, binding["credential_epoch"])
+            channel = await self.system_setup.open(binding)
+            self._handoff_channels.add(channel)
+            await asyncio.to_thread(self._handoff_authority, message, binding["credential_epoch"])
+            await self.softap.stop(channel=channel)
+            await asyncio.to_thread(self._handoff_authority, message, binding["credential_epoch"])
+            await self.network.call("activate", id=message["transaction_id"], owner_id=message["owner_id"])
+            # OS owns the transaction's 180 second deadline and rollback. This
+            # task observes truth, never marks a connection committed locally.
+            deadline = asyncio.get_running_loop().time() + 185
+            while not self._stopping and asyncio.get_running_loop().time() < deadline:
+                await asyncio.to_thread(self._handoff_authority, message, binding["credential_epoch"])
+                state = await self.network.call("status", id=message["transaction_id"],
+                                                owner_id=message["owner_id"])
+                if state.get("state") == "committed":
+                    return
+                if state.get("state") in {"rolled_back", "failed"}:
+                    restoring = True
+                    await self._restore_softap(channel, binding, message)
+                    return
+                await asyncio.sleep(2)
+            if not self._stopping:
+                raise NetworkUnavailable("expired")
+        except Exception:
+            # Cancel/settle a possibly partial activation before restoring the
+            # AP. A lost authority or uncertain NM observation remains closed.
+            try:
+                if channel is not None and not self._stopping and not restoring:
+                    await asyncio.to_thread(self._handoff_authority, message, binding["credential_epoch"])
+                    result = await self.network.call("cancel", id=message["transaction_id"],
+                                                     owner_id=message["owner_id"])
+                    if result.get("state") != "committed":
+                        await self._restore_softap(channel, binding, message)
+            except Exception:
+                logger.warning("SoftAP Wi-Fi recovery unavailable")
+        finally:
+            if channel is not None:
+                self._handoff_channels.discard(channel)
+                await channel.drain()
+
+    async def _restore_softap(self, channel, binding, message):
+        async with asyncio.timeout(_SOFTAP_SETTLE_SECONDS):
+            while not self._stopping and not channel.closed:
+                await asyncio.to_thread(self._handoff_authority, message, binding["credential_epoch"])
+                settled = await self.network.call("settled", id=message["transaction_id"],
+                                                  owner_id=message["owner_id"])
+                if settled.get("settled") is True:
+                    await asyncio.to_thread(self._handoff_authority, message, binding["credential_epoch"])
+                    await self.softap.start(self.workflow, channel=channel)
+                    return
+                await asyncio.sleep(_SOFTAP_SETTLE_RETRY_SECONDS)
+        raise NetworkUnavailable("not_ready")
 
     async def _setup_command(self, session, raw):
         rpc_id = wire.request_id(raw)
@@ -459,9 +638,11 @@ class FactoryContinuationRuntime(BootstrapRuntime):
                                     negotiated=operation != "system_setup.negotiate")
             if operation == "system_setup.continue" and result.get("action") == "publication_finalized":
                 identity = self.result.prepared_identity.load_current_identity()
-                # Registration follows the last delivery guard; the peer can
-                # serialize its reply before the handoff task gets the loop.
-                self.operations.create(self._start_normal(identity))
+                if self.softap is not None:
+                    delivered = self._reply_delivery(session)
+                    self.operations.create(self._start_normal_after_reply(identity, delivered))
+                else:
+                    self.operations.create(self._start_normal(identity))
             return wire.response(rpc_id, result)
         except wire.WireError:
             code = "invalid_request"
@@ -475,6 +656,10 @@ class FactoryContinuationRuntime(BootstrapRuntime):
         except Exception:
             code = "unavailable"
         return wire.error(rpc_id, code)
+
+    async def _start_normal_after_reply(self, identity, delivered):
+        if await delivered:
+            await self._start_normal(identity)
 
     def _register_apply(self, session, message):
         op_id = message["op_id"]
@@ -494,10 +679,22 @@ class FactoryContinuationRuntime(BootstrapRuntime):
         if challenge["challenge_id"] != message["challenge_id"] or challenge["nonce"] != message["nonce"]:
             raise OwnershipError("request_conflict")
         # No await between ownership registration and returning the quick ACK.
-        task = self.operations.create(self._apply(session, dict(message), challenge))
+        delivered = None
+        if self.softap is not None:
+            delivered = self._reply_delivery(session)
+        task = self.operations.create(self._apply(session, dict(message), challenge, delivered))
         self._apply_tasks[op_id] = (intent, task)
 
-    async def _apply(self, session, message, challenge):
+    def _reply_delivery(self, session):
+        delivered = asyncio.get_running_loop().create_future()
+        def complete(value):
+            if not delivered.done():
+                delivered.set_result(value)
+        session.after_response = lambda: complete(True)
+        session.response_discarded = lambda: complete(False)
+        return delivered
+
+    async def _apply(self, session, message, challenge, delivered=None):
         try:
             await asyncio.to_thread(self._authorize, session, message)
             channel = await self._channel(session, message)
@@ -528,6 +725,8 @@ class FactoryContinuationRuntime(BootstrapRuntime):
                     return prepared.publish_initial(operation_id=message["op_id"], clock_result=clock)
                 await asyncio.to_thread(publish)
             self._accept_snapshot(await self.system_setup.status(message["op_id"]))
+            if delivered is not None and not await delivered:
+                return
             await self._start_normal(prepared.load_current_identity())
         finally:
             # Registry observes failures; status reads OS truth, never a local
@@ -616,6 +815,13 @@ class FactoryContinuationRuntime(BootstrapRuntime):
     async def _stop(self):
         for session in tuple(self._sessions):
             session.close()
+        for channel in tuple(self._handoff_channels):
+            channel.close()
+        if self.softap is not None and self._handoffs:
+            try:
+                await asyncio.to_thread(self.network.cancel_pending_sync)
+            except NetworkUnavailable:
+                pass
         try:
             await self.operations.drain()
             for session in tuple(self._sessions):
@@ -626,5 +832,8 @@ class FactoryContinuationRuntime(BootstrapRuntime):
             elif self.bluez is not None:
                 await self.bluez.stop()
         finally:
+            # OS owns AP cleanup on Main disadmission/process lifetime/TTL.
+            # Closing a phone's TCP stream is deliberately not that authority;
+            # after adoption an AP stop requires an actual owner-bound channel.
             await asyncio.to_thread(self.screen.release)
             # The outer phase A lifetime closes the single transferred store.

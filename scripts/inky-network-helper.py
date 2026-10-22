@@ -52,8 +52,9 @@ RESPONSE_WRITE_SECONDS = 2
 JOURNAL_LIMIT = 131072
 HISTORY_LIMIT = 64
 CHECKPOINT_SECONDS = 180
+PREPARE_SECONDS = 30
 FINAL_PHASES = {"committed", "rolled_back", "failed"}
-PHASES = FINAL_PHASES | {"prepared", "checkpoint", "activating", "waiting", "saving", "detaching", "commit_ready", "rolling_back"}
+PHASES = FINAL_PHASES | {"staged", "prepared", "checkpoint", "activating", "waiting", "saving", "detaching", "commit_ready", "rolling_back"}
 STATES = {"connecting", "awaiting_confirmation", "committed", "rolled_back", "failed"}
 NM = "org.freedesktop.NetworkManager"
 ROOT = "/org/freedesktop/NetworkManager"
@@ -290,6 +291,9 @@ def validate_request(value):
         raise HelperError("invalid_request")
     fields = {"scan": {"op", "owner_id"},
               "begin": {"op", "id", "owner_id", "ssid", "security", "password"},
+              "prepare": {"op", "id", "owner_id", "ssid", "security", "password"},
+              "activate": {"op", "id", "owner_id"},
+              "settled": {"op", "id", "owner_id"},
               "status": {"op", "id", "owner_id"},
               "confirm": {"op", "id", "owner_id"},
               "cancel": {"op", "id", "owner_id"},
@@ -304,9 +308,9 @@ def validate_request(value):
         raise HelperError("invalid_request")
     if "owner_id" in value:
         canonical_uuid(value["owner_id"])
-    if value["op"] in {"begin", "status", "confirm", "cancel", "inspect_committed"}:
+    if value["op"] in {"begin", "prepare", "activate", "settled", "status", "confirm", "cancel", "inspect_committed"}:
         canonical_uuid(value["id"])
-    if value["op"] == "begin":
+    if value["op"] in {"begin", "prepare"}:
         try:
             ssid, password = value["ssid"], value["password"]
             if not isinstance(ssid, str) or not 1 <= len(ssid.encode("utf-8")) <= 32 or "\x00" in ssid:
@@ -411,6 +415,9 @@ class Journal:
         if row["previous_uuid"] is not None:
             canonical_uuid(row["previous_uuid"])
         if row["phase"] not in PHASES or row["state"] not in STATES:
+            raise ValueError
+        if row["phase"] == "staged" and (row["state"] != "connecting" or row["checkpoint"] is not None
+                or row["previous_uuid"] is not None or row["addresses"]):
             raise ValueError
         if not isinstance(row["intent"], str) or HEX64.fullmatch(row["intent"]) is None:
             raise ValueError
@@ -702,8 +709,12 @@ class NetworkManagerAdapter:
             return str(self.manager.ActivateConnection(self.dbus.ObjectPath(profile[0]), self.dbus.ObjectPath(self.device), self.dbus.ObjectPath("/"), timeout=3))
         return None
 
-    def factory_settled(self, cleanup, committed):
+    def factory_settled(self, cleanup, committed, *, all_checkpoints=False):
         """Observe NM completion only; this is no physical radio qualification."""
+        if all_checkpoints and self.properties(ROOT, NM)["Checkpoints"]:
+            # A checkpoint created just before a crash may not be journaled.
+            # The SoftAP handoff conservatively refuses every surviving CP.
+            return False
         if self._factory_scan is not None:
             instance, baseline = self._factory_scan
             if (self.instance() != instance
@@ -746,6 +757,7 @@ class Provisioner:
         self.adapter, self.journal, self.monotonic = adapter, journal, monotonic
         self.deadline = None
         self._password = None
+        self._prepared_request = None
         self._detached_activation = None
         self._factory_cleanup = None
         self._factory_committed = None
@@ -766,6 +778,7 @@ class Provisioner:
             # On an uncertain journal commit, stop all new mutations. NM's own
             # bounded checkpoint still rolls back; restart re-reads the journal.
             self.ready = False
+            self._prepared_request = self._password = None
             raise HelperError("not_ready") from None
         return updated
 
@@ -779,13 +792,50 @@ class Provisioner:
         remaining = 0
         if row["phase"] not in FINAL_PHASES and self.deadline is not None:
             remaining = max(0, math.ceil(self.deadline - self.monotonic()))
-        return {"id": row["id"], "state": row["state"], "addresses": row["addresses"], "remaining_seconds": remaining}
+        result = {"id": row["id"], "state": row["state"], "addresses": row["addresses"], "remaining_seconds": remaining}
+        if row["phase"] == "staged":
+            result["phase"] = "prepared"
+        return result
+
+    def _discard_staged(self, row, state="rolled_back"):
+        # Only this NEW phase proves that no NM mutation has been attempted.
+        # Legacy "prepared" may hide a crash during checkpoint creation.
+        self._prepared_request = self._password = None
+        self.deadline = None
+        return self._put(row, phase=state, state=state, checkpoint=None, addresses=[])
+
+    def _settled(self, row):
+        if row["phase"] not in FINAL_PHASES or self.journal.active() is not None:
+            return False
+        observer = getattr(self.adapter, "factory_settled", None)
+        if not callable(observer):
+            return False
+        cleanup, committed = self._factory_cleanup, self._factory_committed
+        if cleanup is not None and cleanup["id"] != row["id"]:
+            return False
+        if row["phase"] == "committed":
+            cleanup = None
+            if committed is None or committed[0]["id"] != row["id"]:
+                committed = (row, None)
+        elif cleanup is None:
+            cleanup, committed = row, None
+        try:
+            settled = observer(cleanup, committed, all_checkpoints=True) is True
+            if settled and self._factory_cleanup is not None and self._factory_cleanup["id"] == row["id"]:
+                # The next admitted writer may deliberately start the AP.
+                # Do not keep demanding the PREVIOUS station after that handoff.
+                self._factory_cleanup = None
+            return settled
+        except Exception:  # noqa: BLE001 — uncertainty never authorizes AP effects
+            return False
 
     def _same_checkpoint(self, row):
         return (row["instance"] == self.adapter.instance() and row["device"] == self.adapter.device
                 and row["checkpoint"] is not None and self.adapter.checkpoint_exists(row["checkpoint"]))
 
     def _rollback(self, row, state):
+        if row["phase"] == "staged":
+            return self._discard_staged(row, state)
         # Retain the original checkpoint before journal finalization. NM profile
         # deletion/reactivation can still be asynchronous after the final write.
         previous_cleanup = self._factory_cleanup
@@ -814,8 +864,10 @@ class Provisioner:
             # Keep rolling_back durable and block any second switch. The timer
             # retries targeted cleanup, even if NM vanished during rollback.
             self._password = None
+            self._prepared_request = None
             raise HelperError("network_failed") from None
         self._password = None
+        self._prepared_request = None
         self._detached_activation = None
         self.deadline = None
         return self._put(row, phase=state, state=state, checkpoint=None)
@@ -825,6 +877,11 @@ class Provisioner:
             return
         row = self.journal.active()
         if row is None:
+            return
+        if row["phase"] == "staged":
+            if (self._prepared_request is None or self.deadline is None
+                    or self.monotonic() >= self.deadline):
+                self._discard_staged(row)
             return
         if row["phase"] == "rolling_back":
             self._rollback(row, row["state"])
@@ -924,6 +981,10 @@ class Provisioner:
             # A capability probe must never scan, advance a pending commit, or
             # trigger rollback. Readiness was established during startup.
             return {"ready": True, "protocol": 1}
+        if operation == "settled":
+            # Observation only: unlike status this never ticks a pending effect.
+            row = self._owner_row(request)
+            return {"id": row["id"], "settled": self._settled(row)}
         if operation in {"cancel_pending", "cancel_owner"}:
             # Credential rotation/revocation calls this BEFORE changing durable
             # authority. Do not tick first: a detaching/commit_ready transaction
@@ -937,6 +998,58 @@ class Provisioner:
         self.tick()
         if operation == "scan":
             return self.adapter.scan()
+        if operation == "prepare":
+            intent = self.journal.intention(request | {"op": "begin"})
+            previous = self.journal.get(request["id"])
+            if previous is not None:
+                if previous["owner_id"] != request["owner_id"]:
+                    raise HelperError("not_found")
+                if not hmac.compare_digest(previous["intent"], intent):
+                    raise HelperError("conflict")
+                return self._result(previous)
+            if self.journal.active() is not None:
+                raise HelperError("busy")
+            if self._factory_cleanup is not None:
+                cleanup = self.journal.get(self._factory_cleanup["id"])
+                if cleanup is None or not self._settled(cleanup):
+                    raise HelperError("busy")
+            row = {"id": request["id"], "owner_id": request["owner_id"], "intent": intent,
+                   "profile_uuid": str(uuid4()), "previous_uuid": None, "device": self.adapter.device,
+                   "instance": self.instance, "checkpoint": None, "phase": "staged",
+                   "state": "connecting", "addresses": []}
+            self._put(row)
+            self._prepared_request = dict(request)
+            self.deadline = self.monotonic() + PREPARE_SECONDS
+            return self._result(row)
+        if operation == "activate":
+            row = self._owner_row(request)
+            if row["phase"] != "staged":
+                return self._result(row)
+            staged = self._prepared_request
+            if (staged is None or staged["id"] != row["id"] or staged["owner_id"] != row["owner_id"]
+                    or not hmac.compare_digest(row["intent"], self.journal.intention(staged | {"op": "begin"}))):
+                self._discard_staged(row)
+                raise HelperError("not_ready")
+            # AP has already been stopped by the attested OS writer. Observe
+            # the previous station NOW, never save the ephemeral AP as rollback.
+            try:
+                before = self.adapter.snapshot()
+                row = self._put(row, phase="prepared", previous_uuid=before["uuid"],
+                                instance=self.adapter.instance())
+                self.deadline = self.monotonic() + CHECKPOINT_SECONDS
+                checkpoint = self.adapter.checkpoint_create()
+                row = self._put(row, checkpoint=checkpoint, phase="checkpoint")
+                row = self._put(row, phase="activating")
+                self._password = staged["password"]
+                self.adapter.activate_new(row, staged["ssid"], self._password)
+                self._prepared_request = None
+                row = self._put(row, phase="waiting")
+            except Exception:  # noqa: BLE001 — preserve existing rollback boundary
+                self._prepared_request = self._password = None
+                if self.ready:
+                    self._rollback(self.journal.get(row["id"]), "failed")
+                raise HelperError("network_failed") from None
+            return self._result(row)
         if operation == "begin":
             previous = self.journal.get(request["id"])
             if previous is not None:

@@ -152,6 +152,14 @@ class OperationRegistry:
 
     async def drain(self):
         while self.tasks:
+            # Python 3.13 gather() may finish synchronously for completed
+            # children. Their scheduled done callbacks would then never get
+            # the event loop, leaving this drain spinning on an unchanged set.
+            for task in tuple(self.tasks):
+                if task.done():
+                    self._done(task)
+            if not self.tasks:
+                return
             await asyncio.gather(*(asyncio.shield(task) for task in tuple(self.tasks)),
                                  return_exceptions=True)
 
@@ -177,7 +185,8 @@ async def _complete(task: asyncio.Task):
 class BootstrapRuntime:
     def __init__(self, result: FirstBootResult, verify_epoch: Callable[[], str], display,
                  directory: Path, *, server_factory=BlueZServer,
-                 monotonic: Callable[[], float] = time.monotonic):
+                 monotonic: Callable[[], float] = time.monotonic,
+                 transport_factory=GATTTransport, qr_encoder=None):
         if type(result) is not FirstBootResult:
             raise TypeError("A validated first-boot result is required")
         self.result, self.owners = result, result.ownership
@@ -185,6 +194,8 @@ class BootstrapRuntime:
         self.directory, self.monotonic = Path(directory), monotonic
         self.screen = BootstrapScreen(display, self.directory, verify_epoch=self._verified_epoch)
         self.server_factory = server_factory
+        self.transport_factory = transport_factory
+        self.qr_encoder = qr_encoder or wire.encode_qr
         self.operations = OperationRegistry()
         self.mutation_lock = asyncio.Lock()
         self.transport = None
@@ -287,7 +298,7 @@ class BootstrapRuntime:
             if self._stopping:
                 await asyncio.to_thread(self.owners.close_window)
                 return None
-            payload = wire.encode_qr(prepared.frame_id, prepared.binding.spki_sha256, token.value)
+            payload = self.qr_encoder(prepared.frame_id, prepared.binding.spki_sha256, token.value)
             await self._show_qr(payload)
             if self._stopping:
                 await asyncio.to_thread(self.owners.close_window)
@@ -308,8 +319,8 @@ class BootstrapRuntime:
             await asyncio.to_thread(self.screen.reserve)
             context = await asyncio.to_thread(prepared.bootstrap_tls_context)
             identity = BootstrapPublicIdentity(prepared.frame_id, prepared.bootstrap_certificate_der)
-            self.transport = GATTTransport(context, self.command, profile=BOOTSTRAP_PROFILE,
-                                           peer_factory=BootstrapApplicationPeer)
+            self.transport = self.transport_factory(context, self.command, profile=BOOTSTRAP_PROFILE,
+                                                    peer_factory=BootstrapApplicationPeer)
             self.bluez = self.server_factory(self.transport, identity, profile=BOOTSTRAP_PROFILE)
             if status.state == FactoryState.FACTORY:
                 deadline = await self._open_factory_qr()

@@ -20,7 +20,8 @@ class ProvisioningRuntime:
     def __init__(self, directory: Path, credentials, display, identity=None, *,
                  owners=None, network=None, peer_factory=None, frame_status=None,
                  network_admission=None, adoption_admission=None, owns_store=True, server_factory=BlueZServer,
-                 renew_certificate=True):
+                 renew_certificate=True, transport_factory=GATTTransport, qr_encoder=None,
+                 wifi_handoff=None, wifi_expected_origin=None):
         self.directory = directory
         self.credentials = credentials
         self.display = display
@@ -32,12 +33,16 @@ class ProvisioningRuntime:
         self.adoption_admission = adoption_admission
         self.peer_factory = peer_factory
         self.server_factory = server_factory
+        self.transport_factory = transport_factory
+        self.qr_encoder = qr_encoder
+        self.wifi_handoff = wifi_handoff
+        self.wifi_expected_origin = wifi_expected_origin
         self.renew_certificate = renew_certificate
         self.tls_context = self.identity.ssl_context()
         self.network = network if network is not None else NetworkClient()
         self.mutation_lock = asyncio.Lock()
         self._screen_lock = asyncio.Lock()
-        self.transport = GATTTransport(self.tls_context, self.command, **({"peer_factory": self.peer_factory} if self.peer_factory else {}))
+        self.transport = self.transport_factory(self.tls_context, self.command, **({"peer_factory": self.peer_factory} if self.peer_factory else {}))
         self.bluez = self.server_factory(self.transport, self.identity)
         self.available = False
         self._window_task = None
@@ -86,7 +91,7 @@ class ProvisioningRuntime:
         if changed or not self.available:
             self.available = False
             await self.bluez.stop()
-            self.transport = GATTTransport(self.tls_context, self.command, **({"peer_factory": self.peer_factory} if self.peer_factory else {}))
+            self.transport = self.transport_factory(self.tls_context, self.command, **({"peer_factory": self.peer_factory} if self.peer_factory else {}))
             self.bluez = self.server_factory(self.transport, self.identity)
             await self.bluez.start()
             self.available = True
@@ -102,7 +107,9 @@ class ProvisioningRuntime:
                 token = self.owners.open_window()
                 try:
                     # Do not send the QR or token over HTTP, events or a log.
-                    await _display_work(screen.show, self.display, self.directory, self.identity.qr_payload(token))
+                    payload = (self.identity.qr_payload(token) if self.qr_encoder is None else
+                               self.qr_encoder(self.identity.frame_id, self.identity.spki_sha256, token.value))
+                    await _display_work(screen.show, self.display, self.directory, payload)
                 except BaseException:
                     self.owners.close_window()
                     await _display_work(screen.restore_if_reserved, self.display, self.directory)
@@ -143,6 +150,8 @@ class ProvisioningRuntime:
             common = {"v", "id", "op", "owner_id", "owner_token"}
             extras = {"claim": {"claim_token"}, "status": set(), "wifi.scan": set(),
                       "wifi.begin": {"ssid", "security", "password"},
+                      "wifi.prepare": {"ssid", "security", "password"},
+                      "wifi.activate": {"transaction_id"},
                       "wifi.status": {"transaction_id"}, "wifi.cancel": {"transaction_id"},
                       "owner.revoke": set()}
             if (type(message.get("v")) is not int or message["v"] != 1
@@ -171,19 +180,55 @@ class ProvisioningRuntime:
                         if self.network_admission:
                             await self.network_admission()
                         result = await self.network.call("scan", owner_id=owner_id)
-                    elif operation == "wifi.begin":
+                    elif operation in {"wifi.begin", "wifi.prepare"}:
                         if self.network_admission:
                             await self.network_admission()
+                        if operation == "wifi.prepare" and self.wifi_handoff is None:
+                            raise OwnershipError("invalid_request")
+                        if operation == "wifi.begin" and self.wifi_handoff is not None:
+                            # A legacy immediate begin would remove the AP
+                            # before the durable prepare reply reaches a phone.
+                            raise OwnershipError("invalid_request")
+                        expected_origin = None
+                        if operation == "wifi.prepare":
+                            expected_origin = self.wifi_expected_origin() if self.wifi_expected_origin else None
+                            if expected_origin is None:
+                                raise NetworkUnavailable("not_ready")
                         result = await self.network.call(
-                            "begin", id=request_id, owner_id=owner_id,
+                            "prepare" if operation == "wifi.prepare" else "begin",
+                            id=request_id, owner_id=owner_id,
                             ssid=message["ssid"], security=message["security"], password=message["password"],
                         )
+                        if operation == "wifi.prepare":
+                            result = {**result, "expected_https_origin": expected_origin}
+                    elif operation == "wifi.activate":
+                        if self.wifi_handoff is None:
+                            raise OwnershipError("invalid_request")
+                        if self.network_admission:
+                            await self.network_admission()
+                        expected_origin = self.wifi_expected_origin() if self.wifi_expected_origin else None
+                        if expected_origin is None:
+                            raise NetworkUnavailable("not_ready")
+                        transaction_id = canonical_uuid(message["transaction_id"])
+                        result = await self.network.call("status", id=transaction_id, owner_id=owner_id)
+                        if result.get("state") != "connecting" or result.get("phase") != "prepared":
+                            raise NetworkUnavailable("not_ready")
+                        result = {**result, "phase": "activation_requested", "expected_https_origin":
+                                  expected_origin}
                     elif operation in {"wifi.status", "wifi.cancel"}:
                         transaction_id = canonical_uuid(message["transaction_id"])
                         result = await self.network.call(
                             "status" if operation == "wifi.status" else "cancel",
                             id=transaction_id, owner_id=owner_id,
                         )
+                        if (operation == "wifi.status" and self.wifi_handoff is not None
+                                and result.get("state") not in {"rolled_back", "failed"}):
+                            if self.network_admission:
+                                await self.network_admission()
+                            origin = self.wifi_expected_origin() if self.wifi_expected_origin else None
+                            if origin is None:
+                                raise NetworkUnavailable("not_ready")
+                            result = {**result, "expected_https_origin": origin}
                     else:
                         await self.network.call("cancel_owner", owner_id=owner_id)
                         await asyncio.to_thread(self.owners.revoke, owner_id)
@@ -211,7 +256,10 @@ class ProvisioningRuntime:
                 raise NetworkUnavailable("service_stopping")
             self.authorize(owner_id, owner_token)
             if self.network_admission:
-                await self.network_admission(lan=True)
+                # The HTTPS handler already requires the pinned frame TLS and
+                # owner credentials. SoftAP's first LAN confirmation precedes
+                # the OS committed/Avahi observation used for photo admission.
+                await self.network_admission(lan=self.wifi_handoff is None)
             return await self.network.call("confirm", id=canonical_uuid(transaction_id), owner_id=owner_id)
 
     async def stop(self):

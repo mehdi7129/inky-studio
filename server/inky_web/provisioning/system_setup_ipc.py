@@ -60,6 +60,35 @@ _RESPONSES = {
 
 _ERROR = ('object', {'v': ('const', 1), 'id': ('one', (('string', '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', None), ('const', None))), 'ok': ('const', False), 'error': ('enum', ('invalid_request', 'forbidden', 'unavailable', 'not_found', 'conflict', 'challenge_expired', 'session_closed', 'ledger_full', 'effect_uncertain', 'country_unconfirmed', 'cleanup_unconfirmed', 'network_unconfirmed', 'publication_conflict', 'origin_unavailable'))})
 
+# AP extension transcribed from OS canonical contract SHA256
+# 101d169b3eb5a1ecbfd9345e874dbf686095b304efe1db678963ceac16e81a06.
+# Existing setup record shapes remain unchanged.
+# Root-owned AP credentials are transported only over this attested IPC and QR.
+_DEFINITIONS["AccessPoint"] = ("object", {
+    "state": ("enum", ("active", "stopped", "expired")),
+    "boot_id": _DEFINITIONS["ObservedBinding"][1]["boot_id"],
+    "ap_id": _DEFINITIONS["ObservedBinding"][1]["session_id"],
+    "country": ("const", "FR"), "interface": ("const", "wlan0"),
+    "ssid": ("string", r"^Inky-[0-9a-f]{8}$", None),
+    "passphrase": ("string", r"^[0-9a-f]{24}$", None),
+    "host": ("const", "192.168.4.1"), "port": ("const", 9443),
+    "expires_boottime_ns": ("integer", 0, 9223372036854775807, None),
+})
+for _ap_operation in ("setup.ap.start", "setup.ap.stop", "setup.ap.status"):
+    _REQUESTS[_ap_operation] = ("object", {
+        "v": ("const", 1), "id": _DEFINITIONS["ObservedBinding"][1]["session_id"],
+        "op": ("const", _ap_operation), "args": ("object", {"workflow": ("ref", "Workflow")}),
+    })
+    _RESPONSES[_ap_operation] = ("object", {
+        "v": ("const", 1), "id": _DEFINITIONS["ObservedBinding"][1]["session_id"],
+        "ok": ("const", True), "result": ("ref", "AccessPoint"),
+    })
+_ERROR[1]["error"] = ("enum", (*_ERROR[1]["error"][1], "expired", "reconciliation_required",
+    "policy_invalid", "invalid_clock", "random_unavailable", "closed", "ap_unavailable",
+    "ap_ownership_changed", "ap_timeout", "ap_effect_uncertain", "source_changed",
+    "writer_guard_failed", "radio_unconfirmed", "ap_profile_changed", "ap_inventory_changed",
+    "nm_owner_changed", "timeout"))
+
 class SetupUnavailable(Exception):
     """Fixed diagnostics only; never expose root-service or proof exceptions."""
 
@@ -216,6 +245,13 @@ def _operation(operation):
 
 def _semantics(operation, arguments, result, *, binding=None, boot_id=None):
     _integrity(result)
+    if operation in {"setup.ap.start", "setup.ap.stop", "setup.ap.status"}:
+        _check(result["boot_id"] == boot_id)
+        _check(operation != "setup.ap.start" or result["state"] == "active")
+        _check(operation != "setup.ap.stop" or result["state"] in {"stopped", "expired"})
+        if binding is not None:
+            _check(_workflow(binding) == arguments["workflow"])
+        return
     if operation == "setup.open":
         _check({key: result["binding"][key] for key in arguments["binding"]} == arguments["binding"])
         _check(result["binding"]["boot_id"] == boot_id)
@@ -468,3 +504,12 @@ class SystemSetupClient:
 
     async def resume(self, completion_id):
         return await self._readonly("setup.resume", completion_id=completion_id)
+
+    async def ap_start(self, workflow):
+        return await self._readonly("setup.ap.start", workflow=workflow)
+
+    async def ap_stop(self, workflow):
+        return await self._readonly("setup.ap.stop", workflow=workflow)
+
+    async def ap_status(self, workflow):
+        return await self._readonly("setup.ap.status", workflow=workflow)
