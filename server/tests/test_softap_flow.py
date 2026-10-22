@@ -22,7 +22,11 @@ from inky_web.provisioning.softap_wire import encode_qr
 from inky_web.provisioning.transport import NORMAL_PROFILE
 from tests.test_bootstrap_runtime import FakeOS
 from tests.test_factory_system_setup import ORIGIN, FakeDisplay, Native, Normal
+from tests.test_factory_system_setup import adopted as adopted
+from tests.test_softap_ipc_timeouts import VirtualClock
 from tests.test_softap_runtime import Network
+from tests.test_softap_runtime import activation as handoff_activation
+from tests.test_softap_runtime import prepared as handoff_prepared
 from tests.test_softap_transport import rpc
 
 
@@ -174,3 +178,63 @@ async def test_shutdown_drains_open_bootstrap_setup_channel(tmp_path, invalid_ap
             writer.close()
         result.ownership.close()
     assert all(channel.drained for channel in native.channels)
+
+
+async def test_recovery_ap_start_has_separate_budget_after_settled(adopted, monkeypatch):
+    v = adopted
+    session, network, message = await handoff_prepared(v, state="rolled_back")
+    entered, release = asyncio.Event(), asyncio.Event()
+    controller = v.runtime.softap
+    async def slow_start(workflow, *, channel):
+        assert not channel.closed
+        entered.set()
+        await release.wait()
+        network.calls.append("ap.start")
+    monkeypatch.setattr(controller, "start", slow_start)
+    await handoff_activation(v, session, message)
+    loop = asyncio.get_running_loop()
+    clock = VirtualClock(loop)
+    with monkeypatch.context() as patch:
+        patch.setattr(loop, "time", clock)
+        session.after_response()
+        await entered.wait()
+        clock.advance(31)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        task = v.runtime._handoffs[message["transaction_id"]]
+        assert not task.done()  # the expired observation timer cannot cancel AP start
+        release.set()
+        await v.runtime.operations.drain()
+    assert network.calls[-2:] == ["settled", "ap.start"]
+    assert not v.runtime._handoff_channels
+
+
+async def test_recovery_settled_observation_still_expires_without_ap_start(adopted, monkeypatch):
+    v = adopted
+    session, network, message = await handoff_prepared(v, state="rolled_back", settled=False)
+    observed_settled = asyncio.Event()
+    network.on_settled = observed_settled.set
+    await handoff_activation(v, session, message)
+    loop = asyncio.get_running_loop()
+    clock = VirtualClock(loop)
+    with monkeypatch.context() as patch:
+        patch.setattr(loop, "time", clock)
+        session.after_response()
+        await observed_settled.wait()
+        clock.advance(31)
+        await v.runtime.operations.drain()
+    assert network.calls.count("settled") == 1
+    assert "ap.start" not in network.calls
+    assert not v.runtime._handoff_channels
+
+
+async def test_recovery_revalidates_owner_after_settled_before_ap_start(adopted):
+    v = adopted
+    session, network, message = await handoff_prepared(v, state="rolled_back", settled=True)
+    network.on_settled = lambda: v.result.ownership.revoke(v.owner)
+    await handoff_activation(v, session, message)
+    session.after_response()
+    await v.runtime.operations.drain()
+    assert network.calls.count("settled") == 1
+    assert "ap.start" not in network.calls
+    assert not v.runtime._handoff_channels

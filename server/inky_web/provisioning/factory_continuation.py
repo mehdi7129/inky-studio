@@ -572,11 +572,17 @@ class FactoryContinuationRuntime(BootstrapRuntime):
                 settled = await self.network.call("settled", id=message["transaction_id"],
                                                   owner_id=message["owner_id"])
                 if settled.get("settled") is True:
-                    await asyncio.to_thread(self._handoff_authority, message, binding["credential_epoch"])
-                    await self.softap.start(self.workflow, channel=channel)
-                    return
+                    break
                 await asyncio.sleep(_SOFTAP_SETTLE_RETRY_SECONDS)
-        raise NetworkUnavailable("not_ready")
+            else:
+                raise NetworkUnavailable("not_ready")
+        # Observation has its own 30 second budget. AP start uses the distinct
+        # bounded IPC budget and must not inherit a nearly exhausted rollback
+        # observation timer. Revalidate authority immediately before that effect.
+        await asyncio.to_thread(self._handoff_authority, message, binding["credential_epoch"])
+        if channel.closed:
+            raise NetworkUnavailable("not_ready")
+        await self.softap.start(self.workflow, channel=channel)
 
     async def _setup_command(self, session, raw):
         rpc_id = wire.request_id(raw)

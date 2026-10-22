@@ -18,6 +18,14 @@ from .connected_peer import connected_peer_scope
 
 _REQUEST_LIMIT = 8192
 _RESPONSE_LIMIT = 16384
+_OPERATION_TIMEOUT_SECONDS = {
+    "setup.apply": 55,
+    # AP start includes bounded country/preflight/activation work plus graph
+    # verification. Read/stop retain smaller, explicit operation budgets.
+    "setup.ap.start": 180,
+    "setup.ap.stop": 60,
+    "setup.ap.status": 60,
+}
 
 _DEFINITIONS = {
     'Workflow': ('object', {'initialization_intent': ('string', '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', None), 'initialization_receipt_digest': ('string', '^[0-9a-f]{64}$', None), 'frame_id': ('string', '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', None), 'spki_sha256': ('string', '^[0-9a-f]{64}$', None)}),
@@ -419,7 +427,7 @@ class SetupChannel:
             raw = (json.dumps(request, ensure_ascii=True, separators=(",", ":"), allow_nan=False) + "\n").encode("ascii")
             if len(raw) > _REQUEST_LIMIT:
                 raise SetupUnavailable("invalid_request")
-            async with asyncio.timeout(55 if operation == "setup.apply" else 15):
+            async with asyncio.timeout(_OPERATION_TIMEOUT_SECONDS.get(operation, 15)):
                 self.writer.write(raw)
                 await self.writer.drain()
                 response = _decode(await _read_line(self.reader))

@@ -20,6 +20,8 @@ Les opérations `setup.ap.start/status/stop` utilisent le socket system-setup ex
 
 Un AP dure au maximum 1 800 secondes BOOTTIME, sans renouvellement implicite. Son SSID est `Inky-` suivi de huit caractères hexadécimaux minuscules et sa clé WPA2 comporte 24 caractères hexadécimaux minuscules. L'arrêt n'interrompt jamais une station. Le backend draine ses connexions et opérations ; l'OS arrête l'AP à l'expiration, à la désadmission de Main et à l'arrêt de son service.
 
+Les délais IPC AP sont bornés séparément : start180s, stop/status60s. Start inclut les opérations OS pays, preflight et activation ainsi que les contrôles Graph. Les délais historiques restent15s et apply55s. L'attente de stabilisation réseau30s précède le retour AP ; elle n'englobe pas son démarrage. Aucun de ces délais ne prolonge la fenêtre claim ou le TTL AP.
+
 ## QR et transport
 
 Le QR v3 JSON fermé contient exactement `v,p,id,k,t,s,w,u` : v=3, p=softap, UUID du cadre, pin SPKI, token claim, SSID, passphrase AP et `tcp://192.168.4.1:9443`. Taille maximale 1 024 octets. Le QR v2 conserve sa signification.
