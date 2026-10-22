@@ -33,6 +33,7 @@ targets:
         INFOPLIST_FILE: InkyStudio/Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: InkyStudio/Resources/InkyStudio.entitlements
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
   InkyStudioTests:

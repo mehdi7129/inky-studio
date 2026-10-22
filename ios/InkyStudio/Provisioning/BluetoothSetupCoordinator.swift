@@ -3,21 +3,6 @@ import Combine
 import Darwin
 
 @MainActor
-protocol ProvisioningConnection: AnyObject {
-    func connect(peripheralID: UUID, identity: FrameIdentity) async throws -> PinnedFrameTrust
-    func request(_ data: Data, timeout: TimeInterval) async throws -> Data
-    func connectBootstrap(peripheralID: UUID, identity: FrameIdentity) async throws -> BootstrapFrameTrust
-    func requestBootstrap(_ data: Data, timeout: TimeInterval) async throws -> Data
-    func disconnect()
-}
-
-extension ProvisioningConnection {
-    func connectBootstrap(peripheralID: UUID, identity: FrameIdentity) async throws -> BootstrapFrameTrust { throw BluetoothTransportError.unsupportedFrame }
-    func requestBootstrap(_ data: Data, timeout: TimeInterval) async throws -> Data { throw BluetoothTransportError.unsupportedFrame }
-}
-extension SecureBluetoothChannel: ProvisioningConnection {}
-
-@MainActor
 protocol OwnershipStorage {
     func allRecords() throws -> [OwnershipRecord]
     func load(id: UUID) throws -> OwnershipRecord?
@@ -59,6 +44,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
         case introduction, preparingQR, scanQR, nearby, connecting, claiming
         case networks, credentials, applying, confirming, suspended, completed, rolledBack
         case factoryCountry, factoryApplying, factoryContinue, factoryHandoff, factoryWaitingOrigin, factoryRecovery, factoryPhotoAccess
+        case softAPPrepared, softAPClaimRetry
     }
 
     @Published private(set) var stage: Stage = .introduction
@@ -74,6 +60,11 @@ final class BluetoothSetupCoordinator: ObservableObject {
     @Published private(set) var discoveryProfile: BluetoothProfile = .normalV1
     @Published private(set) var selectedCountry = ""
     @Published private(set) var factoryStatus: FactorySetupStatus?
+    @Published private(set) var isSoftAP = false
+    private var softAPOnLAN = false
+    private var softAPIdentity: FrameIdentity?
+    private var expectedHTTPSOrigin: URL?
+    private var softAPMayClaim = false
     private let factoryCheckpoints: any FactorySetupCheckpointStorage
     private let authorizeFactory: (() async -> Bool)?
     private let didFinishFactory: ((URL, OwnershipRecord, FactorySetupStatus) async -> Bool)?
@@ -83,7 +74,9 @@ final class BluetoothSetupCoordinator: ObservableObject {
     private var factoryClient: FactorySetupClient?
     private var factoryOperationID: UUID?
 
-    private let channel: any ProvisioningConnection
+    private let bluetoothChannel: any ProvisioningConnection
+    private let softAPChannel: (any SoftAPProvisioningConnection)?
+    private var channel: any ProvisioningConnection { isSoftAP ? softAPChannel! : bluetoothChannel }
     private let vault: any OwnershipStorage
     private let confirmHTTPS: (URL, OwnershipRecord, UUID) async throws -> String
     private let didFinish: (URL, OwnershipRecord) async -> Void
@@ -100,6 +93,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
     #endif
 
     init(channel: any ProvisioningConnection, vault: any OwnershipStorage,
+         softAPChannel: (any SoftAPProvisioningConnection)? = nil,
          confirmHTTPS: @escaping (URL, OwnershipRecord, UUID) async throws -> String,
          authorizeFactory: (() async -> Bool)? = nil,
          factoryCheckpoints: any FactorySetupCheckpointStorage = FactorySetupKeychainCheckpointStore(),
@@ -107,7 +101,8 @@ final class BluetoothSetupCoordinator: ObservableObject {
          factoryPollDelay: @escaping () async throws -> Void = { try await Task.sleep(for: .seconds(2)) },
          didFinishFactory: ((URL, OwnershipRecord, FactorySetupStatus) async -> Bool)? = nil,
          didFinish: @escaping (URL, OwnershipRecord) async -> Void) {
-        self.channel = channel
+        self.bluetoothChannel = channel
+        self.softAPChannel = softAPChannel
         self.vault = vault
         self.confirmHTTPS = confirmHTTPS
         self.didFinish = didFinish
@@ -191,6 +186,8 @@ final class BluetoothSetupCoordinator: ObservableObject {
             let saved = try vault.load(id: code.identity.id)
             if let saved, saved.identity != code.identity { throw OwnershipVaultError.identityChanged }
             resetChannel()
+            isSoftAP = false
+            softAPOnLAN = false
             identity = code.identity
             adoptionCode = code
             bootstrapCode = nil
@@ -204,6 +201,9 @@ final class BluetoothSetupCoordinator: ObservableObject {
 
     func selectSavedFrame(_ record: OwnershipRecord) {
         resetChannel()
+        isSoftAP = softAPChannel != nil && softAPIdentity == record.identity
+        softAPOnLAN = false
+        if isSoftAP { softAPChannel?.useAccessPoint() }
         identity = record.identity
         owner = record
         adoptionCode = nil
@@ -219,7 +219,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
     func connect(peripheralID: UUID) async {
         guard !isUITestFixture else { return }
         guard let identity, !isWorking else { return }
-        if isFactory { await connectFactory(peripheralID: peripheralID); return }
+        if isFactory { await connectFactory(peripheralID: peripheralID, preferWiFi: isSoftAP && hasTransaction); return }
         self.peripheralID = peripheralID
         let epoch = generation
         errorMessage = nil
@@ -360,6 +360,17 @@ final class BluetoothSetupCoordinator: ObservableObject {
         do {
             self.owner = try vault.beginWiFiTransaction(id: owner.id, transactionID: transactionID, ssid: ssid)
             selectedSSID = ssid
+            if isSoftAP {
+                let result: WiFiStatus = try await command("wifi.prepare", requestID: transactionID,
+                    fields: ["ssid": ssid, "security": "wpa2", "password": password])
+                try check(epoch)
+                guard result.id == transactionID, result.state == .connecting, result.phase == "prepared" else {
+                    throw ProvisioningFailure.invalidResponse
+                }
+                expectedHTTPSOrigin = try validatedSoftAPOrigin(result.expectedHTTPSOrigin, identity: owner.identity)
+                await activatePreparedNetwork()
+                return
+            }
             let result: WiFiStatus = try await command("wifi.begin", requestID: transactionID,
                 fields: ["ssid": ssid, "security": "wpa2", "password": password])
             try check(epoch)
@@ -371,6 +382,78 @@ final class BluetoothSetupCoordinator: ObservableObject {
             // Never repeat begin after an ambiguous response. Query the saved ID.
             if hasTransaction { startMonitoring() } else { stage = .credentials }
         }
+    }
+
+    /// The prepared intent is already durable. A failed activate reply is never
+    /// retried automatically; LAN confirmation and explicit AP recovery query
+    /// the same saved transaction instead of sending the password again.
+    func activatePreparedNetwork() async {
+        guard isSoftAP, !softAPOnLAN, let owner, let transactionID = owner.wifiTransactionID,
+              let origin = expectedHTTPSOrigin else { return }
+        let epoch = generation
+        stage = .applying
+        do {
+            let status: WiFiStatus = try await command("wifi.activate",
+                fields: ["transaction_id": transactionID.uuidString.lowercased()])
+            try check(epoch)
+            guard status.id == transactionID, status.state == .connecting, status.phase == "activation_requested",
+                  try validatedSoftAPOrigin(status.expectedHTTPSOrigin, identity: owner.identity) == origin else {
+                throw ProvisioningFailure.invalidResponse
+            }
+        } catch {
+            guard epoch == generation else { return }
+            if let failure = error as? ProvisioningFailure, case .server = failure {
+                show(error)
+                stage = .suspended
+                // An authenticated negative response is a known refusal. Keep
+                // the AP and inspect the existing ID without replaying either
+                // mutation or announcing that an activation started.
+                do {
+                    let status: WiFiStatus = try await command("wifi.status",
+                        fields: ["transaction_id": transactionID.uuidString.lowercased()])
+                    try check(epoch)
+                    guard status.id == transactionID else { throw ProvisioningFailure.invalidResponse }
+                    if status.state == .rolledBack || status.state == .failed {
+                        try finishRollback(transactionID: transactionID)
+                    } else if status.phase == "prepared" {
+                        expectedHTTPSOrigin = try validatedSoftAPOrigin(status.expectedHTTPSOrigin, identity: owner.identity)
+                        stage = .softAPPrepared
+                    }
+                } catch ProvisioningFailure.server("not_found") {
+                    guard epoch == generation else { return }
+                    do { try finishRollback(transactionID: transactionID) }
+                    catch { show(error); stage = .suspended }
+                } catch { if epoch == generation { show(error); stage = .suspended } }
+                return
+            }
+            guard let transportError = error as? SoftAPError,
+                  [.disconnected, .timeout].contains(transportError) else {
+                show(error)
+                stage = .suspended
+                return
+            }
+            errorMessage = "Le départ de l’essai n’a pas pu être confirmé. Vérifiez le cadre sur le réseau domestique ou reprenez sur son Wi-Fi temporaire."
+        }
+        guard epoch == generation else { return }
+        beginSoftAPHandoff(origin: origin)
+    }
+
+    func rejoinSoftAP() async {
+        guard isSoftAP, let identity, !isWorking else { return }
+        resetChannel()
+        softAPOnLAN = false
+        softAPChannel?.useAccessPoint()
+        await connect(peripheralID: identity.id)
+    }
+
+    func retrySoftAPClaim() async {
+        guard stage == .softAPClaimRetry, isSoftAP, owner?.state == .pending,
+              bootstrapCode != nil, let identity else { return }
+        // Only this explicit action on a newly scanned QR admits a retry. It
+        // reuses the exact durable owner/request ID; it never replaces them.
+        softAPMayClaim = true
+        stage = .nearby
+        await connect(peripheralID: identity.id)
     }
 
     func cancelWiFi() async {
@@ -432,7 +515,12 @@ final class BluetoothSetupCoordinator: ObservableObject {
         else { stage = .nearby }
     }
 
-    func close() { resetChannel(); adoptionCode = nil; bootstrapCode = nil }
+    func close() {
+        resetChannel()
+        if isSoftAP { softAPChannel?.leaveAccessPoint() }
+        adoptionCode = nil
+        bootstrapCode = nil
+    }
 
     private func startMonitoring() {
         monitor?.cancel()
@@ -443,6 +531,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
 
     private func monitorWiFi(epoch: UUID) async {
         guard let owner, let transactionID = owner.wifiTransactionID else { return }
+        if isSoftAP, softAPOnLAN { await monitorSoftAPLAN(epoch: epoch, owner: owner, transactionID: transactionID); return }
         while !Task.isCancelled, epoch == generation {
             do {
                 let status: WiFiStatus = try await command("wifi.status", fields: ["transaction_id": transactionID.uuidString.lowercased()])
@@ -452,6 +541,17 @@ final class BluetoothSetupCoordinator: ObservableObject {
                 if status.state == .rolledBack || status.state == .failed {
                     try finishRollback(transactionID: transactionID)
                     return
+                }
+                if isSoftAP {
+                    expectedHTTPSOrigin = try validatedSoftAPOrigin(status.expectedHTTPSOrigin, identity: owner.identity)
+                    if status.phase == "prepared" {
+                        stage = .softAPPrepared
+                        return
+                    }
+                    if status.phase == "activation_requested" || status.state == .awaitingConfirmation || status.state == .committed {
+                        beginSoftAPHandoff(origin: expectedHTTPSOrigin!)
+                        return
+                    }
                 }
                 if status.state == .awaitingConfirmation || status.state == .committed {
                     let candidates: [URL]
@@ -512,6 +612,73 @@ final class BluetoothSetupCoordinator: ObservableObject {
         stage = .rolledBack
     }
 
+    private func validatedSoftAPOrigin(_ value: String?, identity: FrameIdentity) throws -> URL {
+        // The OS hostname has independent first-boot entropy. It is an
+        // authenticated locator, never a substitute for the scanned frame pin.
+        guard let value else { throw ProvisioningFailure.invalidResponse }
+        return try FactorySetupValidation.origin(value)
+    }
+
+    private func beginSoftAPHandoff(origin: URL) {
+        guard let softAPChannel else { return }
+        do {
+            softAPChannel.leaveAccessPoint()
+            try softAPChannel.useLAN(origin: origin)
+            softAPOnLAN = true
+            expectedHTTPSOrigin = origin
+            factoryClient?.invalidate(); factoryClient = nil
+            startMonitoring()
+        } catch { show(error); stage = .suspended }
+    }
+
+    private func monitorSoftAPLAN(epoch: UUID, owner: OwnershipRecord, transactionID: UUID) async {
+        guard let origin = expectedHTTPSOrigin else { stage = .suspended; return }
+        let deadline = ProcessInfo.processInfo.systemUptime + 180
+        while !Task.isCancelled, generation == epoch, ProcessInfo.processInfo.systemUptime < deadline {
+            do {
+                guard try await confirmHTTPS(origin, owner, transactionID) == "committed" else {
+                    throw ProvisioningFailure.invalidResponse
+                }
+                try check(epoch)
+                _ = try vault.markClaimed(id: owner.id, endpoint: origin)
+                let finished = try vault.finishWiFiTransaction(id: owner.id, transactionID: transactionID)
+                self.owner = finished
+                errorMessage = nil
+                if finished.isFactory && finished.factoryPhotoAccessComplete != true {
+                    let normal = try await channel.connect(peripheralID: finished.id, identity: finished.identity)
+                    try check(epoch)
+                    self.owner = try vault.promoteFactoryNormal(id: finished.id, certificateDER: normal.certificateDER)
+                    let client = makeFactoryClient(owner: self.owner!, bootstrap: false)
+                    factoryClient = client
+                    let negotiation = try await client.negotiate()
+                    try check(epoch)
+                    guard let operationID = negotiation.latestOperationID,
+                          operationID == finished.factorySetupOperationID else { throw FactorySetupError.missingCheckpoint }
+                    factoryOperationID = operationID
+                    factoryStatus = try await client.status(operationID: operationID)
+                    try check(epoch)
+                    stage = .factoryContinue
+                    return
+                }
+                completedEndpoint = origin
+                stage = .completed
+                channel.disconnect()
+                await didFinish(origin, finished)
+                return
+            } catch is CancellationError { return }
+            catch {
+                guard epoch == generation, !Task.isCancelled else { return }
+                // HTTPS confirmation is idempotent. Never retry prepare/activate
+                // and never rejoin the AP while the Pi may still be in STA mode.
+                if self.owner?.wifiTransactionID == nil { show(error); stage = .suspended; return }
+            }
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+        }
+        guard epoch == generation, !Task.isCancelled else { return }
+        errorMessage = "Le cadre n’a pas été confirmé sur le réseau domestique. Rejoignez son Wi-Fi temporaire pour retrouver le résultat de cet essai."
+        stage = .suspended
+    }
+
     private func endpoints(addresses: [String]) -> [URL] {
         var hosts = addresses.prefix(8).filter { value in
             var address = in_addr()
@@ -562,7 +729,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
     }
     private func show(_ error: Error) {
         guard !(error is CancellationError) else { return }
-        if error is FrameIdentityError || error is OwnershipVaultError || error is ProvisioningFailure || error is QRScannerFailure || error is FactorySetupError {
+        if error is FrameIdentityError || error is OwnershipVaultError || error is ProvisioningFailure || error is QRScannerFailure || error is FactorySetupError || error is SoftAPError {
             errorMessage = error.localizedDescription
         } else { errorMessage = "La connexion au cadre a été interrompue. Rapprochez l’iPhone du cadre puis réessayez." }
     }
@@ -576,6 +743,17 @@ extension BluetoothSetupCoordinator {
                 guard saved.identity == code.identity, saved.isFactory else { throw OwnershipVaultError.identityChanged }
             }
             resetChannel()
+            if let descriptor = code.softAP {
+                guard let softAPChannel else { throw SoftAPError.unavailable }
+                softAPChannel.configure(descriptor)
+                softAPIdentity = code.identity
+                isSoftAP = true
+                softAPOnLAN = false
+                softAPMayClaim = saved == nil
+            } else {
+                isSoftAP = false
+                softAPOnLAN = false
+            }
             identity = code.identity
             bootstrapCode = code
             adoptionCode = nil
@@ -590,7 +768,7 @@ extension BluetoothSetupCoordinator {
     }
 
     func chooseCountry(_ value: String) {
-        guard [.factoryCountry, .factoryRecovery].contains(stage), FactorySetupValidation.country(value) else { return }
+        guard [.factoryCountry, .factoryRecovery].contains(stage), FactorySetupValidation.country(value), !isSoftAP || value == "FR" else { return }
         selectedCountry = value
         errorMessage = nil
     }
@@ -714,6 +892,7 @@ private extension BluetoothSetupCoordinator {
             return [.disconnected, .timeout, .unsupportedFrame].contains(error)
         }
         if let error = error as? SecureBluetoothError { return [.notConnected, .timeout].contains(error) }
+        if isSoftAP, error as? SoftAPError == .bootstrapProfileAvailable { return true }
         return false
     }
 
@@ -750,7 +929,17 @@ private extension BluetoothSetupCoordinator {
                 }
             }
             if usingBootstrap {
-                let bootstrap = try await channel.connectBootstrap(peripheralID: peripheralID, identity: identity)
+                let bootstrap: BootstrapFrameTrust?
+                do { bootstrap = try await channel.connectBootstrap(peripheralID: peripheralID, identity: identity) }
+                catch SoftAPError.normalProfileAvailable {
+                    guard isSoftAP, let saved = owner, saved.isFactory else { throw SoftAPError.alreadyOwned }
+                    let normal = try await channel.connect(peripheralID: peripheralID, identity: identity)
+                    try check(epoch)
+                    self.owner = try vault.promoteFactoryNormal(id: saved.id, certificateDER: normal.certificateDER)
+                    usingBootstrap = false
+                    bootstrap = nil
+                }
+                if let bootstrap {
                 try check(epoch)
                 guard bootstrap.identity == identity else { throw FrameIdentityError.pinMismatch }
                 if let saved = owner {
@@ -769,12 +958,19 @@ private extension BluetoothSetupCoordinator {
                     guard owner.state == .pending, let code = bootstrapCode else {
                         throw FactorySetupError.remote("unauthorized")
                     }
+                    if isSoftAP {
+                        guard softAPMayClaim else { stage = .softAPClaimRetry; return }
+                        softAPMayClaim = false
+                        bootstrapCode = nil
+                    }
                     _ = try await client.bootstrapClaim(claimToken: code.adoptionToken)
                 }
                 try check(epoch)
                 bootstrapCode = nil
                 self.owner = try vault.markClaimed(id: owner.id, endpoint: nil)
-            } else { discoveryProfile = .normalV1 }
+                }
+            }
+            if !usingBootstrap { discoveryProfile = .normalV1 }
             guard let owner, owner.state == .claimed else { throw OwnershipVaultError.missing }
             let client = makeFactoryClient(owner: owner, bootstrap: usingBootstrap)
             factoryClient = client
@@ -911,7 +1107,9 @@ private struct WiFiStatus: Decodable {
     let state: State
     let addresses: [String]
     let remainingSeconds: Int
-    private enum CodingKeys: String, CodingKey { case id, state, addresses, remainingSeconds = "remaining_seconds" }
+    let phase: String?
+    let expectedHTTPSOrigin: String?
+    private enum CodingKeys: String, CodingKey { case id, state, addresses, remainingSeconds = "remaining_seconds", phase, expectedHTTPSOrigin = "expected_https_origin" }
 }
 private enum ProvisioningFailure: Error, LocalizedError {
     case invalidResponse, server(String)

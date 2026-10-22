@@ -5,14 +5,17 @@ import Foundation
 struct FrameBootstrapCode: Equatable, Sendable {
     let identity: FrameIdentity
     let adoptionToken: Data
+    let softAP: SoftAPDescriptor?
 
-    init(identity: FrameIdentity, adoptionToken: Data) throws {
+    init(identity: FrameIdentity, adoptionToken: Data, softAP: SoftAPDescriptor? = nil) throws {
         guard adoptionToken.count == 32 else { throw FrameIdentityError.invalidQRCode }
         self.identity = identity
         self.adoptionToken = adoptionToken
+        self.softAP = softAP
     }
 
     static func parse(_ text: String) throws -> Self {
+        if let code = try? SoftAPDescriptor.parse(text) { return code }
         guard text.utf8.count <= 512 else { throw FrameIdentityError.invalidQRCode }
         let fields = try BootstrapFlatObject.parse(Data(text.utf8), maximum: 512,
                                                    keys: ["v", "p", "id", "k", "t"])

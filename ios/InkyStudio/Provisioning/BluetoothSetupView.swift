@@ -37,6 +37,7 @@ struct BluetoothSetupView: View {
         let channel = SecureBluetoothChannel(transport: transport)
         _transport = StateObject(wrappedValue: transport)
         _coordinator = StateObject(wrappedValue: BluetoothSetupCoordinator(channel: channel, vault: OwnershipVault(),
+            softAPChannel: TCPProvisioningConnection(),
             confirmHTTPS: { endpoint, owner, transaction in
                 try await InkyAPI.confirmProvisionedWiFi(endpoint: endpoint, owner: owner, transactionID: transaction)
             }, authorizeFactory: authorize, didFinishFactory: didFinishFactory, didFinish: didFinish))
@@ -118,7 +119,7 @@ struct BluetoothSetupView: View {
     }
 
     private func updateDiscovery(stage: BluetoothSetupCoordinator.Stage, isActive: Bool) {
-        if BluetoothDiscoveryPresentation.shouldScan(stage: stage, isActive: isActive, isUITestFixture: coordinator.isUITestFixture) {
+        if !coordinator.isSoftAP, BluetoothDiscoveryPresentation.shouldScan(stage: stage, isActive: isActive, isUITestFixture: coordinator.isUITestFixture) {
             transport.startScan(profile: coordinator.discoveryProfile)
         } else { transport.stopScan() }
     }
@@ -141,7 +142,7 @@ struct BluetoothSetupView: View {
     private var title: String {
         switch coordinator.stage {
         case .introduction, .preparingQR, .scanQR: return "Connecter votre cadre"
-        case .nearby: return "Choisir le cadre à proximité"
+        case .nearby: return coordinator.isSoftAP ? "Rejoindre votre cadre" : "Choisir le cadre à proximité"
         case .connecting, .claiming: return "Connexion au cadre"
         case .networks: return "Choisir un réseau Wi-Fi"
         case .credentials: return "Rejoindre ce réseau"
@@ -157,29 +158,33 @@ struct BluetoothSetupView: View {
         case .factoryWaitingOrigin: return "Retrouver le cadre sur le réseau"
         case .factoryRecovery: return "Reprendre cette étape"
         case .factoryPhotoAccess: return "Votre cadre est prêt"
+        case .softAPPrepared: return "L’essai Wi-Fi est prêt"
+        case .softAPClaimRetry: return "Association non confirmée"
         }
     }
     private var message: String {
         switch coordinator.stage {
         case .introduction, .preparingQR, .scanQR:
-            return "Scannez le QR affiché sur le cadre pour associer cet iPhone. Le Bluetooth permet ensuite de changer son Wi-Fi."
+            return "Scannez le QR affiché sur le cadre pour associer cet iPhone et configurer son Wi-Fi."
         case .nearby: return "Restez près du cadre. Son identité sera vérifiée avant de transmettre votre mot de passe Wi-Fi."
         case .connecting: return "Vérification de l’identité affichée sur votre cadre…"
         case .claiming: return "Enregistrement de l’autorisation de cet iPhone. L’écran du cadre peut prendre quelques instants à se rafraîchir."
         case .networks: return "Choisissez un réseau personnel WPA2. Les réseaux ouverts, d’entreprise ou avec portail de connexion ne sont pas pris en charge."
         case .credentials: return "Le mot de passe sera transmis au cadre par une connexion chiffrée."
-        case .applying: return "Le cadre essaie le nouveau réseau. L’ancien réseau reste disponible en cas d’échec."
+        case .applying: return coordinator.isSoftAP ? "Le cadre enregistre cet essai avant de quitter son Wi-Fi temporaire." : "Le cadre essaie le nouveau réseau. L’ancien réseau reste disponible en cas d’échec."
         case .confirming: return "Sur cet iPhone, ouvrez Réglages → Wi-Fi et rejoignez « \(coordinator.selectedSSID) ». Revenez ensuite dans Inky Studio pour terminer la vérification."
-        case .suspended: return "Restez près du cadre pour retrouver l’état de la configuration par Bluetooth."
+        case .suspended: return coordinator.isSoftAP ? "Vos accès et l’identifiant de cet essai sont conservés. Si le cadre est revenu à son Wi-Fi temporaire, rejoignez-le pour retrouver son état." : "Restez près du cadre pour retrouver l’état de la configuration par Bluetooth."
         case .completed: return "L’accès au cadre a été vérifié sur le nouveau réseau. Vous pouvez retrouver vos photos."
         case .rolledBack: return "Le nouveau réseau n’a pas été confirmé. Le cadre conserve ses anciens réglages Wi-Fi."
         case .factoryCountry: return "Choisissez le pays où le cadre sera utilisé. L’heure sera fournie automatiquement par cet iPhone."
         case .factoryApplying: return "Le cadre vérifie ses réglages. Une étape déjà envoyée ne sera pas relancée automatiquement."
         case .factoryContinue: return "Poursuivez pour vérifier les étapes enregistrées sur le cadre."
         case .factoryHandoff: return "L’identité du même cadre est vérifiée sur sa connexion normale."
-        case .factoryWaitingOrigin: return "Le cadre doit confirmer son adresse réseau avant d’ouvrir l’accès aux photos. Vous pouvez configurer son Wi-Fi en Bluetooth."
+        case .factoryWaitingOrigin: return "Le cadre doit confirmer son adresse réseau avant d’ouvrir l’accès aux photos. Vous pouvez maintenant configurer son Wi-Fi."
         case .factoryRecovery: return "Le résultat précédent est conservé. Pour une nouvelle tentative, confirmez le pays puis relancez explicitement cette étape."
         case .factoryPhotoAccess: return "Terminez l’association pour accéder aux photos depuis cet iPhone."
+        case .softAPPrepared: return "Les paramètres de cet essai sont enregistrés sur le cadre. Lancez-le explicitement pour passer au réseau domestique. Une tentative dont la réponse a été perdue n’est jamais relancée automatiquement."
+        case .softAPClaimRetry: return "Cet iPhone a conservé sa demande d’association, mais le cadre ne l’a pas confirmée. Vous pouvez la renvoyer explicitement avec le QR que vous venez de scanner."
         }
     }
 
@@ -230,6 +235,15 @@ struct BluetoothSetupView: View {
             }
             if coordinator.errorMessage != nil { settingsLink }
         case .nearby:
+            if coordinator.isSoftAP {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("L’iPhone va demander votre accord pour rejoindre le Wi-Fi temporaire du cadre. Son identité sera ensuite vérifiée avec le QR.")
+                        .font(.subheadline)
+                    Button("Rejoindre le Wi-Fi du cadre") {
+                        Task { await coordinator.rejoinSoftAP() }
+                    }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("softap.join")
+                }.bentoCard()
+            } else {
             VStack(alignment: .leading, spacing: 12) {
                 if transport.discoveredFrames.isEmpty {
                     HStack(spacing: 12) {
@@ -253,6 +267,7 @@ struct BluetoothSetupView: View {
                 Button("Relancer la recherche") { transport.startScan(profile: coordinator.discoveryProfile) }.frame(minHeight: 44)
             }.bentoCard()
             settingsLink
+            }
         case .preparingQR, .connecting, .claiming, .applying, .factoryApplying, .factoryHandoff:
             HStack(spacing: 14) { ProgressView(); Text(coordinator.stage == .preparingQR ? "Préparation de l’écran du cadre…" : "Un instant…").font(.subheadline) }
                 .frame(maxWidth: .infinity, alignment: .leading).bentoCard()
@@ -324,8 +339,14 @@ struct BluetoothSetupView: View {
             }.bentoCard()
             Button("Annuler l’essai Wi-Fi", role: .destructive) { Task { await coordinator.cancelWiFi() } }.frame(minHeight: 44)
         case .suspended:
-            Button("Reprendre par Bluetooth") { Task { await coordinator.resume() } }
+            Button(coordinator.isSoftAP ? "Réessayer sur le réseau actuel" : "Reprendre par Bluetooth") { Task { await coordinator.resume() } }
                 .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("bluetooth.resume")
+            if coordinator.isSoftAP {
+                Button("Rejoindre le Wi-Fi temporaire du cadre") { Task { await coordinator.rejoinSoftAP() } }
+                    .buttonStyle(OutlineButtonStyle()).accessibilityIdentifier("softap.recover")
+                Button("Scanner le QR actuel du cadre") { coordinator.showScanner(); scanningQR = true }
+                    .buttonStyle(OutlineButtonStyle()).accessibilityIdentifier("softap.rescan")
+            }
             settingsLink
         case .completed:
             Label("Connecté à \(coordinator.selectedSSID)", systemImage: "checkmark.circle.fill")
@@ -333,6 +354,12 @@ struct BluetoothSetupView: View {
             Button("Retrouver mon cadre") { dismiss() }.buttonStyle(PrimaryButtonStyle())
         case .rolledBack:
             Button("Choisir un réseau") { Task { await coordinator.scanNetworks() } }.buttonStyle(PrimaryButtonStyle())
+        case .softAPPrepared:
+            Button("Lancer cet essai Wi-Fi") { Task { await coordinator.activatePreparedNetwork() } }
+                .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("softap.activatePrepared")
+        case .softAPClaimRetry:
+            Button("Associer avec ce QR") { Task { await coordinator.retrySoftAPClaim() } }
+                .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("softap.retryClaim")
         }
     }
 
@@ -347,7 +374,8 @@ struct BluetoothSetupView: View {
         }.bentoCard()
     }
     private var countryOptions: [(code: String, name: String)] {
-        Locale.Region.isoRegions.map(\.identifier).filter { FactorySetupValidation.country($0) }
+        if coordinator.isSoftAP { return [(code: "FR", name: "France")] }
+        return Locale.Region.isoRegions.map(\.identifier).filter { FactorySetupValidation.country($0) }
             .map { (code: $0, name: Locale.current.localizedString(forRegionCode: $0) ?? $0) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }

@@ -273,23 +273,28 @@ private final class FactoryCoordinatorHarness {
     let identity: FrameIdentity
     let code: FrameBootstrapCode
     let coordinator: BluetoothSetupCoordinator
+    let softAPPeer: FactorySoftAPPeer?
     var confirmations = 0
     var onConfirm: (URL) -> Void = { _ in }
     var photoFinishes = 0
     var photoSuccess = false
     var clockSamples = 0
 
-    init(authorize: @escaping () async -> Bool = { true }) throws {
+    init(authorize: @escaping () async -> Bool = { true }, softAP: Bool = false) throws {
         let identity = try FrameIdentity(id: FrameTrustTestFixtures.id,
             spkiSHA256: PinnedFrameTrust.spkiSHA256(certificateDER: FrameTrustTestFixtures.certificate))
         self.identity = identity
-        code = try FrameBootstrapCode(identity: identity, adoptionToken: Data(repeating: 0x19, count: 32))
+        code = try FrameBootstrapCode(identity: identity, adoptionToken: Data(repeating: 0x19, count: 32),
+            softAP: softAP ? SoftAPDescriptor(ssid: "Inky synthetic", passphrase: "synthetic-ap-password") : nil)
         peer = try FactoryCoordinatorPeer(identity: identity, vault: vault, checkpoints: checkpoints)
+        softAPPeer = softAP ? FactorySoftAPPeer(peer: peer) : nil
+        if softAP { peer.originOverride = URL(string: "https://inky-aaaaaaaaaaaabbbbccccdddddddddddd.local:8443") }
         var onConfirm: ((URL) -> Void)?
         var onPhoto: (() -> Bool)?
         var onClock: (() -> UInt64)?
         let peer = self.peer
         coordinator = BluetoothSetupCoordinator(channel: peer, vault: vault,
+            softAPChannel: softAPPeer,
             confirmHTTPS: { endpoint, _, _ in onConfirm?(endpoint); peer.wifiCommitted = true; return "committed" },
             authorizeFactory: authorize, factoryCheckpoints: checkpoints,
             factoryUTCNow: { onClock?() ?? 1_792_000_000 },
@@ -336,7 +341,8 @@ private final class FactoryCoordinatorPeer: ProvisioningConnection {
     var applyGate: FactoryPeerGate?
     var onSetupStatus: (() -> Void)?
     var operations: [String] = []
-    var origin: URL { URL(string: "https://inky-11111111111111111111111111111111.local:8443")! }
+    var originOverride: URL?
+    var origin: URL { originOverride ?? URL(string: "https://inky-11111111111111111111111111111111.local:8443")! }
     init(identity: FrameIdentity, vault: FactoryCoordinatorOwnership, checkpoints: FactoryCoordinatorCheckpoints) throws {
         self.identity = identity; self.vault = vault; self.checkpoints = checkpoints
         normalTrust = try PinnedFrameTrust(identity: identity, certificateDER: FrameTrustTestFixtures.certificate, at: FrameTrustTestFixtures.date)
@@ -444,6 +450,7 @@ private final class FactoryCoordinatorCheckpoints: FactorySetupCheckpointStorage
 private final class FactoryCoordinatorOwnership: OwnershipStorage {
     var record: OwnershipRecord?
     var rejectMarker = false
+    var rejectWiFiSave = false
     func allRecords() throws -> [OwnershipRecord] { record.map { [$0] } ?? [] }
     func load(id: UUID) throws -> OwnershipRecord? { record?.id == id ? record : nil }
     func prepare(identity: FrameIdentity, certificateDER: Data, endpoint: URL?) throws -> OwnershipRecord { throw OwnershipVaultError.invalidRecord }
@@ -465,10 +472,275 @@ private final class FactoryCoordinatorOwnership: OwnershipStorage {
     func expectFactoryNormal(id: UUID) throws -> OwnershipRecord { record!.factoryExpectedNormal = true; return record! }
     func markFactoryPhotoCompleted(id: UUID) throws -> OwnershipRecord { record!.factoryPhotoAccessComplete = true; return record! }
     func beginWiFiTransaction(id: UUID, transactionID: UUID, ssid: String) throws -> OwnershipRecord {
+        guard !rejectWiFiSave else { throw OwnershipVaultError.unavailable }
         record!.wifiTransactionID = transactionID; record!.wifiSSID = ssid; return record!
     }
     func finishWiFiTransaction(id: UUID, transactionID: UUID) throws -> OwnershipRecord {
         record!.wifiTransactionID = nil; record!.wifiSSID = nil; return record!
+    }
+}
+
+@MainActor
+private final class FactorySoftAPPeer: SoftAPProvisioningConnection {
+    let peer: FactoryCoordinatorPeer
+    var descriptor: SoftAPDescriptor?
+    var lanOrigin: URL?
+    var joins = 0
+    var leaves = 0
+    var operations: [String] = []
+    var phase = "prepared"
+    var losePrepareReply = false
+    var loseActivateReply = false
+    var activationRefusal: String?
+    var terminalState: String?
+    var savedBeforePrepare = false
+    var dropClaimBeforeCommit = false
+    var loseClaimReplyAfterCommit = false
+    var bootstrapOperations: [String] = []
+    init(peer: FactoryCoordinatorPeer) { self.peer = peer }
+    func configure(_ descriptor: SoftAPDescriptor) { self.descriptor = descriptor }
+    func useLAN(origin: URL) throws { lanOrigin = origin }
+    func useAccessPoint() { lanOrigin = nil; joins += 1 }
+    func leaveAccessPoint() { leaves += 1 }
+    func disconnect() {}
+    func connect(peripheralID: UUID, identity: FrameIdentity) async throws -> PinnedFrameTrust {
+        try await peer.connect(peripheralID: peripheralID, identity: identity)
+    }
+    func connectBootstrap(peripheralID: UUID, identity: FrameIdentity) async throws -> BootstrapFrameTrust {
+        if peer.normalPublished { throw SoftAPError.normalProfileAvailable }
+        return try await peer.connectBootstrap(peripheralID: peripheralID, identity: identity)
+    }
+    func requestBootstrap(_ data: Data, timeout: TimeInterval) async throws -> Data {
+        let message = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let operation = try XCTUnwrap(message["op"] as? String)
+        bootstrapOperations.append(operation)
+        if operation == "bootstrap.claim", dropClaimBeforeCommit { throw SoftAPError.disconnected }
+        let result = try await peer.requestBootstrap(data, timeout: timeout)
+        if operation == "bootstrap.claim", loseClaimReplyAfterCommit { throw SoftAPError.disconnected }
+        return result
+    }
+    func request(_ data: Data, timeout: TimeInterval) async throws -> Data {
+        let value = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let operation = try XCTUnwrap(value["op"] as? String)
+        operations.append(operation)
+        if ["wifi.prepare", "wifi.activate", "wifi.status"].contains(operation) {
+            if operation == "wifi.prepare" {
+                peer.transactionID = UUID(uuidString: value["id"] as! String)
+                savedBeforePrepare = peer.vault.record?.wifiTransactionID == peer.transactionID
+                phase = "prepared"
+                if losePrepareReply { throw SoftAPError.disconnected }
+            } else if operation == "wifi.activate" {
+                XCTAssertEqual(value["transaction_id"] as? String, peer.transactionID?.uuidString.lowercased())
+                XCTAssertNil(value["password"])
+                if let activationRefusal {
+                    return try JSONSerialization.data(withJSONObject: ["v": 1, "id": value["id"]!, "ok": false, "error": activationRefusal])
+                }
+                phase = "activation_requested"
+                if loseActivateReply { throw SoftAPError.disconnected }
+            }
+            var result: [String: Any] = ["id": peer.transactionID!.uuidString.lowercased(),
+                "state": terminalState ?? "connecting", "addresses": [], "remaining_seconds": 30, "phase": phase]
+            if terminalState == nil { result["expected_https_origin"] = peer.origin.absoluteString }
+            return try JSONSerialization.data(withJSONObject: ["v": 1, "id": value["id"]!, "ok": true, "result": result])
+        }
+        return try await peer.request(data, timeout: timeout)
+    }
+}
+
+@MainActor
+final class SoftAPSetupCoordinatorTests: XCTestCase {
+    private func ready(_ h: FactoryCoordinatorHarness) async throws {
+        await h.adopt()
+        XCTAssertTrue(h.coordinator.isSoftAP)
+        XCTAssertNotNil(h.softAPPeer?.descriptor)
+        h.coordinator.chooseCountry("US")
+        XCTAssertEqual(h.coordinator.selectedCountry, "")
+        h.coordinator.chooseCountry("FR")
+        await h.coordinator.beginFactorySystemSetup()
+        for _ in 0..<1000 where h.coordinator.stage != .factoryContinue { await Task.yield() }
+        XCTAssertEqual(h.coordinator.stage, .factoryContinue)
+        await h.coordinator.continueFactorySetup()
+        for _ in 0..<1000 where h.coordinator.discoveryProfile != .normalV1 || h.coordinator.stage != .networks { await Task.yield() }
+        XCTAssertEqual(h.coordinator.stage, .networks)
+        XCTAssertEqual(h.coordinator.discoveryProfile, .normalV1)
+    }
+
+    func testSoftAPFactoryPrepareActivateLANContinueAndPhotoCompleteWithoutBLE() async throws {
+        let h = try FactoryCoordinatorHarness(softAP: true)
+        try await ready(h)
+        let original = try XCTUnwrap(h.vault.record)
+        h.photoSuccess = true
+        h.coordinator.chooseNetwork(nil)
+        await h.coordinator.applyNetwork(ssid: "Synthetic home", password: "synthetic-home-password")
+        for _ in 0..<1000 where h.coordinator.stage != .factoryContinue { await Task.yield() }
+        XCTAssertEqual(h.coordinator.stage, .factoryContinue)
+        XCTAssertTrue(try XCTUnwrap(h.softAPPeer).savedBeforePrepare)
+        XCTAssertEqual(h.softAPPeer?.operations.filter { $0 == "wifi.prepare" }.count, 1)
+        XCTAssertEqual(h.softAPPeer?.operations.filter { $0 == "wifi.activate" }.count, 1)
+        XCTAssertFalse(h.peer.operations.contains("wifi.begin"))
+        XCTAssertEqual(h.softAPPeer?.leaves, 1)
+        XCTAssertEqual(h.softAPPeer?.lanOrigin, h.peer.origin)
+        XCTAssertEqual(h.vault.record?.ownerID, original.ownerID)
+        XCTAssertEqual(h.vault.record?.ownerToken, original.ownerToken)
+        XCTAssertNil(h.vault.record?.wifiTransactionID)
+        await h.coordinator.continueFactorySetup()
+        XCTAssertEqual(h.coordinator.stage, .completed)
+        XCTAssertEqual(h.photoFinishes, 1)
+        XCTAssertEqual(h.vault.record?.factoryPhotoAccessComplete, true)
+        let saved = try JSONEncoder().encode(h.vault.record)
+        XCTAssertFalse(String(decoding: saved, as: UTF8.self).contains("synthetic-home-password"))
+        h.coordinator.close()
+    }
+
+    func testLostPrepareReplyNeverActivatesAndRequiresExplicitPreparedAction() async throws {
+        let h = try FactoryCoordinatorHarness(softAP: true)
+        try await ready(h)
+        h.softAPPeer?.losePrepareReply = true
+        h.coordinator.chooseNetwork(nil)
+        await h.coordinator.applyNetwork(ssid: "Synthetic home", password: "synthetic-home-password")
+        for _ in 0..<1000 where h.coordinator.stage != .softAPPrepared { await Task.yield() }
+        XCTAssertEqual(h.coordinator.stage, .softAPPrepared)
+        XCTAssertEqual(h.softAPPeer?.operations.filter { $0 == "wifi.prepare" }.count, 1)
+        XCTAssertFalse(h.softAPPeer?.operations.contains("wifi.activate") ?? true)
+        XCTAssertEqual(h.softAPPeer?.leaves, 0)
+        XCTAssertNotNil(h.vault.record?.wifiTransactionID)
+        h.coordinator.suspend()
+    }
+
+    func testLostActivateReplyConfirmsSameTransactionOnLANWithoutReplayingIt() async throws {
+        let h = try FactoryCoordinatorHarness(softAP: true)
+        try await ready(h)
+        h.softAPPeer?.loseActivateReply = true
+        let ownerID = h.vault.record?.ownerID
+        h.coordinator.chooseNetwork(nil)
+        await h.coordinator.applyNetwork(ssid: "Synthetic home", password: "synthetic-home-password")
+        for _ in 0..<1000 where h.coordinator.stage != .factoryContinue { await Task.yield() }
+        XCTAssertEqual(h.coordinator.stage, .factoryContinue)
+        XCTAssertEqual(h.softAPPeer?.operations.filter { $0 == "wifi.prepare" }.count, 1)
+        XCTAssertEqual(h.softAPPeer?.operations.filter { $0 == "wifi.activate" }.count, 1)
+        XCTAssertEqual(h.confirmations, 1)
+        XCTAssertEqual(h.vault.record?.ownerID, ownerID)
+        h.coordinator.close()
+    }
+
+    func testFailedTransactionCheckpointPreventsPrepareAndActivation() async throws {
+        let h = try FactoryCoordinatorHarness(softAP: true)
+        try await ready(h)
+        h.vault.rejectWiFiSave = true
+        h.coordinator.chooseNetwork(nil)
+        await h.coordinator.applyNetwork(ssid: "Synthetic home", password: "synthetic-home-password")
+        XCTAssertFalse(h.softAPPeer?.operations.contains("wifi.prepare") ?? true)
+        XCTAssertFalse(h.softAPPeer?.operations.contains("wifi.activate") ?? true)
+        XCTAssertEqual(h.softAPPeer?.leaves, 0)
+        XCTAssertEqual(h.coordinator.stage, .credentials)
+        h.coordinator.close()
+    }
+
+    func testNormalRecoveryQRUsesExistingBootstrapOwnerWithoutAnyClaim() async throws {
+        let h = try FactoryCoordinatorHarness(softAP: true)
+        h.installClaimedBootstrap()
+        let saved = try XCTUnwrap(h.vault.record)
+        h.peer.normalPublished = true
+        h.peer.latestOperation = UUID()
+        h.peer.state = .tlsReady
+        await h.adopt()
+        XCTAssertEqual(h.vault.record?.ownerID, saved.ownerID)
+        XCTAssertEqual(h.vault.record?.ownerToken, saved.ownerToken)
+        XCTAssertEqual(h.vault.record?.claimRequestID, saved.claimRequestID)
+        XCTAssertEqual(h.vault.record?.factoryProfile, .normalV1)
+        XCTAssertEqual(h.coordinator.discoveryProfile, .normalV1)
+        XCTAssertEqual(h.peer.normalConnections, 1)
+        XCTAssertFalse(h.peer.operations.contains("bootstrap.claim"))
+        h.coordinator.close()
+    }
+
+    func testUnknownOwnerOnNormalRecoveryQRIsRefusedBeforeSavingAnyOwner() async throws {
+        let h = try FactoryCoordinatorHarness(softAP: true)
+        h.peer.normalPublished = true
+        await h.adopt()
+        XCTAssertNil(h.vault.record)
+        XCTAssertTrue(h.peer.operations.isEmpty)
+        XCTAssertEqual(h.peer.normalConnections, 0)
+        XCTAssertEqual(h.coordinator.stage, .suspended)
+        h.coordinator.close()
+    }
+
+    func testClaimReplyLostRecoversTheSamePendingOwnerWithoutClaimReplay() async throws {
+        let h = try FactoryCoordinatorHarness(softAP: true)
+        h.softAPPeer?.loseClaimReplyAfterCommit = true
+        await h.adopt()
+        let saved = try XCTUnwrap(h.vault.record)
+        XCTAssertEqual(saved.state, .pending)
+        XCTAssertTrue(h.peer.claimed)
+        await h.coordinator.rejoinSoftAP()
+        XCTAssertEqual(h.vault.record?.ownerID, saved.ownerID)
+        XCTAssertEqual(h.vault.record?.ownerToken, saved.ownerToken)
+        XCTAssertEqual(h.vault.record?.claimRequestID, saved.claimRequestID)
+        XCTAssertEqual(h.vault.record?.state, .claimed)
+        XCTAssertEqual(h.softAPPeer?.bootstrapOperations.filter { $0 == "bootstrap.claim" }.count, 1)
+        h.coordinator.close()
+    }
+
+    func testClaimNeverReachedServerRequiresFreshQRAndExplicitRetryWithSameOwner() async throws {
+        let h = try FactoryCoordinatorHarness(softAP: true)
+        h.softAPPeer?.dropClaimBeforeCommit = true
+        await h.adopt()
+        let saved = try XCTUnwrap(h.vault.record)
+        XCTAssertFalse(h.peer.claimed)
+        await h.coordinator.rejoinSoftAP()
+        XCTAssertEqual(h.softAPPeer?.bootstrapOperations.filter { $0 == "bootstrap.claim" }.count, 1)
+        h.softAPPeer?.dropClaimBeforeCommit = false
+        h.coordinator.acceptBootstrapCode(h.code)
+        await h.coordinator.rejoinSoftAP()
+        XCTAssertEqual(h.coordinator.stage, .softAPClaimRetry)
+        XCTAssertEqual(h.softAPPeer?.bootstrapOperations.filter { $0 == "bootstrap.claim" }.count, 1)
+        await h.coordinator.retrySoftAPClaim()
+        XCTAssertEqual(h.vault.record?.ownerID, saved.ownerID)
+        XCTAssertEqual(h.vault.record?.ownerToken, saved.ownerToken)
+        XCTAssertEqual(h.vault.record?.claimRequestID, saved.claimRequestID)
+        XCTAssertEqual(h.vault.record?.state, .claimed)
+        XCTAssertEqual(h.softAPPeer?.bootstrapOperations.filter { $0 == "bootstrap.claim" }.count, 2)
+        h.coordinator.close()
+    }
+
+    func testAuthenticatedActivationRefusalsKeepAPAndOnlyInspectTheSavedTransaction() async throws {
+        for refusal in ["not_found", "unauthorized", "expired"] {
+            let h = try FactoryCoordinatorHarness(softAP: true)
+            try await ready(h)
+            h.softAPPeer?.activationRefusal = refusal
+            let ownerID = h.vault.record?.ownerID
+            h.coordinator.chooseNetwork(nil)
+            await h.coordinator.applyNetwork(ssid: "Synthetic home", password: "synthetic-home-password")
+            XCTAssertEqual(h.softAPPeer?.leaves, 0, refusal)
+            XCTAssertNil(h.softAPPeer?.lanOrigin, refusal)
+            XCTAssertEqual(h.confirmations, 0, refusal)
+            XCTAssertEqual(h.softAPPeer?.operations.filter { $0 == "wifi.prepare" }.count, 1, refusal)
+            XCTAssertEqual(h.softAPPeer?.operations.filter { $0 == "wifi.activate" }.count, 1, refusal)
+            XCTAssertEqual(h.softAPPeer?.operations.filter { $0 == "wifi.status" }.count, 1, refusal)
+            XCTAssertEqual(h.vault.record?.ownerID, ownerID, refusal)
+            XCTAssertNotNil(h.vault.record?.wifiTransactionID, refusal)
+            XCTAssertEqual(h.coordinator.stage, .softAPPrepared, refusal)
+            h.coordinator.close()
+        }
+    }
+
+    func testTerminalAPStatusWithoutOriginClearsOnlyTheWiFiTransaction() async throws {
+        for terminal in ["rolled_back", "failed"] {
+            let h = try FactoryCoordinatorHarness(softAP: true)
+            try await ready(h)
+            h.softAPPeer?.losePrepareReply = true
+            h.softAPPeer?.terminalState = terminal
+            let ownerID = h.vault.record?.ownerID
+            h.coordinator.chooseNetwork(nil)
+            await h.coordinator.applyNetwork(ssid: "Synthetic home", password: "synthetic-home-password")
+            for _ in 0..<1000 where h.coordinator.stage != .rolledBack { await Task.yield() }
+            XCTAssertEqual(h.coordinator.stage, .rolledBack, terminal)
+            XCTAssertNil(h.vault.record?.wifiTransactionID, terminal)
+            XCTAssertEqual(h.vault.record?.ownerID, ownerID, terminal)
+            XCTAssertEqual(h.softAPPeer?.leaves, 0, terminal)
+            XCTAssertEqual(h.confirmations, 0, terminal)
+            h.coordinator.close()
+        }
     }
 }
 
