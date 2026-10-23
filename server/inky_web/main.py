@@ -6,7 +6,9 @@ import hashlib
 import json
 import logging
 import os
+import re
 import signal
+import socket
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -232,7 +234,7 @@ async def lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
 
 @asynccontextmanager
 async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
-                           factory=None):
+                           factory=None, lan_photo: bool = False):
     init_db()
     app.state.sessions = auth.SessionStore()
     credentials = (auth.load_or_create_credentials(data_dir()) if factory is None else
@@ -263,6 +265,7 @@ async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = 
                 raise OSError("Identifiants du cadre indisponibles") from None
         app.state.photo_access = PhotoAccessStore(
             data_dir() / "photo-access", photo_epoch, gate=app.state.auth_service._lock,
+            lan_bootstrap=lan_photo,
         )
         app.state.sessions.principal_validator = app.state.photo_access.valid
     app.state.bus = EventBus()
@@ -291,7 +294,7 @@ async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = 
     # Retry bootstrap display after a power interruption between credential
     # persistence and the first successful screen refresh. Never reveal a
     # personalized password, or overwrite a frame that already has history.
-    if factory is None and not app.state.display.closing and app.state.auth_service.credentials.bootstrap_password and not auth.auth_disabled():
+    if not lan_photo and factory is None and not app.state.display.closing and app.state.auth_service.credentials.bootstrap_password and not auth.auth_disabled():
         # No history yet → show welcome. Run in a thread so lifespan stays snappy.
         from inky_web.services import history as history_service
         from inky_web.welcome import show_welcome
@@ -314,7 +317,7 @@ async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = 
             app.state.auth_service.prepare_owner_rotation = factory.prepare_rotation
             factory.provisioning.credentials = app.state.auth_service
             await factory.provisioning.start()
-        elif not app.state.display.closing and os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled():
+        elif not lan_photo and not app.state.display.closing and os.environ.get("INKY_STUDIO_BLUETOOTH") == "1" and not auth.auth_disabled():
             from inky_web.provisioning.runtime import ProvisioningRuntime
             app.state.provisioning = ProvisioningRuntime(
                 data_dir() / "provisioning", app.state.auth_service, app.state.display,
@@ -506,18 +509,50 @@ def run() -> None:
         raise SystemExit(exc.exit_status) from None
 
 
+def run_lan() -> None:
+    """PHOTO-only entry for a new image whose Wi-Fi is configured by Imager."""
+    from inky_web.lan_runtime import LANRuntimeError
+    from inky_web.provisioning.factory_runtime import FactoryRuntimeError
+
+    try:
+        asyncio.run(serve(with_https=True, lan_photo=True))
+    except (FactoryRuntimeError, FactoryWriterRefused, LANRuntimeError) as exc:
+        logging.getLogger(__name__).error("LAN startup stopped: %s", exc.code)
+        raise SystemExit(exc.exit_status) from None
+
+
+def _lan_photo_origin() -> str:
+    from inky_web.lan_runtime import LANRuntimeError, validate_lan_origin
+
+    raw = os.environ.get("INKY_STUDIO_PHOTO_ACCESS_URL")
+    if raw is None:
+        # InkyOS sets this unique, persistent hostname before NM and Avahi.
+        # It is a locator, independent of the frame UUID/certificate name.
+        hostname = socket.gethostname().removesuffix(".local")
+        if re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", hostname) is None:
+            raise LANRuntimeError()
+        raw = f"https://{hostname}.local:8443"
+    return validate_lan_origin(raw)
+
+
 async def serve_with_https() -> None:
     """Compatibility entry point for the dual-listener qualification bench."""
     await serve(with_https=True)
 
 
-async def serve(*, with_https: bool = False) -> None:
+async def serve(*, with_https: bool = False, lan_photo: bool = False) -> None:
     """Own factory admission until all startup workers and listeners drain."""
+    if lan_photo:
+        from inky_web.provisioning.factory_runtime import guard_legacy_command
+
+        # A different entry point cannot downgrade an installed factory image.
+        # Refuse before even importing/acquiring its OS writer authority.
+        guard_legacy_command(resolve_data_dir())
     with main_writer_guard():
-        await _serve_admitted(with_https=with_https)
+        await _serve_admitted(with_https=with_https, lan_photo=lan_photo)
 
 
-async def _serve_admitted(*, with_https: bool = False) -> None:
+async def _serve_admitted(*, with_https: bool = False, lan_photo: bool = False) -> None:
     """One hardware owner and drain policy for both HTTP and HTTP+HTTPS."""
     from contextlib import contextmanager
 
@@ -569,6 +604,16 @@ async def _serve_admitted(*, with_https: bool = False) -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, shutdown)
     try:
+        origin = None
+        if lan_photo:
+            from inky_web.lan_runtime import LANRuntimeError
+            from inky_web.provisioning.factory_runtime import guard_legacy_command
+
+            guard_legacy_command(resolve_data_dir())
+            if (not with_https or auth.auth_disabled()
+                    or os.environ.get("INKY_STUDIO_BLUETOOTH") not in (None, "0")):
+                raise LANRuntimeError()
+            origin = _lan_photo_origin()
         await _select_startup_runtime()
         if stop_requested.is_set():
             return
@@ -577,25 +622,46 @@ async def _serve_admitted(*, with_https: bool = False) -> None:
             cert, key = await asyncio.to_thread(app.state.frame_identity.materialize_tls_files)
         # This core is reached only after the selector above and under serve's
         # writer guard. Direct ASGI lifespan calls always perform their own check.
-        async with _legacy_lifespan(app, stop_requested):
+        async with _legacy_lifespan(app, stop_requested, lan_photo=lan_photo):
+            if lan_photo:
+                app.state.photo_access_origin = lambda: origin
             if stop_requested.is_set():
                 return
             # Never cancel an admitted physical operation on a wall-clock timeout.
             # Explicit workers=1 also ignores inherited WEB_CONCURRENCY.
             common = dict(app=app, host="0.0.0.0", lifespan="off", workers=1,
                           timeout_graceful_shutdown=None, proxy_headers=False)
-            servers.append(ManagedServer(uvicorn.Config(port=8000, **common)))
+            if not lan_photo:
+                servers.append(ManagedServer(uvicorn.Config(port=8000, **common)))
             if with_https:
                 https = uvicorn.Config(port=8443, ssl_certfile=str(cert), ssl_keyfile=str(key), **common)
                 https.load()
-                https.ssl = app.state.provisioning.tls_context
+                # Normal TLS also works without constructing a radio runtime.
+                https.ssl = (app.state.provisioning.tls_context if app.state.provisioning is not None
+                             else app.state.frame_identity.ssl_context())
                 servers.append(ManagedServer(https))
             tasks = [asyncio.create_task(server.serve()) for server in servers]
+            lan_runtime = None
             try:
+                if lan_photo:
+                    from inky_web.lan_runtime import LANPhotoRuntime
+
+                    lan_runtime = LANPhotoRuntime(app, origin, https.ssl)
+                    # A QR is useful only once its HTTPS listener is open.
+                    while not all(server.started for server in servers):
+                        if stop_requested.is_set() or any(task.done() for task in tasks):
+                            break
+                        await asyncio.sleep(0.01)
+                    if not stop_requested.is_set() and all(server.started for server in servers):
+                        await lan_runtime.start()
                 await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             finally:
                 shutdown()
-                results = await asyncio.gather(*tasks, return_exceptions=True)
+                try:
+                    if lan_runtime is not None:
+                        await lan_runtime.stop()
+                finally:
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
             for result in results:
                 if isinstance(result, BaseException):
                     raise result
