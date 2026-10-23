@@ -133,13 +133,17 @@ struct PhotoAccessSessionReply: Decodable, Equatable, Sendable {
     let authenticated: Bool
     let deviceID: UUID
     let role: PhotoAccessRole
+    let canInvite: Bool
     let identity: PhotoAccessIdentityReply
-    enum CodingKeys: String, CodingKey { case authenticated, deviceID = "device_id", role, identity }
+    enum CodingKeys: String, CodingKey { case authenticated, deviceID = "device_id", role, canInvite = "can_invite", identity }
     init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         authenticated = try fields.decode(Bool.self, forKey: .authenticated)
         deviceID = try PhotoAccessValidation.uuid(fields.decode(String.self, forKey: .deviceID))
         role = try fields.decode(PhotoAccessRole.self, forKey: .role)
+        // Old frames allow owners to invite; media sharing requires an explicit
+        // capability from this frame's authenticated, pinned PHOTO response.
+        canInvite = try fields.decodeIfPresent(Bool.self, forKey: .canInvite) ?? (role == .owner)
         identity = try fields.decode(PhotoAccessIdentityReply.self, forKey: .identity)
     }
 }

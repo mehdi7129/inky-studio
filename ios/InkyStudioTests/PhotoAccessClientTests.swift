@@ -198,6 +198,44 @@ final class PhotoAccessClientTests: XCTestCase {
         XCTAssertEqual(stub.requests.count, 2)
     }
 
+    func testSessionInvitationCapabilityRequiresBooleanAndDefaultsSafelyForOlderFrames() async throws {
+        for role in [PhotoAccessRole.owner, .media] {
+            let credential = try credential(role: role)
+            for flag in [nil, false, true] as [Bool?] {
+                var reply = wireSessionReply(credential)
+                if let flag { reply["can_invite"] = flag }
+                let stub = PhotoAccessWireStub { _ in try .json(reply) }
+                let (api, client) = try boundClient(stub)
+                defer { api.clearSession(); stub.dispose() }
+                let session = try await client.openSession(credential)
+                XCTAssertEqual(session.canInvite, flag ?? (role == .owner))
+            }
+        }
+        let credential = try credential(role: .media)
+        for invalid in ["true", 1, ["allowed": true]] as [Any] {
+            var reply = wireSessionReply(credential); reply["can_invite"] = invalid
+            let stub = PhotoAccessWireStub { _ in try .json(reply) }
+            let (api, client) = try boundClient(stub)
+            defer { api.clearSession(); stub.dispose() }
+            await expectFailure { _ = try await client.openSession(credential) }
+            XCTAssertEqual(stub.requests.count, 1)
+        }
+    }
+
+    func testClaimReturnsPinnedMediaInvitationCapabilityWithoutPromotingTheRecipient() async throws {
+        let credential = try credential(role: .media, invitation: invitationID)
+        let code = try FrameInvitationCode(identity: identity, endpoint: endpoint,
+                                          invitationID: invitationID, invitationToken: invitationToken)
+        var reply = wireSessionReply(credential); reply["can_invite"] = true
+        let stub = PhotoAccessWireStub { _ in try .json(reply) }
+        let (api, client) = try boundClient(stub)
+        defer { api.clearSession(); stub.dispose() }
+        let session = try await client.claim(code, credential: credential)
+        XCTAssertEqual(session.role, .media)
+        XCTAssertTrue(session.canInvite)
+        XCTAssertEqual(stub.requests.map { $0.url!.path }, ["/api/auth/invitations/claim"])
+    }
+
     func testInvitationCreationUsesExactBodyAndReturnedCanonicalHTTPSOrigin() async throws {
         let draft = try draft()
         let advertised = URL(string: "https://192.168.1.120:8443")!

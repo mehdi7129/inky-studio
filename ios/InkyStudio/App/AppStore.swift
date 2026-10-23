@@ -19,6 +19,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var pairingNeedsCompletion = false
     @Published private(set) var recoveringConnection = false
     @Published private(set) var photoAccessRole: PhotoAccessRole?
+    @Published private(set) var photoAccessCanInvite = false
     @Published private(set) var activeInvitation: PhotoAccessInvitation?
     @Published private(set) var accessDevices: [PhotoAccessDeviceSummary] = []
     @Published private(set) var photoAccessBusy = false
@@ -187,7 +188,7 @@ final class AppStore: ObservableObject {
     var panelWidth: Int { state?.display.width ?? 800 }
     var panelHeight: Int { state?.display.height ?? 480 }
     var canMutate: Bool { localUnlocked && active && !unlocking && !recoveringConnection && !pairingNeedsCompletion && !photoAccessBusy && authenticated && connected && !busy && !updating }
-    var photoAccessDeviceID: UUID? { selectedPhotoAccess?.deviceID ?? (fixturePhotoAccess != nil ? UUID(uuidString: fixturePhotoAccess == "media" ? "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff" : "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee") : nil) }
+    var photoAccessDeviceID: UUID? { selectedPhotoAccess?.deviceID ?? (fixturePhotoAccess != nil ? UUID(uuidString: fixturePhotoAccess?.hasPrefix("media") == true ? "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff" : "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee") : nil) }
     var isMediaPhotoAccess: Bool { selectedPhotoAccess?.role == .media || photoAccessRole == .media }
     var hasIndividualPhotoAccess: Bool { selectedPhotoAccess != nil }
     var canAdminister: Bool { authenticated && photoAccessRole != .media }
@@ -196,7 +197,7 @@ final class AppStore: ObservableObject {
         api?.baseURL.scheme == "http"
     }
     var canShareAccess: Bool {
-        localUnlocked && active && authenticated && connected && !pairingNeedsCompletion && photoAccessRole != .media &&
+        localUnlocked && active && authenticated && connected && !pairingNeedsCompletion && (photoAccessRole != .media || photoAccessCanInvite) &&
         (api?.pinnedIdentity != nil || (needsSecureSharingUpgrade && credentialStored &&
             api?.baseURL.absoluteString == address && defaults.string(forKey: "frameAddress") == address))
     }
@@ -666,10 +667,10 @@ final class AppStore: ObservableObject {
             candidate = pinned; pendingClient = pinned
             try await FactoryPhotoEnrollment.enroll(credential, api: pinned, owner: owner, setupOperationID: status.operationID)
             guard current() else { return false }
-            _ = try await PhotoAccessClient(api: pinned, identity: owner.identity).openSession(credential)
+            let session = try await PhotoAccessClient(api: pinned, identity: owner.identity).openSession(credential)
             guard current() else { return false }
             pendingClient = nil
-            try commitPhotoAccess(credential, client: pinned)
+            try commitPhotoAccess(credential, client: pinned, canInvite: session.canInvite)
             defaults.set(owner.id.uuidString.lowercased(), forKey: "frameOwnerID")
             committed = true
             photoAccessBusy = false
@@ -987,6 +988,7 @@ final class AppStore: ObservableObject {
     }
 
     private func resetSession(clearClient: Bool = true, cancelLegacyUpgrade: Bool = true) {
+        photoAccessCanInvite = false
         if cancelLegacyUpgrade {
             legacySharingUpgradeTask?.cancel()
             legacySharingUpgradeTask = nil
@@ -1476,12 +1478,12 @@ private extension AppStore {
             try rememberPendingPhotoAccess(credential)
             _ = try await access.enroll(credential)
             guard stillSelected() else { return false }
-            _ = try await access.openSession(credential)
+            let session = try await access.openSession(credential)
             guard stillSelected() else { return false }
             // Protected final save and local selection commit happen synchronously. Until this
             // exact boundary the previous HTTP cookie, locator and protected QR secret remain usable.
             pendingClient = nil
-            try commitPhotoAccess(credential, client: pinned, preservingLegacyUpgrade: true)
+            try commitPhotoAccess(credential, client: pinned, canInvite: session.canInvite, preservingLegacyUpgrade: true)
             candidate = nil
             epoch = generation
             operation = UUID()
@@ -1522,12 +1524,12 @@ private extension AppStore {
                 expectedRole: .owner, state: .active, invitationID: credential.invitationID)
             let client = makePinnedAPI(endpoint, selected.identity)
             candidate = client; pendingClient = client
-            _ = try await PhotoAccessClient(api: client, identity: selected.identity).openSession(relocated)
+            let session = try await PhotoAccessClient(api: client, identity: selected.identity).openSession(relocated)
             guard photoOperationValid(epoch, operation) else { return }
             // BLE ownership stays separate. This only records the verified locator for the same owner.
             _ = try ownershipVault.markClaimed(id: owner.id, endpoint: endpoint)
             pendingClient = nil
-            try commitPhotoAccess(relocated, client: client)
+            try commitPhotoAccess(relocated, client: client, canInvite: session.canInvite)
             defaults.set(owner.id.uuidString.lowercased(), forKey: "frameOwnerID")
             candidate = nil
             connecting = false; photoAccessBusy = false
@@ -1563,7 +1565,7 @@ private extension AppStore {
         pendingPhotoAccess = selection
         defaults.set(data, forKey: "photoAccessPending")
     }
-    func commitPhotoAccess(_ credential: PhotoAccessCredential, client: InkyAPI, preservingLegacyUpgrade: Bool = false) throws {
+    func commitPhotoAccess(_ credential: PhotoAccessCredential, client: InkyAPI, canInvite: Bool, preservingLegacyUpgrade: Bool = false) throws {
         var saved = credential
         saved.state = .active
         let selection = PhotoAccessSelection(saved)
@@ -1572,6 +1574,7 @@ private extension AppStore {
         resetSession(cancelLegacyUpgrade: !preservingLegacyUpgrade)
         selectedPhotoAccess = selection
         photoAccessRole = credential.expectedRole
+        photoAccessCanInvite = canInvite
         defaults.set(selectionData, forKey: "photoAccessSelection")
         defaults.removeObject(forKey: "photoAccessPending")
         pendingPhotoAccess = nil
@@ -1605,11 +1608,11 @@ private extension AppStore {
             guard selection.validates(credential) else { throw PhotoAccessError.identityMismatch }
             let client = makePinnedAPI(selection.endpoint, selection.identity)
             candidate = client; pendingClient = client
-            _ = try await PhotoAccessClient(api: client, identity: selection.identity).openSession(credential)
+            let session = try await PhotoAccessClient(api: client, identity: selection.identity).openSession(credential)
             guard attempt == localAuthenticationGeneration, epoch == generation, localUnlocked, active, !Task.isCancelled else { return }
             // Keep the candidate out of resetSession's cancellation path at commit.
             pendingClient = nil
-            try commitPhotoAccess(credential, client: client)
+            try commitPhotoAccess(credential, client: client, canInvite: session.canInvite)
             candidate = nil
             connecting = false
             await refresh()
@@ -1626,7 +1629,8 @@ private extension AppStore {
         }
     }
     func ensurePhotoOwner(epoch: UUID, operation: UUID) async throws -> PhotoAccessClient {
-        guard photoOperationValid(epoch, operation), canShareAccess, let current = api, let identity = current.pinnedIdentity else {
+        guard photoOperationValid(epoch, operation), canAdminister, canShareAccess,
+              let current = api, let identity = current.pinnedIdentity else {
             throw PhotoAccessError.trustedHTTPSRequired
         }
         if photoAccessRole == .owner { return try PhotoAccessClient(api: current, identity: identity) }
@@ -1647,7 +1651,7 @@ private extension AppStore {
         let access = try PhotoAccessClient(api: candidate, identity: identity)
         _ = try await access.enroll(credential)
         guard photoOperationValid(epoch, operation) else { throw CancellationError() }
-        _ = try await access.openSession(credential)
+        let session = try await access.openSession(credential)
         guard photoOperationValid(epoch, operation) else { throw CancellationError() }
         var durable = credential; durable.state = .active
         try photoAccessVault.save(durable, account: account)
@@ -1657,6 +1661,7 @@ private extension AppStore {
         pendingPhotoAccess = nil
         selectedPhotoAccess = selection
         photoAccessRole = .owner
+        photoAccessCanInvite = session.canInvite
         try current.commitPhotoAccessSession(from: candidate)
         candidate.clearSession()
         passwordChangeSupported = false
@@ -1664,6 +1669,16 @@ private extension AppStore {
         committed = true
         startMonitoring()
         return try PhotoAccessClient(api: current, identity: identity)
+    }
+    func ensurePhotoInviter(epoch: UUID, operation: UUID) async throws -> PhotoAccessClient {
+        guard photoOperationValid(epoch, operation), canShareAccess else { throw PhotoAccessError.accessRemoved }
+        if photoAccessRole == .media {
+            guard photoAccessCanInvite, selectedPhotoAccess?.role == .media,
+                  let current = api, let identity = current.pinnedIdentity else { throw PhotoAccessError.trustedHTTPSRequired }
+            // A PHOTO member uses its own session. Inviting never enrolls an owner.
+            return try PhotoAccessClient(api: current, identity: identity)
+        }
+        return try await ensurePhotoOwner(epoch: epoch, operation: operation)
     }
     func reportPhotoAccessError(_ error: Error, epoch: UUID, operation: UUID, affectsCurrentSession: Bool = true) {
         guard photoOperationValid(epoch, operation), !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return }
@@ -1742,10 +1757,10 @@ extension AppStore {
             try rememberPendingPhotoAccess(credential)
             let client = try PhotoAccessClient(api: candidate, identity: code.identity)
             // Exact claim retry also recovers an uncertain previous response; no mutation is replayed automatically.
-            _ = try await client.claim(code, credential: credential)
+            let session = try await client.claim(code, credential: credential)
             guard photoOperationValid(epoch, operation) else { return }
             pendingClient = nil
-            try commitPhotoAccess(credential, client: candidate)
+            try commitPhotoAccess(credential, client: candidate, canInvite: session.canInvite)
             committed = true
             connecting = false
             photoAccessBusy = false
@@ -1757,7 +1772,7 @@ extension AppStore {
     }
 
     func enrollPhotoAccess() async {
-        guard canShareAccess, !photoAccessBusy else { return }
+        guard canAdminister, canShareAccess, !photoAccessBusy else { return }
         if needsSecureSharingUpgrade { _ = await upgradeLegacySharing(); return }
         let epoch = generation; let operation = UUID(); photoAccessOperation = operation
         photoAccessBusy = true; photoAccessError = nil
@@ -1767,7 +1782,7 @@ extension AppStore {
     }
     func refreshAccessDevices() async {
         // Opening the sheet or its automatic task must never promote a legacy connection.
-        guard canShareAccess, !needsSecureSharingUpgrade, !photoAccessBusy else { return }
+        guard canAdminister, canShareAccess, !needsSecureSharingUpgrade, !photoAccessBusy else { return }
         #if DEBUG
         if fixturePhotoAccess != nil { return }
         #endif
@@ -1795,7 +1810,7 @@ extension AppStore {
         photoAccessBusy = true; photoAccessError = nil
         defer { if photoAccessOperation == operation { photoAccessBusy = false } }
         do {
-            let client = try await ensurePhotoOwner(epoch: epoch, operation: operation)
+            let client = try await ensurePhotoInviter(epoch: epoch, operation: operation)
             guard photoOperationValid(epoch, operation), let selected = selectedPhotoAccess else { return }
             let account = invitationDraftAccount(selected)
             var draft: PhotoInvitationDraft
@@ -1845,7 +1860,7 @@ extension AppStore {
         photoAccessBusy = true; photoAccessError = nil
         defer { if photoAccessOperation == operation { photoAccessBusy = false } }
         do {
-            let client = try await ensurePhotoOwner(epoch: epoch, operation: operation)
+            let client = try await ensurePhotoInviter(epoch: epoch, operation: operation)
             guard photoOperationValid(epoch, operation), let selected = selectedPhotoAccess else { return }
             let account = invitationDraftAccount(selected)
             recordInvitationRevocation(invitation.invitationID, account: account)
@@ -1865,7 +1880,7 @@ extension AppStore {
         }
     }
     func revokeAccessDevice(_ id: UUID) async {
-        guard canShareAccess, !photoAccessBusy,
+        guard canAdminister, canShareAccess, !photoAccessBusy,
               accessDevices.contains(where: { $0.deviceID == id && $0.role == .media && !$0.revoked }) else { return }
         let epoch = generation; let operation = UUID(); photoAccessOperation = operation
         photoAccessBusy = true; photoAccessError = nil
@@ -1885,12 +1900,13 @@ extension AppStore {
 #if DEBUG
 private extension AppStore {
     func configurePhotoAccessFixture(_ mode: String) {
-        guard ["owner", "media", "invitationexpired"].contains(mode),
+        guard ["owner", "media", "invitationexpired", "mediasharing", "mediasharingexpired"].contains(mode),
               let identity = try? FrameIdentity(id: UUID(uuidString: "11111111-2222-4333-8444-555555555555")!,
                   spkiSHA256: Data(repeating: 0x11, count: 32)),
               let url = URL(string: "https://192.168.1.120:8443") else { return }
         fixturePhotoAccess = mode
-        photoAccessRole = mode == "media" ? .media : .owner
+        photoAccessRole = mode.hasPrefix("media") ? .media : .owner
+        photoAccessCanInvite = mode != "media"
         localUnlocked = true; authenticated = true; connected = true; credentialStored = true
         address = url.absoluteString
         defaults.set(address, forKey: "frameAddress")
@@ -1902,7 +1918,7 @@ private extension AppStore {
         accessDevices = [PhotoAccessDeviceSummary(deviceID: UUID(uuidString: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")!,
             role: .owner, createdAt: 1, revoked: false),
             PhotoAccessDeviceSummary(deviceID: UUID(uuidString: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff")!, role: .media, createdAt: 1, revoked: false)]
-        if mode == "invitationexpired" { createFixtureInvitation(expired: true) }
+        if mode == "invitationexpired" || mode == "mediasharingexpired" { createFixtureInvitation(expired: true) }
     }
     func createFixtureInvitation(expired: Bool) {
         guard let identity = api?.pinnedIdentity, let endpoint = api?.baseURL,

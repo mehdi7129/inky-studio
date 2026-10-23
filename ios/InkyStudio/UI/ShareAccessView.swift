@@ -13,8 +13,15 @@ struct ShareAccessView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("Des photos, à plusieurs.", systemImage: "person.2")
                             .font(.title2.bold()).accessibilityAddTraits(.isHeader)
-                        Text("L’autre iPhone pourra envoyer des photos et choisir la programmation. Les réglages du cadre et les accès restent sous votre contrôle.")
+                        Text("L’autre iPhone pourra envoyer des photos et choisir leur programmation.")
                             .foregroundStyle(Bento.secondaryInk)
+                        if store.isMediaPhotoAccess {
+                            Text("Chaque personne autorisée peut aussi partager cet accès photos.")
+                                .font(.subheadline).foregroundStyle(Bento.secondaryInk)
+                        } else {
+                            Text("Les réglages du cadre et la gestion des appareils restent sous votre contrôle.")
+                                .font(.subheadline).foregroundStyle(Bento.secondaryInk)
+                        }
                         Text("Les deux iPhone doivent pouvoir rejoindre le même réseau Wi-Fi que le cadre.")
                             .font(.footnote).foregroundStyle(Bento.secondaryInk)
                     }.bentoCard()
@@ -24,7 +31,7 @@ struct ShareAccessView: View {
                             invitationCard(invitation)
                         } else {
                             Button { Task { await store.createInvitation() } } label: {
-                                Label("Créer une invitation", systemImage: "qrcode")
+                                Label("Afficher un QR d’accès", systemImage: "qrcode")
                             }.buttonStyle(PrimaryButtonStyle()).disabled(store.photoAccessBusy)
                                 .accessibilityIdentifier("access.createInvitation")
                         }
@@ -33,9 +40,9 @@ struct ShareAccessView: View {
                             Text(error).font(.subheadline).foregroundStyle(Bento.danger)
                                 .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("access.error")
                         }
-                        devicesCard
+                        if store.canAdminister { devicesCard }
                     } else {
-                        Text("Déverrouillez l’app avec un accès propriétaire pour gérer le partage.")
+                        Text("Déverrouillez l’app pour partager un accès photos disponible sur ce cadre.")
                             .foregroundStyle(Bento.secondaryInk).bentoCard()
                     }
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)

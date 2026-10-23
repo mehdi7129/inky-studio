@@ -48,26 +48,9 @@ struct SettingsView: View {
                         .accessibilityLabel("Enregistrer les réglages")
                         .accessibilityValue(store.busy ? "Opération en cours" : "")
                     VStack(alignment: .leading, spacing: 12) {
-                        Label("Accès protégé", systemImage: "lock.iphone").font(.headline)
-                        Text("Face ID, Touch ID ou le code de cet iPhone est requis pour ouvrir Inky Studio.")
-                            .font(.subheadline).foregroundStyle(Bento.secondaryInk)
-                        Button { store.lock() } label: {
-                            Label("Verrouiller l’app", systemImage: "lock")
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        }.accessibilityIdentifier("settings.lock")
-                        if store.canAdminister && (store.bluetoothSupported || store.hasAdoptedFrame) {
-                            Divider()
-                            Button { bluetoothSetup = true } label: {
-                                Label("Configurer le Wi-Fi du cadre", systemImage: "wifi")
-                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            }.disabled(store.busy || store.displayBusy || store.pairingNeedsCompletion)
-                                .accessibilityIdentifier("settings.bluetooth")
-                        }
-                    }.bentoCard()
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label(store.photoAccessRole == .media ? "Accès partagé" : "Partager le cadre", systemImage: "person.2")
+                        Label(store.photoAccessRole == .media && !store.photoAccessCanInvite ? "Accès partagé" : "Partager le cadre", systemImage: "person.2")
                             .font(.headline)
-                        if store.photoAccessRole == .media {
+                        if store.photoAccessRole == .media && !store.photoAccessCanInvite {
                             Text("Vous pouvez ajouter des photos et choisir leur programmation. Le propriétaire gère les accès et la configuration du cadre.")
                                 .font(.subheadline).foregroundStyle(Bento.secondaryInk)
                             if let deviceID = store.photoAccessDeviceID {
@@ -75,7 +58,7 @@ struct SettingsView: View {
                                     .font(.caption.monospaced()).foregroundStyle(Bento.secondaryInk)
                             }
                         } else {
-                            Text("Invitez un autre iPhone à envoyer des photos, sans partager votre accès propriétaire.")
+                            Text("Créez un QR code à scanner avec Inky Studio sur l’autre iPhone pour lui donner accès aux photos du cadre.")
                                 .font(.subheadline).foregroundStyle(Bento.secondaryInk)
                             Button { onShareAccess() } label: {
                                 Label("Partager l’accès", systemImage: "qrcode")
@@ -94,6 +77,13 @@ struct SettingsView: View {
                                 Text(display.model).font(.subheadline)
                                 Text("\(display.width) × \(display.height) · \(display.colors) couleurs").font(.caption).foregroundStyle(Bento.secondaryInk)
                             }
+                        }
+                        if store.canAdminister && (store.bluetoothSupported || store.hasAdoptedFrame) {
+                            Button { bluetoothSetup = true } label: {
+                                Label("Configurer le Wi-Fi du cadre", systemImage: "wifi")
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }.disabled(store.busy || store.displayBusy || store.pairingNeedsCompletion)
+                                .accessibilityIdentifier("settings.bluetooth")
                         }
                         Divider()
                         HStack { Text("Version du cadre"); Spacer(); Text(store.version).foregroundStyle(Bento.secondaryInk) }.font(.subheadline)

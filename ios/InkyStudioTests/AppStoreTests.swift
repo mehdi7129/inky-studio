@@ -1496,6 +1496,77 @@ final class AppStoreTests: XCTestCase {
         XCTAssertTrue(fixture.store.canMutate)
     }
 
+    func testCapablePhotoMemberCreatesAndRevokesOnlyItsOwnInvitationWithoutOwnerEnrollment() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity, canInvite: true)
+        await fixture.store.claimInvitation(code)
+        XCTAssertTrue(fixture.store.photoAccessCanInvite)
+        XCTAssertTrue(fixture.store.canShareAccess)
+        XCTAssertFalse(fixture.store.canAdminister)
+        let before = fixture.stub.requests.count
+        await fixture.store.createInvitation()
+        let invitation = try XCTUnwrap(fixture.store.activeInvitation)
+        XCTAssertEqual(fixture.stub.requests.dropFirst(before).map { $0.url!.path }, ["/api/auth/invitations"])
+        XCTAssertEqual(fixture.store.photoAccessRole, .media)
+        // Sharing PHOTO authority must not unlock device/Wi-Fi/update administration.
+        let beforeAdmin = fixture.stub.requests.count
+        await fixture.store.enrollPhotoAccess()
+        await fixture.store.refreshAccessDevices()
+        await fixture.store.revokeAccessDevice(UUID())
+        await fixture.store.checkUpdate()
+        await fixture.store.startUpdate()
+        do { try await fixture.store.beginBluetoothAdoption(); XCTFail("PHOTO sharing cannot administer Wi-Fi") } catch {}
+        XCTAssertEqual(fixture.stub.requests.count, beforeAdmin)
+        await fixture.store.revokeActiveInvitation()
+        XCTAssertNil(fixture.store.activeInvitation)
+        XCTAssertEqual(fixture.stub.requests.last?.httpMethod, "DELETE")
+        XCTAssertEqual(fixture.stub.requests.last?.url?.path, "/api/auth/invitations/" + invitation.invitationID.uuidString.lowercased())
+        XCTAssertFalse(fixture.stub.requests.contains { ["/api/auth/devices/enroll", "/api/auth/devices"].contains($0.url?.path ?? "") })
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.canMutate)
+    }
+
+    func testPhotoInvitationCapabilityIsNotPersistedAndCannotLeakIntoRestoredOrReplacementSessions() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let first = try invitationCode()
+        fixture.stub.enablePhotoAccess(first.identity, canInvite: true)
+        await fixture.store.claimInvitation(first)
+        let previous = try XCTUnwrap(fixture.store.api)
+        XCTAssertTrue(fixture.store.canShareAccess)
+        fixture.store.lock()
+        XCTAssertFalse(fixture.store.canShareAccess)
+        await fixture.store.unlock()
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertTrue(fixture.store.canShareAccess, "A local lock preserves the same authenticated session's capability.")
+        XCTAssertNil(fixture.defaults.object(forKey: "can_invite"))
+        XCTAssertNil(fixture.defaults.object(forKey: "photoAccessCanInvite"))
+        let second = try invitationCode()
+        fixture.stub.enablePhotoAccess(second.identity, canInvite: false)
+        let gate = fixture.stub.hold(host: "invited-frame.local", path: "/api/auth/invitations/claim", method: "POST")
+        let replacement = Task { await fixture.store.claimInvitation(second) }
+        await fulfillment(of: [gate.started], timeout: 3)
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertTrue(fixture.store.photoAccessCanInvite, "A candidate cannot change the established session's capability.")
+        gate.release(); await replacement.value
+        XCTAssertFalse(fixture.store.api === previous)
+        XCTAssertFalse(fixture.store.photoAccessCanInvite)
+        XCTAssertFalse(fixture.store.canShareAccess)
+        // Older services omit the capability. Cold restore must keep media sharing off.
+        await fixture.store.logout()
+        XCTAssertFalse(fixture.store.photoAccessCanInvite)
+        fixture.stub.enablePhotoAccess(second.identity)
+        await fixture.store.unlock()
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertEqual(fixture.store.photoAccessRole, .media)
+        XCTAssertFalse(fixture.store.photoAccessCanInvite)
+        let before = fixture.stub.requests.count
+        await fixture.store.createInvitation()
+        XCTAssertEqual(fixture.stub.requests.count, before)
+    }
+
     func testColdPhotoRestoreUsesDeviceSessionAnd401NeverFallsBackToLegacy() async throws {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
@@ -2347,6 +2418,7 @@ private final class StoreStub: @unchecked Sendable {
     private var gates: [String: StoreGate] = [:]
     private var calls: [URLRequest] = []
     private var accessIdentity: FrameIdentity?
+    private var accessCanInvite: Bool?
     private var accessDeviceRoles: [String: String] = [:]
     private var responseErrors: [String: URLError] = [:]
     private var displayStatus: [String: Any]?
@@ -2355,7 +2427,9 @@ private final class StoreStub: @unchecked Sendable {
     var requests: [URLRequest] { lock.withLock { calls } }
     init(totals: [String: Int]) { self.totals = totals }
 
-    func enablePhotoAccess(_ identity: FrameIdentity) { lock.withLock { accessIdentity = identity } }
+    func enablePhotoAccess(_ identity: FrameIdentity, canInvite: Bool? = nil) {
+        lock.withLock { accessIdentity = identity; accessCanInvite = canInvite }
+    }
 
     func failNext(host: String, path: String, error: URLError) {
         lock.withLock { responseErrors["\(host)|GET|\(path)"] = error }
@@ -2452,6 +2526,7 @@ private final class StoreStub: @unchecked Sendable {
             var reply: [String: Any] = ["device_id": deviceID, "role": role,
                 "identity": ["frame_id": identity.id.uuidString.lowercased(), "spki_sha256": identity.spkiSHA256.map { String(format: "%02x", $0) }.joined()]]
             if path != "/api/auth/factory-device-enroll" { reply["authenticated"] = true }
+            if let canInvite = lock.withLock({ accessCanInvite }) { reply["can_invite"] = canInvite }
             body = reply
         case "/api/auth/invitations":
             let fields = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any] ?? [:]

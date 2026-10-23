@@ -38,10 +38,9 @@ final class InkyStudioUITests: XCTestCase {
         login()
         selectTab("queue", fallback: "File")
         XCTAssertTrue(element("queue.row.a11050000002").waitForExistence(timeout: 5))
-        selectTab("settings", fallback: "Réglages")
-        let lock = app.buttons["settings.lock"]
-        scrollTo(lock)
-        lock.tap()
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5))
+        app.activate()
         let unlock = app.buttons["lock.unlock"]
         XCTAssertTrue(unlock.waitForExistence(timeout: 5))
         XCTAssertFalse(app.tabBars.firstMatch.exists)
@@ -49,7 +48,7 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertFalse(app.buttons["connection.scanLANQR"].exists)
         capture("04 Verrou local")
         unlock.tap()
-        XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10))
+        XCTAssertTrue(tab("queue", fallback: "File").waitForExistence(timeout: 10))
         selectTab("queue", fallback: "File")
         XCTAssertTrue(element("queue.row.a11050000002").waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["2 photos dans la file"].exists)
@@ -153,7 +152,7 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(element("queue.row.c0a570000001").waitForExistence(timeout: 10), "A displayed photo can be put back in the queue.")
     }
 
-    func testSettingsSaveAndLocalLock() {
+    func testSettingsSaveAndBackgroundLock() {
         launchFixtureApp()
         login()
         selectTab("settings", fallback: "Réglages")
@@ -165,10 +164,9 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(save.isHittable)
         save.tap()
         XCTAssertTrue(app.staticTexts["Réglages enregistrés."].waitForExistence(timeout: 10))
-        let logout = app.buttons["settings.lock"]
-        scrollTo(logout)
-        XCTAssertTrue(logout.isHittable)
-        logout.tap()
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5))
+        app.activate()
         XCTAssertTrue(app.buttons["lock.unlock"].waitForExistence(timeout: 5))
         XCTAssertFalse(element("frame.next").exists, "Authenticated actions must disappear behind the local lock.")
     }
@@ -354,18 +352,18 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertLessThanOrEqual(add.frame.maxY, app.tabBars.firstMatch.frame.minY + 1, "The main action must not be covered by the tab bar.")
     }
 
-    func testSettingsExposeRequiredLocalProtectionWithoutPasswordOrConsentControls() {
+    func testSettingsOmitManualLocalProtectionControls() {
         launchFixtureApp()
         login()
         selectTab("settings", fallback: "Réglages")
-        let lock = app.buttons["settings.lock"]
-        scrollTo(lock)
-        XCTAssertTrue(lock.isHittable)
+        XCTAssertTrue(app.segmentedControls["settings.mode"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Accès protégé"].exists)
+        XCTAssertFalse(app.buttons["settings.lock"].exists)
         XCTAssertFalse(app.switches["settings.biometric"].exists)
         XCTAssertFalse(app.buttons["settings.password"].exists)
         XCTAssertFalse(app.secureTextFields["password.current"].exists)
         XCTAssertFalse(app.buttons["connection.enableLANBiometrics"].exists)
-        capture("08 Protection iPhone obligatoire")
+        capture("08 Réglages sans bloc Accès protégé")
     }
 
     private func element(_ identifier: String) -> XCUIElement {

@@ -74,6 +74,57 @@ final class PhotoAccessUITests: XCTestCase {
         XCTAssertTrue(app.collectionViews["history.list"].waitForExistence(timeout: 5))
     }
 
+    func testPhotoMemberCanDisplayAndCancelAScannableQRWithoutDeviceAdministration() throws {
+        launch("mediasharing")
+        selectTab("settings", label: "Réglages", title: "Réglages")
+        for identifier in ["settings.bluetooth", "settings.checkUpdate"] {
+            XCTAssertFalse(app.buttons[identifier].exists)
+        }
+        XCTAssertFalse(app.sliders["settings.saturation"].exists)
+        openSharing()
+        XCTAssertTrue(app.staticTexts["Chaque personne autorisée peut aussi partager cet accès photos."].exists)
+        XCTAssertFalse(app.staticTexts["Appareils autorisés"].exists)
+        let create = app.buttons["access.createInvitation"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        scrollTo(create, in: accessScroll)
+        XCTAssertTrue(create.isEnabled)
+        create.tap()
+        let revoke = app.buttons["access.revokeInvitation"]
+        XCTAssertTrue(revoke.waitForExistence(timeout: 5))
+        scrollTo(revoke, in: accessScroll)
+        _ = try requireScannableInvitation()
+        XCTAssertTrue(app.staticTexts["access.invitationExpiry"].exists)
+        XCTAssertFalse(app.staticTexts["Appareils autorisés"].exists)
+        capture("Accès 08 — QR partage membre photos décodable")
+        revoke.tap()
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        scrollTo(create, in: accessScroll)
+        XCTAssertTrue(try detectedQRs().isEmpty)
+        app.buttons["access.close"].tap()
+        selectTab("frame", label: "Cadre", title: "Inky Studio")
+        XCTAssertTrue(app.buttons["frame.add"].isEnabled)
+    }
+
+    func testPhotoMemberCanRenewAnExpiredInvitationWithoutDeviceAdministration() throws {
+        launch("mediasharingexpired")
+        selectTab("settings", label: "Réglages", title: "Réglages")
+        openSharing()
+        let renew = app.buttons["access.renewInvitation"]
+        XCTAssertTrue(renew.waitForExistence(timeout: 5))
+        scrollTo(renew, in: accessScroll)
+        XCTAssertTrue(app.staticTexts["Invitation expirée"].exists)
+        XCTAssertTrue(try detectedQRs().isEmpty)
+        XCTAssertFalse(app.staticTexts["Appareils autorisés"].exists)
+        renew.tap()
+        let revoke = app.buttons["access.revokeInvitation"]
+        XCTAssertTrue(revoke.waitForExistence(timeout: 5))
+        scrollTo(revoke, in: accessScroll)
+        _ = try requireScannableInvitation()
+        XCTAssertFalse(renew.exists)
+        XCTAssertFalse(app.staticTexts["Appareils autorisés"].exists)
+        capture("Accès 09 — QR membre photos renouvelé")
+    }
+
     func testExpiredInvitationHasNoRenderedQRAndCanBeRenewed() throws {
         launch("invitationexpired")
         selectTab("settings", label: "Réglages", title: "Réglages")
