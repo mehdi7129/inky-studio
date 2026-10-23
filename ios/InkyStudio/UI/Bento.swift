@@ -109,7 +109,7 @@ final class ScenePrivacyAnchorView: UIView {
         guard let scene = notification.object as? UIWindowScene,
               scene === protectedWindow?.windowScene else { return }
         showShield()
-        deliver(.inactive, from: scene)
+        deliver(.inactive, from: scene, synchronously: true)
     }
 
     @objc private func didActivate(_ notification: Notification) {
@@ -123,14 +123,12 @@ final class ScenePrivacyAnchorView: UIView {
         guard let scene = notification.object as? UIWindowScene,
               scene === protectedWindow?.windowScene else { return }
         showShield()
-        deliver(.background, from: scene)
+        deliver(.background, from: scene, synchronously: true)
     }
 
-    private func deliver(_ phase: ScenePhase, from scene: UIWindowScene) {
+    private func deliver(_ phase: ScenePhase, from scene: UIWindowScene, synchronously: Bool = false) {
         let currentAttachment = attachment
-        // didMoveToWindow can run during a SwiftUI update. Publish on the next main
-        // turn, preserving background events so a quick return still invalidates auth.
-        DispatchQueue.main.async { [weak self, weak scene] in
+        let publish = { [weak self, weak scene] in
             guard let self, let scene, self.attachment == currentAttachment,
                   self.protectedWindow === self.window,
                   scene === self.protectedWindow?.windowScene else { return }
@@ -140,6 +138,10 @@ final class ScenePrivacyAnchorView: UIView {
             self.lastDeliveredPhase = phase
             self.onScenePhaseChanged(phase)
         }
+        // Native deactivation/background must close admission before another ready
+        // authentication job runs. Only the attachment snapshot can occur in render.
+        if synchronously { publish() }
+        else { DispatchQueue.main.async { publish() } }
     }
 
     private func showShield() {

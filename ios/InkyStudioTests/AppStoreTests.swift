@@ -1,11 +1,33 @@
 import Combine
 import Security
+import SwiftUI
+import UIKit
 import XCTest
 @testable import InkyStudio
 
 @MainActor
 final class AppStoreTests: XCTestCase {
     private let lanQR = "{\"v\":1,\"p\":\"lan-login\",\"url\":\"http://192.168.1.120:8000\",\"password\":\"DemoPass12345678\"}"
+
+    func testWindowSceneAnchorClosesAdmissionSynchronouslyAndIgnoresDetachedCallbacks() throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        var phases: [ScenePhase] = []
+        let anchor = ScenePrivacyAnchorView { phases.append($0) }
+        window.addSubview(anchor)
+        defer {
+            anchor.detach()
+            // Restore the host's existing anchor after scoped synthetic notifications.
+            NotificationCenter.default.post(name: UIScene.didActivateNotification, object: scene)
+        }
+        NotificationCenter.default.post(name: UIScene.willDeactivateNotification, object: scene)
+        XCTAssertEqual(phases, [.inactive], "No next-run-loop admission window may remain after native deactivation.")
+        NotificationCenter.default.post(name: UIScene.didEnterBackgroundNotification, object: scene)
+        XCTAssertEqual(phases, [.inactive, .background])
+        anchor.detach()
+        NotificationCenter.default.post(name: UIScene.willDeactivateNotification, object: scene)
+        XCTAssertEqual(phases, [.inactive, .background])
+    }
 
     func testRecoveryCancellationPreservesOldSessionWithoutReadingItsCredential() async throws {
         var localChecks = 0
