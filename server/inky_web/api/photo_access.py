@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 from inky_web import auth
-from inky_web.photo_access import AccessError, Principal, token, uuid
+from inky_web.photo_access import AccessError, PhotoAccessStore, Principal, token, uuid
 from inky_web.provisioning.factory import FactoryRecoveryRequired
 from inky_web.provisioning.network import NetworkUnavailable
 from inky_web.provisioning.ownership import OwnershipError
@@ -122,6 +122,17 @@ def actor(request) -> Principal:
     return principal
 
 
+def invitation_actor(request, value: PhotoAccessStore) -> Principal:
+    sessions = request.app.state.sessions
+    session = auth.get_session_token(request)
+    if not sessions.validate(session):
+        raise HTTPException(401, "Authentification requise")
+    principal = sessions.principal(session)
+    if principal is None or not value.can_invite(principal):
+        raise HTTPException(403, "Autorisation de partage requise")
+    return principal
+
+
 def public_identity(request, *, with_url=False):
     identity = getattr(request.app.state, "frame_identity", None)
     if identity is None:
@@ -192,7 +203,8 @@ async def enroll(request: Request, payload: Enrollment):
     principal = await call(operation)
     # Preserve the legacy cookie so a timed-out enrollment can retry identically.
     # The client then calls device-session using its pre-saved credential.
-    return {"device_id": principal.device_id, "role": principal.role, "identity": identity}
+    return {"device_id": principal.device_id, "role": principal.role, "identity": identity,
+            "can_invite": await call(value.can_invite, principal)}
 
 
 @router.post("/factory-device-enroll")
@@ -230,7 +242,8 @@ async def factory_enroll(request: Request, payload: FactoryEnrollment):
         raise HTTPException(409, "Le réseau du cadre n’est pas prêt") from None
     except FactoryRecoveryRequired:
         raise HTTPException(503, "Continuation factory indisponible") from None
-    return {"device_id": principal.device_id, "role": principal.role, "identity": identity}
+    return {"device_id": principal.device_id, "role": principal.role, "identity": identity,
+            "can_invite": await call(value.can_invite, principal)}
 
 
 @router.post("/device-session")
@@ -244,13 +257,14 @@ async def device_session(request: Request, payload: DeviceCredential, response: 
             return principal, request.app.state.sessions.create(principal)
     principal, session = await call(operation)
     auth.set_session_cookie(response, session, secure=True)
-    return {"authenticated": True, "device_id": principal.device_id, "role": principal.role, "identity": identity}
+    return {"authenticated": True, "device_id": principal.device_id, "role": principal.role, "identity": identity,
+            "can_invite": await call(value.can_invite, principal)}
 
 
 @router.post("/invitations")
 async def create_invitation(request: Request, payload: Invitation):
     value = store(request)
-    principal = actor(request)
+    principal = invitation_actor(request, value)
     identity = public_identity(request, with_url=True)
     result = await call(value.invite, principal, payload.invitation_id, payload.invitation_token,
                         payload.request_id, payload.ttl_seconds)
@@ -269,12 +283,14 @@ async def claim_invitation(request: Request, payload: Claim, response: Response)
             return principal, request.app.state.sessions.create(principal)
     principal, session = await call(operation)
     auth.set_session_cookie(response, session, secure=True)
-    return {"authenticated": True, "device_id": principal.device_id, "role": principal.role, "identity": identity}
+    return {"authenticated": True, "device_id": principal.device_id, "role": principal.role, "identity": identity,
+            "can_invite": await call(value.can_invite, principal)}
 
 
 @router.delete("/invitations/{invitation_id}")
 async def revoke_invitation(request: Request, invitation_id: str):
-    await call(store(request).revoke_invitation, actor(request), invitation_id)
+    value = store(request)
+    await call(value.revoke_invitation, invitation_actor(request, value), invitation_id)
     return {"revoked": True}
 
 

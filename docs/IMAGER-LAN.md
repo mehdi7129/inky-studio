@@ -1,6 +1,6 @@
 # Inky Imager — démarrage PHOTO sur LAN préconfiguré
 
-Ce mode démarre directement le service PHOTO sur le réseau fourni par Imager. Il ne lance ni BLE, ni SoftAP, ni coordination factory. La build iOS15 existante sait lire son invitation PHOTO ; aucune nouvelle version iOS n'est nécessaire pour ce périmètre.
+Ce mode démarre directement le service PHOTO sur le réseau fourni par Imager. Il ne lance ni BLE, ni SoftAP, ni coordination factory. Les parsers iOS15/16 lisent toujours l'invitation PHOTO. L'affichage d'un QR depuis un accès photos requiert la version iOS prenant en compte la capacité `can_invite`.
 
 ## Contrat OS
 
@@ -46,8 +46,21 @@ L'issuer initial est local au mode LAN, opt-in et distinct des devices. Il n'est
 
 Au reboot sans association, l'invitation précédente est invalidée et un QR neuf est affiché. Après association, les credentials survivent. Une photo existante n'est jamais remplacée par le welcome. Les opérations écran restent sérialisées et drainées lors de l'arrêt.
 
+## Partager depuis un iPhone autorisé
+
+Dans ce mode LAN explicite, chaque iPhone ayant un accès `media` valide peut créer une invitation PHOTO pour un autre iPhone, qui peut ensuite inviter à son tour. Les credentials restent distincts par appareil. Aucun téléphone ne devient `owner` lors d'un claim.
+
+Les réponses HTTPS `/api/auth/device-session` et `/api/auth/invitations/claim` annoncent le booléen `can_invite`. Il vaut `true` pour un propriétaire, et pour un accès `media` seulement si le store a été ouvert par le runtime LAN. Le champ est aussi annoncé à l'enrôlement propriétaire. Les anciens clients ignorent ce champ supplémentaire ; les nouveaux doivent considérer un champ absent comme `false` pour `media`.
+
+Le client émet `POST /api/auth/invitations` avec un nouvel identifiant, un nouveau token et un request_id, puis affiche le même format QR `invite` que ci-dessus. Le destinataire le scanne dans Inky Studio, protège son propre credential, et le réclame en HTTPS. Durée maximale : 300 secondes ; une seule identité destinataire, avec retry identique permis. Le QR n'est jamais une copie du credential de l'iPhone émetteur.
+
+Un accès `media` peut annuler son propre QR via `DELETE /api/auth/invitations/<uuid>`. L'annulation d'un QR vivant émis par un autre appareil est refusée. Un UUID absent est un no-op idempotent, notamment après redémarrage lorsque le QR a déjà été détruit. La révocation d'un appareil invalide ses QR non consommés. Les accès des destinataires déjà associés restent indépendants, comme auparavant.
+
+Aucune migration de schéma n'est ajoutée : la base reste à la version 1. Une mise à jour du package backend peut conserver l'identité, les fichiers TLS, credentials, base PHOTO et photos de l'installation existante. À chaque ouverture du service, les invitations temporaires sont invalidées normalement ; les accès déjà associés survivent. Le mode ordinaire/factory ne permet toujours pas à un accès `media` d'inviter.
+
 ## Périmètre et qualification
 
-L'accès media permet envoi de photos, file, affichage et planning. Il ne permet pas de générer un nouveau QR de partage, d'administrer le Wi-Fi ou de modifier la saturation. Il ne donne aucun droit owner/BLE/factory. Un autre téléphone après perte du premier accès exige une procédure de réinitialisation hors de ce v0.
+L'accès media permet envoi de photos, file, affichage, planning et, en mode LAN seulement, invitations PHOTO. Il ne permet pas d'administrer le Wi-Fi, de modifier la saturation, de lister ou de révoquer les appareils. Il ne donne aucun droit owner/BLE/factory. Après perte de tous les accès autorisés, une procédure de réinitialisation distincte reste nécessaire.
+
 
 Les contrôles automatisés couvrent les stores, le vrai HTTPS, les credentials, les appels photo et la reprise après reboot avec écran inerte. Le QR peut être décodé depuis ses pixels synthétiques. Ils ne qualifient ni le Wi-Fi du Pi, ni FaceID sur l'iPhone, ni les pixels physiques. L'installation OS et l'essai matériel appartiennent à InkyOS.

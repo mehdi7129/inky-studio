@@ -125,7 +125,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return JSONResponse({"detail": "Authentification requise"}, status_code=401,
                                     headers={"Cache-Control": "no-store"})
             request.state.photo_principal = principal
-            if principal.role == "media" and not _media_route(request.method, path):
+            photo_access = getattr(request.app.state, "photo_access", None)
+            if principal.role == "media" and not _media_route(
+                request.method, path,
+                allow_invitations=getattr(photo_access, "media_invites_enabled", False) is True,
+            ):
                 return JSONResponse({"detail": "Autorisation du propriétaire requise"}, status_code=403,
                                     headers={"Cache-Control": "no-store"})
             if principal.role == "media" and request.method == "POST" and path == "/api/settings":
@@ -158,7 +162,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await finish()
 
 
-def _media_route(method: str, path: str) -> bool:
+def _media_route(method: str, path: str, *, allow_invitations: bool = False) -> bool:
     """Closed capability list: future/admin endpoints are denied by default."""
     if (method, path) in {
         ("GET", "/api/health"), ("GET", "/api/auth/status"), ("POST", "/api/auth/logout"),
@@ -171,6 +175,12 @@ def _media_route(method: str, path: str) -> bool:
     }:
         return True
     parts = path.split("/")
+    if allow_invitations and (
+        (method, path) == ("POST", "/api/auth/invitations")
+        or (method == "DELETE" and len(parts) == 5
+            and parts[1:4] == ["api", "auth", "invitations"] and bool(parts[4]))
+    ):
+        return True
     return len(parts) == 4 and bool(parts[3]) and (method, parts[2]) in {
         ("GET", "photos"), ("DELETE", "queue"), ("DELETE", "history"),
     }

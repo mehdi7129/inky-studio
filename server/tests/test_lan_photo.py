@@ -109,8 +109,9 @@ def test_initial_claim_is_media_and_retry_binds_the_exact_device(lan_store):
     ):
         with pytest.raises(AccessError):
             value.claim(**{**payload, key: replacement})
-    with pytest.raises(AccessError):
-        value.invite(principal, **invitation())
+    assert value.can_invite(principal)
+    delegated = invitation()
+    assert value.invite(principal, **delegated)["invitation_id"] == delegated["invitation_id"]
     with pytest.raises(AccessError):
         value.devices(principal)
     with pytest.raises(AccessError):

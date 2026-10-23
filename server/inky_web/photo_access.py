@@ -164,6 +164,25 @@ class PhotoAccessStore:
             raise AccessError("forbidden")
         return row
 
+    @property
+    def media_invites_enabled(self) -> bool:
+        """Only the explicit LAN runtime permits transitive PHOTO invitations."""
+        return self._lan_bootstrap_enabled
+
+    def _inviter(self, conn, principal):
+        row = self._authorized(conn, principal)
+        if principal.role != "owner" and not self.media_invites_enabled:
+            raise AccessError("forbidden")
+        return row
+
+    def can_invite(self, principal: Principal) -> bool:
+        try:
+            with self._gate, self._connection() as conn:
+                self._inviter(conn, principal)
+            return True
+        except (AccessError, OSError, sqlite3.Error):
+            return False
+
     def valid(self, principal: Principal) -> bool:
         try:
             with self._gate, self._connection() as conn:
@@ -320,7 +339,7 @@ class PhotoAccessStore:
         if type(ttl_seconds) is not int or not 1 <= ttl_seconds <= MAX_TTL:
             raise ValueError("Durée invalide")
         with self._transaction() as conn:
-            self._owner(conn, actor)
+            self._inviter(conn, actor)
             now, mono = self._observe_clock(conn)
             conn.execute("DELETE FROM invitations WHERE expires_at<=? OR expires_mono<=? OR boot<>?",
                          (now, mono, self._boot))
@@ -366,7 +385,11 @@ class PhotoAccessStore:
                         "SELECT 1 FROM devices WHERE epoch=? LIMIT 1", (row["epoch"],)).fetchone()):
                     raise AccessError("forbidden")
             else:
-                self._owner(conn, Principal(row["issuer_id"], "owner", row["epoch"]))
+                issuer = conn.execute("SELECT role FROM devices WHERE device_id=?",
+                                      (row["issuer_id"],)).fetchone()
+                if issuer is None:
+                    raise AccessError()
+                self._inviter(conn, Principal(row["issuer_id"], issuer["role"], row["epoch"]))
             principal = Principal(device_id, "media", row["epoch"])
             if row["claim_request_id"] is not None:
                 if (row["claim_request_id"] != request_id or row["claim_device_id"] != device_id
@@ -387,7 +410,13 @@ class PhotoAccessStore:
     def revoke_invitation(self, actor: Principal, invitation_id: str):
         invitation_id = uuid(invitation_id)
         with self._transaction() as conn:
-            self._owner(conn, actor)
+            self._inviter(conn, actor)
+            row = conn.execute("SELECT issuer_id FROM invitations WHERE invitation_id=?",
+                               (invitation_id,)).fetchone()
+            if row is not None and actor.role != "owner" and row["issuer_id"] != actor.device_id:
+                raise AccessError("forbidden")
+            # A missing record is an idempotent no-op, including after restart.
+            # It cannot cancel anyone's live QR and lets a client discard its old draft.
             conn.execute("UPDATE invitations SET revoked=1 WHERE invitation_id=?", (invitation_id,))
 
     def devices(self, actor: Principal, device_id: str | None = None) -> list[dict]:
