@@ -37,7 +37,7 @@ struct RootView: View {
     @State private var finishingPairing = false
     @State private var sharingAccess = false
     var body: some View {
-        Group {
+        ZStack {
             if store.recoveringConnection {
                 ConnectionView()
             } else if store.unlocking || (!store.localUnlocked && store.authenticated) ||
@@ -63,21 +63,23 @@ struct RootView: View {
                 }
             } else { ConnectionView() }
         }
-        .background { ScenePrivacyAnchor() }
+        .background { ScenePrivacyAnchor(onScenePhaseChanged: { store.sceneChanged($0) }) }
         .accessibilityHidden(phase != .active)
         .overlay {
             if phase != .active { PrivacyCoverView() }
         }
-        .sheet(isPresented: $finishingPairing, onDismiss: { store.presentQueuedFactorySetup() }) { LANLoginScannerView() }
+        .sheet(isPresented: $finishingPairing, onDismiss: { store.completeQueuedConnection() }) { LANLoginScannerView() }
         .sheet(isPresented: $sharingAccess, onDismiss: {
             store.cancelPhotoAccessOperation()
         }) { ShareAccessView() }
         .sheet(item: $store.factorySetupPresentation, onDismiss: {
             store.cancelFactorySetup()
+            store.completeQueuedConnection()
         }) { request in
             BluetoothSetupView(initialBootstrapCode: request.code, initialFactoryOwner: request.owner,
                 authorize: { await store.authorizeFactorySetup() },
                 onClose: { store.cancelFactorySetup() },
+                routePhotoInvitation: { store.queuePhotoInvitation($0) },
                 didFinishFactory: { endpoint, owner, status in
                     await store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status)
                 }) { endpoint, owner in
@@ -85,7 +87,6 @@ struct RootView: View {
                 }
         }
         .onChange(of: phase) { _, value in
-            store.sceneChanged(value)
             if value == .background { finishingPairing = false; sharingAccess = false }
         }
         .onChange(of: store.authenticated) { _, _ in selection = 0 }

@@ -64,7 +64,7 @@ struct ConnectionView: View {
                                 .frame(minHeight: 44).accessibilityIdentifier("connection.cancel")
                         }.font(.subheadline).frame(maxWidth: .infinity).padding(.top, 20)
                     }
-                    if let error = store.localAuthenticationError ?? store.errorMessage {
+                    if let error = store.localAuthenticationError ?? store.photoAccessError ?? store.errorMessage {
                         Text(error).font(.subheadline).foregroundStyle(Bento.danger)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.top, 16).accessibilityIdentifier("connection.error")
@@ -99,15 +99,18 @@ struct ConnectionView: View {
             }.accessibilityIdentifier("connection.scroll")
         }
         .background(Bento.background).foregroundStyle(Bento.ink)
-        .sheet(isPresented: $gettingStarted, onDismiss: { store.presentQueuedFactorySetup() }) {
+        .sheet(isPresented: $gettingStarted, onDismiss: { store.completeQueuedConnection() }) {
             GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion)
         }
-        .sheet(isPresented: $scanningLANQR, onDismiss: { store.presentQueuedFactorySetup() }) {
+        .sheet(isPresented: $scanningLANQR, onDismiss: { store.completeQueuedConnection() }) {
             LANLoginScannerView().interactiveDismissDisabled(store.recoveringConnection)
         }
         #if DEBUG
-        .sheet(isPresented: $bluetoothSetup) {
-            BluetoothSetupView { endpoint, owner in
+        .sheet(isPresented: $bluetoothSetup, onDismiss: {
+            store.cancelFactorySetup()
+            store.completeQueuedConnection()
+        }) {
+            BluetoothSetupView(routePhotoInvitation: { store.queuePhotoInvitation($0) }) { endpoint, owner in
                 await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
             }
         }
@@ -166,26 +169,27 @@ struct LANLoginScannerView: View {
 
     private var cameraScanner: some View {
         QRScannerView { result in
-            dismiss()
             switch result {
-            case .success(let text): connect(text)
-            case .failure(let error): store.errorMessage = error.localizedDescription
+            case .success(let text): acceptQR(text)
+            case .failure(let error):
+                store.errorMessage = error.localizedDescription
+                dismiss()
             }
         }.clipShape(RoundedRectangle(cornerRadius: 20)).frame(minHeight: 280)
     }
 
     private func acceptQR(_ text: String) {
-        dismiss()
         connect(text)
+        dismiss()
     }
 
     private func connect(_ text: String) {
         if let bootstrap = try? FrameBootstrapCode.parse(text) {
             store.queueFactorySetup(bootstrap)
         } else if let invitation = try? FrameInvitationCode.parse(text) {
-            Task { await store.claimInvitation(invitation) }
+            store.queuePhotoInvitation(invitation)
         } else if (try? FrameLANLoginCode.parse(text)) != nil {
-            Task { await store.loginFromLANQRCode(text) }
+            store.queueLANLoginCode(text)
         } else {
             store.errorMessage = "Ce QR n’est pas valide. Scannez le QR du cadre ou demandez une nouvelle invitation au propriétaire."
         }
@@ -227,7 +231,7 @@ struct LocalLockView: View {
                         .accessibilityIdentifier("lock.unlock")
                         .accessibilityLabel(store.localUnlocked ? "Réessayer la connexion au cadre" : "Déverrouiller Inky Studio")
                         .accessibilityValue(store.unlocking ? "Vérification en cours" : "")
-                    if let error = store.localAuthenticationError ?? store.errorMessage {
+                    if let error = store.localAuthenticationError ?? store.photoAccessError ?? store.errorMessage {
                         Text(error).font(.subheadline).foregroundStyle(Bento.danger)
                             .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("lock.error")
                     }
@@ -255,7 +259,7 @@ struct LocalLockView: View {
                     .frame(minHeight: geometry.size.height).frame(maxWidth: .infinity)
             }.accessibilityIdentifier("lock.scroll")
         }.background(Bento.background).foregroundStyle(Bento.ink)
-            .sheet(isPresented: $gettingStarted, onDismiss: { store.presentQueuedFactorySetup() }) { GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
+            .sheet(isPresented: $gettingStarted, onDismiss: { store.completeQueuedConnection() }) { GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
             .confirmationDialog("Oublier ce cadre sur cet iPhone ?", isPresented: $confirmingForget) {
                 Button("Oublier ce cadre", role: .destructive) {
                     Task { await store.forgetCurrentFrameAfterConfirmation() }

@@ -56,16 +56,25 @@ private struct SensitiveContentShield: ViewModifier {
 /// An anchor in this scene's real window. Its opaque UIKit view covers native
 /// presentations (including PhotosPicker) above SwiftUI's root and sheet layers.
 struct ScenePrivacyAnchor: UIViewRepresentable {
-    func makeUIView(context: Context) -> ScenePrivacyAnchorView { ScenePrivacyAnchorView() }
-    func updateUIView(_ view: ScenePrivacyAnchorView, context: Context) {}
+    var onScenePhaseChanged: (ScenePhase) -> Void = { _ in }
+    func makeUIView(context: Context) -> ScenePrivacyAnchorView {
+        ScenePrivacyAnchorView(onScenePhaseChanged: onScenePhaseChanged)
+    }
+    func updateUIView(_ view: ScenePrivacyAnchorView, context: Context) {
+        view.onScenePhaseChanged = onScenePhaseChanged
+    }
     static func dismantleUIView(_ view: ScenePrivacyAnchorView, coordinator: ()) { view.detach() }
 }
 
 final class ScenePrivacyAnchorView: UIView {
     private weak var protectedWindow: UIWindow?
     private var shield: UIView?
+    var onScenePhaseChanged: (ScenePhase) -> Void
+    private var attachment = UUID()
+    private var lastDeliveredPhase: ScenePhase?
 
-    init() {
+    init(onScenePhaseChanged: @escaping (ScenePhase) -> Void = { _ in }) {
+        self.onScenePhaseChanged = onScenePhaseChanged
         super.init(frame: .zero)
         isUserInteractionEnabled = false
         isAccessibilityElement = false
@@ -74,25 +83,63 @@ final class ScenePrivacyAnchorView: UIView {
                            name: UIScene.willDeactivateNotification, object: nil)
         center.addObserver(self, selector: #selector(didActivate(_:)),
                            name: UIScene.didActivateNotification, object: nil)
+        center.addObserver(self, selector: #selector(didEnterBackground(_:)),
+                           name: UIScene.didEnterBackgroundNotification, object: nil)
     }
     required init?(coder: NSCoder) { nil }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if protectedWindow !== window { removeShield(); protectedWindow = window }
-        if let scene = window?.windowScene, scene.activationState != .foregroundActive { showShield() }
+        if protectedWindow !== window {
+            removeShield()
+            protectedWindow = window
+            attachment = UUID()
+            lastDeliveredPhase = nil
+        }
+        guard let scene = window?.windowScene else { return }
+        switch scene.activationState {
+        case .foregroundActive: removeShield(); deliver(.active, from: scene)
+        case .foregroundInactive: showShield(); deliver(.inactive, from: scene)
+        case .background, .unattached: showShield(); deliver(.background, from: scene)
+        @unknown default: showShield(); deliver(.background, from: scene)
+        }
     }
 
     @objc private func willDeactivate(_ notification: Notification) {
         guard let scene = notification.object as? UIWindowScene,
               scene === protectedWindow?.windowScene else { return }
         showShield()
+        deliver(.inactive, from: scene)
     }
 
     @objc private func didActivate(_ notification: Notification) {
         guard let scene = notification.object as? UIWindowScene,
               scene === protectedWindow?.windowScene else { return }
         removeShield()
+        deliver(.active, from: scene)
+    }
+
+    @objc private func didEnterBackground(_ notification: Notification) {
+        guard let scene = notification.object as? UIWindowScene,
+              scene === protectedWindow?.windowScene else { return }
+        showShield()
+        deliver(.background, from: scene)
+    }
+
+    private func deliver(_ phase: ScenePhase, from scene: UIWindowScene) {
+        let currentAttachment = attachment
+        // didMoveToWindow can run during a SwiftUI update. Publish on the next main
+        // turn, preserving background events so a quick return still invalidates auth.
+        DispatchQueue.main.async { [weak self, weak scene] in
+            guard let self, let scene, self.attachment == currentAttachment,
+                  self.protectedWindow === self.window,
+                  scene === self.protectedWindow?.windowScene else { return }
+            // An activation queued before deactivation must never admit a mutation.
+            guard phase != .active || scene.activationState == .foregroundActive else { return }
+            guard self.lastDeliveredPhase != phase else { return }
+            self.lastDeliveredPhase = phase
+            self.onScenePhaseChanged(phase)
+        }
     }
 
     private func showShield() {
@@ -131,9 +178,11 @@ final class ScenePrivacyAnchorView: UIView {
 
     private func removeShield() { shield?.removeFromSuperview(); shield = nil }
     func detach() {
+        attachment = UUID()
         NotificationCenter.default.removeObserver(self)
         removeShield()
         protectedWindow = nil
+        onScenePhaseChanged = { _ in }
     }
     deinit { NotificationCenter.default.removeObserver(self) }
 }

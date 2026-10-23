@@ -5,6 +5,7 @@ struct GettingStartedView: View {
     @EnvironmentObject private var store: AppStore
     var allowWiFiSetup = false
     @State private var bluetoothSetup = false
+    @State private var dismissAfterBluetooth = false
 
     var body: some View {
         NavigationStack {
@@ -73,11 +74,20 @@ struct GettingStartedView: View {
                         Button("Fermer") { dismiss() }.accessibilityIdentifier("guide.close")
                     }
                 }
-                .sheet(isPresented: $bluetoothSetup) {
+                .sheet(isPresented: $bluetoothSetup, onDismiss: {
+                    store.cancelFactorySetup()
+                    if dismissAfterBluetooth {
+                        dismissAfterBluetooth = false
+                        // The guide's presenter completes the queued connection
+                        // after this last sheet has finished closing.
+                        dismiss()
+                    }
+                }) {
                     BluetoothSetupView(authorize: { await store.authorizeFactorySetup() },
                         onClose: { store.cancelFactorySetup() },
-                        routeFactoryCode: { store.queueFactorySetup($0); dismiss() },
-                        routeFactoryOwner: { store.queueFactoryOwner($0); dismiss() },
+                        routeFactoryCode: { store.queueFactorySetup($0); dismissAfterBluetooth = true },
+                        routeFactoryOwner: { store.queueFactoryOwner($0); dismissAfterBluetooth = true },
+                        routePhotoInvitation: { store.queuePhotoInvitation($0); dismissAfterBluetooth = true },
                         didFinishFactory: { endpoint, owner, status in
                             await store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status)
                         }) { endpoint, owner in

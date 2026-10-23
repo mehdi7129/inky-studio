@@ -27,6 +27,19 @@ final class AppStore: ObservableObject {
     private var factoryAuthorizationGeneration: UUID?
     private var factoryAttemptGeneration = UUID()
     private var queuedFactoryPresentation: FactorySetupPresentation?
+    private enum QueuedConnection {
+        case photo(FrameInvitationCode)
+        case lan(String)
+    }
+    private var queuedConnection: QueuedConnection?
+    private var connectionDismissalComplete = false
+    private var queuedConnectionTask: Task<Void, Never>?
+    private var queuedConnectionTaskID = UUID()
+    private struct ActiveSceneWaiter {
+        let authentication: UUID
+        let continuation: CheckedContinuation<Bool, Never>
+    }
+    private var activeSceneWaiters: [UUID: ActiveSceneWaiter] = [:]
     private let photoAccessVault: PhotoAccessVault
     private let makePinnedAPI: @MainActor (URL, FrameIdentity) -> InkyAPI
     private let proveLegacyTLS: @MainActor (URL, String) async throws -> VerifiedLegacyTLSEndpoint
@@ -214,8 +227,45 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// A successful system prompt can precede the window's activation notification.
+    /// Keep its authorization while inactive, but never admit work on a timer.
+    private func waitForActiveScene(authentication: UUID) async -> Bool {
+        guard authentication == localAuthenticationGeneration, !Task.isCancelled else { return false }
+        while !active {
+            let id = UUID()
+            let admitted = await withTaskCancellationHandler(operation: {
+                await withCheckedContinuation { continuation in
+                    guard authentication == localAuthenticationGeneration, !Task.isCancelled else {
+                        continuation.resume(returning: false)
+                        return
+                    }
+                    if active { continuation.resume(returning: true) }
+                    else { activeSceneWaiters[id] = ActiveSceneWaiter(authentication: authentication, continuation: continuation) }
+                }
+            }, onCancel: { [weak self] in
+                Task { @MainActor in self?.finishActiveSceneWaiter(id, admitted: false) }
+            })
+            guard admitted, authentication == localAuthenticationGeneration, !Task.isCancelled else { return false }
+        }
+        return authentication == localAuthenticationGeneration && !Task.isCancelled
+    }
+
+    private func finishActiveSceneWaiter(_ id: UUID, admitted: Bool) {
+        guard let waiter = activeSceneWaiters.removeValue(forKey: id) else { return }
+        waiter.continuation.resume(returning: admitted && waiter.authentication == localAuthenticationGeneration)
+    }
+
+    private func finishActiveSceneWaiters(admitted: Bool) {
+        for id in Array(activeSceneWaiters.keys) { finishActiveSceneWaiter(id, admitted: admitted) }
+    }
+
     /// A local lock never logs out or discards a usable in-memory network session.
     func lock() {
+        queuedConnection = nil
+        connectionDismissalComplete = false
+        queuedConnectionTaskID = UUID()
+        queuedConnectionTask?.cancel()
+        queuedConnectionTask = nil
         factoryAuthorizationGeneration = nil
         factoryAttemptGeneration = UUID()
         queuedFactoryPresentation = nil
@@ -233,6 +283,7 @@ final class AppStore: ObservableObject {
         photoAccessBusy = false
         forgetAuthorization = nil
         localAuthenticationGeneration = UUID()
+        finishActiveSceneWaiters(admitted: false)
         invalidateAuthentication()
         credentialTask?.cancel()
         credentialTask = nil
@@ -457,12 +508,65 @@ final class AppStore: ObservableObject {
     }
 
     func queueFactorySetup(_ code: FrameBootstrapCode) {
+        queuedConnection = nil
+        connectionDismissalComplete = false
         queuedFactoryPresentation = FactorySetupPresentation(code: code, owner: nil)
     }
 
     func queueFactoryOwner(_ owner: OwnershipRecord) {
         guard owner.isFactory else { return }
+        queuedConnection = nil
+        connectionDismissalComplete = false
         queuedFactoryPresentation = FactorySetupPresentation(code: nil, owner: owner)
+    }
+
+    /// Scanned secrets stay in RAM until every presenting sheet has dismissed.
+    func queuePhotoInvitation(_ code: FrameInvitationCode) {
+        queuedFactoryPresentation = nil
+        queuedConnection = .photo(code)
+        connectionDismissalComplete = false
+        localAuthenticationError = nil
+        photoAccessError = nil
+        errorMessage = nil
+    }
+
+    func queueLANLoginCode(_ text: String) {
+        queuedFactoryPresentation = nil
+        queuedConnection = .lan(text)
+        connectionDismissalComplete = false
+    }
+
+    /// Only the final scanner/guide dismissal is allowed to release a queued scan.
+    func completeQueuedConnection() {
+        connectionDismissalComplete = true
+        startQueuedConnectionIfReady()
+    }
+
+    private func startQueuedConnectionIfReady() {
+        guard active, connectionDismissalComplete, queuedConnectionTask == nil else { return }
+        guard let queued = queuedConnection else {
+            connectionDismissalComplete = false
+            presentQueuedFactorySetup()
+            return
+        }
+        guard !connecting, !unlocking, !photoAccessBusy, !busy, !displayBusy, !updating else { return }
+        // Consume before scheduling so repeated onDismiss/activation callbacks cannot replay it.
+        queuedConnection = nil
+        connectionDismissalComplete = false
+        let id = UUID()
+        let authentication = localAuthenticationGeneration
+        queuedConnectionTaskID = id
+        queuedConnectionTask = Task { [weak self] in
+            guard let self else { return }
+            defer { if self.queuedConnectionTaskID == id { self.queuedConnectionTask = nil } }
+            guard self.queuedConnectionTaskID == id, authentication == self.localAuthenticationGeneration,
+                  !Task.isCancelled else { return }
+            guard await self.waitForActiveScene(authentication: authentication) else { return }
+            switch queued {
+            case .photo(let code): await self.claimInvitation(code)
+            case .lan(let text): await self.loginFromLANQRCode(text)
+            }
+        }
     }
 
     func presentQueuedFactorySetup() {
@@ -604,6 +708,13 @@ final class AppStore: ObservableObject {
         unlocking = true
         defer { if attempt == localAuthenticationGeneration { unlocking = false } }
         guard await authorizeLocally() else { return }
+        guard await waitForActiveScene(authentication: attempt), localUnlocked else {
+            if attempt == localAuthenticationGeneration {
+                localUnlocked = false
+                invalidateAuthentication()
+            }
+            return
+        }
         if recoveringConnection { await connectRecovery(code) }
         else { await connect(password: code.password, at: code.endpoint, savePassword: true) }
     }
@@ -1059,6 +1170,8 @@ final class AppStore: ObservableObject {
             stopMonitoring()
         case .active:
             active = true
+            finishActiveSceneWaiters(admitted: true)
+            startQueuedConnectionIfReady()
             presentQueuedFactorySetup()
             if localUnlocked && authenticated { startMonitoring(); Task { await refresh() } }
         @unknown default:
@@ -1584,24 +1697,22 @@ extension AppStore {
     /// Recipient QR claim is isolated from the currently selected frame until secure commit.
     func claimInvitation(_ code: FrameInvitationCode) async {
         guard !connecting, !unlocking, !photoAccessBusy, !busy, !displayBusy, !updating else { return }
+        localAuthenticationError = nil
+        photoAccessError = nil
+        errorMessage = nil
         let attempt = localAuthenticationGeneration
         unlocking = true
         defer { if attempt == localAuthenticationGeneration { unlocking = false } }
         guard await authorizeLocally() else { return }
         // The system's own authentication prompt may finish just before the active scene notification.
         // Keep that authorization, but admit no network mutation until the app is visible again.
-        let activeDeadline = ProcessInfo.processInfo.systemUptime + 2
-        while !active {
-            guard attempt == localAuthenticationGeneration, !Task.isCancelled else { return }
-            guard ProcessInfo.processInfo.systemUptime < activeDeadline else {
+        guard await waitForActiveScene(authentication: attempt), localUnlocked else {
+            if attempt == localAuthenticationGeneration {
                 localUnlocked = false
                 invalidateAuthentication()
-                localAuthenticationError = "Revenez dans Inky Studio pour reprendre l’association."
-                return
             }
-            do { try await Task.sleep(nanoseconds: 50_000_000) } catch { return }
+            return
         }
-        guard attempt == localAuthenticationGeneration, !Task.isCancelled else { return }
         unlocking = false
         let epoch = generation
         let operation = UUID(); photoAccessOperation = operation

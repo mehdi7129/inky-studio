@@ -73,6 +73,54 @@ final class QRHomeUITests: XCTestCase {
         capture("08 Récupération annulée")
     }
 
+    func testPhotoInvitationReturnsFromScannerToLocalAuthenticationWithoutWiFiSetup() throws {
+        // This inert auth fixture cancels locally and never reaches the network.
+        launch(authenticationFixture: "photo-cancelled", extraArguments: ["--qr-input-fixture"])
+        app.buttons["connection.scanLANQR"].tap()
+        try enterSyntheticPhotoInvitation()
+        XCTAssertTrue(app.staticTexts["connection.error"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.textFields["connection.testQR"].exists)
+        XCTAssertFalse(app.navigationBars["Wi-Fi du cadre"].exists)
+        XCTAssertFalse(app.staticTexts["connection.error"].label.contains("QR"))
+        assertPublicHome()
+        capture("09 Invitation PHOTO — annulation locale après fermeture du scanner")
+    }
+
+    func testPhotoInvitationFromWiFiScannerClosesBothSheetsBeforeLocalAuthentication() throws {
+        launch(authenticationFixture: "photo-cancelled",
+               extraArguments: ["--qr-input-fixture", "--bluetooth-fixture", "introduction"])
+        let entry = app.buttons["connection.bluetooth"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        scrollTo(entry, in: app.scrollViews["connection.scroll"])
+        entry.tap()
+        let scan = app.buttons["bluetooth.scanQR"]
+        XCTAssertTrue(scan.waitForExistence(timeout: 5))
+        scan.tap()
+        try enterSyntheticPhotoInvitation(inputID: "bluetooth.testQR", acceptID: "bluetooth.acceptTestQR")
+        XCTAssertTrue(app.staticTexts["connection.error"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["bluetooth.error"].exists)
+        XCTAssertFalse(app.navigationBars["Wi-Fi du cadre"].exists)
+        XCTAssertFalse(app.navigationBars["Scanner le cadre"].exists)
+        XCTAssertFalse(app.textFields["bluetooth.testQR"].exists)
+        XCTAssertFalse(app.staticTexts["connection.error"].label.contains("QR"))
+        assertPublicHome()
+        capture("10 Invitation PHOTO — sortie de la reprise Wi-Fi")
+    }
+
+    private func enterSyntheticPhotoInvitation(inputID: String = "connection.testQR", acceptID: String = "connection.acceptTestQR") throws {
+        let payload: [String: Any] = [
+            "v": 1, "p": "invite", "id": "11111111-2222-4333-8444-555555555555",
+            "k": String(repeating: "1", count: 64), "url": "https://fixture.invalid:8443",
+            "i": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "t": String(repeating: "2", count: 64),
+        ]
+        let text = String(decoding: try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
+        let input = app.textFields[inputID]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText(text)
+        app.buttons[acceptID].tap()
+    }
+
     func testQRGuideAndPrimaryActionRemainReachableWithAccessibilityText() throws {
         launch(largeText: true)
         let scan = app.buttons["connection.scanLANQR"]

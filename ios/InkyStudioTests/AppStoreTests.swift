@@ -1254,6 +1254,108 @@ final class AppStoreTests: XCTestCase {
         try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
     }
 
+    func testQueuedConnectionWaitsForFinalDismissalAndIsConsumedOnce() async throws {
+        for isPhoto in [false, true] {
+            var localChecks = 0
+            let fixture = StoreFixture(authenticateLocal: { localChecks += 1 })
+            defer { fixture.dispose() }
+            let code = try invitationCode()
+            fixture.stub.enablePhotoAccess(code.identity)
+            let host = isPhoto ? "invited-frame.local" : "192.168.1.120"
+            let path = isPhoto ? "/api/auth/invitations/claim" : "/api/auth/login"
+            let gate = fixture.stub.hold(host: host, path: path, method: "POST")
+            if isPhoto {
+                fixture.store.errorMessage = "Synthetic previous scanner error"
+                fixture.store.queuePhotoInvitation(code)
+                XCTAssertNil(fixture.store.errorMessage)
+            } else { fixture.store.queueLANLoginCode(lanQR) }
+            // Activation alone cannot release a scan while its sheets remain presented.
+            fixture.store.sceneChanged(.inactive)
+            fixture.store.sceneChanged(.active)
+            for _ in 0..<8 { await Task.yield() }
+            XCTAssertEqual(localChecks, 0)
+            XCTAssertTrue(fixture.stub.requests.isEmpty)
+            XCTAssertTrue(fixture.photoCredentials.passwords.isEmpty)
+            XCTAssertTrue(fixture.credentials.passwords.isEmpty)
+            // Dismissal while inactive also waits; duplicate callbacks must not replay it.
+            fixture.store.sceneChanged(.inactive)
+            fixture.store.completeQueuedConnection()
+            fixture.store.completeQueuedConnection()
+            for _ in 0..<8 { await Task.yield() }
+            XCTAssertEqual(localChecks, 0)
+            XCTAssertTrue(fixture.stub.requests.isEmpty)
+            fixture.store.sceneChanged(.active)
+            await fulfillment(of: [gate.started], timeout: 3)
+            XCTAssertEqual(localChecks, 1)
+            fixture.store.completeQueuedConnection()
+            fixture.store.sceneChanged(.active)
+            XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == path }.count, 1)
+            let committed = expectation(description: "Queued connection committed")
+            let subscription = fixture.store.$authenticated.filter { $0 }.sink { _ in committed.fulfill() }
+            defer { subscription.cancel() }
+            gate.release()
+            await fulfillment(of: [committed], timeout: 3)
+            fixture.store.completeQueuedConnection()
+            for _ in 0..<8 { await Task.yield() }
+            XCTAssertEqual(localChecks, 1)
+            XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == path }.count, 1)
+        }
+    }
+
+    func testQueuedInvitationBackgroundPurgesBeforeAuthentication() async throws {
+        for dismissalComplete in [false, true] {
+            var localChecks = 0
+            let fixture = StoreFixture(authenticateLocal: { localChecks += 1 })
+            defer { fixture.dispose() }
+            let code = try invitationCode()
+            fixture.stub.enablePhotoAccess(code.identity)
+            fixture.store.sceneChanged(.inactive)
+            fixture.store.queuePhotoInvitation(code)
+            if dismissalComplete { fixture.store.completeQueuedConnection() }
+            fixture.store.sceneChanged(.background)
+            fixture.store.sceneChanged(.active)
+            fixture.store.completeQueuedConnection()
+            for _ in 0..<8 { await Task.yield() }
+            XCTAssertEqual(localChecks, 0)
+            XCTAssertTrue(fixture.stub.requests.isEmpty)
+            XCTAssertTrue(fixture.photoCredentials.passwords.isEmpty)
+            XCTAssertNil(fixture.defaults.data(forKey: "photoAccessPending"))
+            XCTAssertFalse(fixture.store.authenticated)
+        }
+    }
+
+    func testQueuedInvitationKeepsPreviousAccessUntilVerifiedCommit() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        await fixture.login("old-frame.local")
+        let previous = try XCTUnwrap(fixture.store.api)
+        let oldAddress = fixture.store.address
+        try fixture.seedStoredPassword(account: oldAddress)
+        let oldCredentials = fixture.credentials.passwords
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity)
+        let gate = fixture.stub.hold(host: "invited-frame.local", path: "/api/auth/invitations/claim", method: "POST")
+        fixture.store.queuePhotoInvitation(code)
+        fixture.store.completeQueuedConnection()
+        await fulfillment(of: [gate.started], timeout: 3)
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertEqual(fixture.store.address, oldAddress)
+        XCTAssertEqual(fixture.credentials.passwords, oldCredentials)
+        XCTAssertNil(fixture.defaults.data(forKey: "photoAccessSelection"))
+        // A rejected candidate also leaves the selected connection intact.
+        let rejected = expectation(description: "Queued invitation rejected")
+        let subscription = fixture.store.$photoAccessError.compactMap { $0 }.sink { _ in rejected.fulfill() }
+        defer { subscription.cancel() }
+        gate.release(status: 401)
+        await fulfillment(of: [rejected], timeout: 3)
+        XCTAssertTrue(fixture.store.api === previous)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertEqual(fixture.store.address, oldAddress)
+        XCTAssertEqual(fixture.credentials.passwords, oldCredentials)
+        XCTAssertNil(fixture.defaults.data(forKey: "photoAccessSelection"))
+    }
+
     func testInvitationClaimPersistsDeviceBeforePOSTAndPreservesOldClientUntilCommit() async throws {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
@@ -1532,6 +1634,7 @@ final class AppStoreTests: XCTestCase {
             // Allow the authentication continuation to reach its foreground admission gate.
             for _ in 0..<8 { await Task.yield() }
             XCTAssertTrue(fixture.stub.requests.isEmpty)
+            XCTAssertTrue(fixture.photoCredentials.passwords.isEmpty)
             if background {
                 fixture.store.sceneChanged(.background)
                 await claim.value
@@ -1539,7 +1642,16 @@ final class AppStoreTests: XCTestCase {
                 XCTAssertFalse(fixture.store.localUnlocked)
                 XCTAssertFalse(fixture.store.authenticated)
                 XCTAssertTrue(fixture.stub.requests.isEmpty)
+                XCTAssertTrue(fixture.photoCredentials.passwords.isEmpty)
             } else {
+                // Physical Face ID can finish before UIKit reactivates the window.
+                // More than the former two-second deadline must not discard its grant.
+                try await Task.sleep(for: .milliseconds(2100))
+                XCTAssertTrue(fixture.store.unlocking)
+                XCTAssertTrue(fixture.store.localUnlocked)
+                XCTAssertNil(fixture.store.localAuthenticationError)
+                XCTAssertTrue(fixture.stub.requests.isEmpty)
+                XCTAssertTrue(fixture.photoCredentials.passwords.isEmpty)
                 fixture.store.sceneChanged(.active)
                 await claim.value
                 XCTAssertFalse(fixture.store.unlocking)
@@ -1549,6 +1661,46 @@ final class AppStoreTests: XCTestCase {
             }
         }
     }
+
+    func testCancelledInvitationForegroundWaitReleasesAuthorizationWithoutPOST() async throws {
+        let authentication = LocalAuthGate()
+        let fixture = StoreFixture(authenticateLocal: { try await authentication.wait() })
+        defer { fixture.dispose() }
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity)
+        let claim = Task { await fixture.store.claimInvitation(code) }
+        await fulfillment(of: [authentication.started], timeout: 3)
+        fixture.store.sceneChanged(.inactive)
+        authentication.release()
+        for _ in 0..<8 { await Task.yield() }
+        claim.cancel()
+        await claim.value
+        fixture.store.sceneChanged(.active)
+        XCTAssertFalse(fixture.store.unlocking)
+        XCTAssertFalse(fixture.store.localUnlocked)
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+        XCTAssertTrue(fixture.photoCredentials.passwords.isEmpty)
+        XCTAssertNil(fixture.defaults.data(forKey: "photoAccessPending"))
+    }
+
+    func testLANQRCodeLocalPromptWaitsForWindowActivationBeforeLogin() async throws {
+        let authentication = LocalAuthGate()
+        let fixture = StoreFixture(authenticateLocal: { try await authentication.wait() })
+        defer { fixture.dispose() }
+        let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
+        await fulfillment(of: [authentication.started], timeout: 3)
+        fixture.store.sceneChanged(.inactive)
+        authentication.release()
+        for _ in 0..<8 { await Task.yield() }
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+        XCTAssertTrue(fixture.credentials.passwords.isEmpty)
+        fixture.store.sceneChanged(.active)
+        await login.value
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == "/api/auth/login" }.count, 1)
+    }
+
     func testCancelledInvitationNeverReappearsAfterLostDELETEOrProtectedStorageFailure() async throws {
         for failure in ["delete", "mark", "purge"] {
             let identity = try invitationIdentity()

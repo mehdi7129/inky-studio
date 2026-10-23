@@ -13,6 +13,7 @@ struct BluetoothSetupView: View {
     @StateObject private var transport: BluetoothTransport
     @StateObject private var coordinator: BluetoothSetupCoordinator
     @State private var scanningQR = false
+    @State private var scannedCode: String?
     @State private var ssid = ""
     @State private var password = ""
     @State private var confirmClose = false
@@ -21,6 +22,7 @@ struct BluetoothSetupView: View {
     private let onClose: (() -> Void)?
     private let routeFactoryCode: ((FrameBootstrapCode) -> Void)?
     private let routeFactoryOwner: ((OwnershipRecord) -> Void)?
+    private let routePhotoInvitation: ((FrameInvitationCode) -> Void)?
     @State private var initialBootstrapCode: FrameBootstrapCode?
     @State private var initialFactoryOwner: OwnershipRecord?
 
@@ -31,6 +33,7 @@ struct BluetoothSetupView: View {
          onClose: (() -> Void)? = nil,
          routeFactoryCode: ((FrameBootstrapCode) -> Void)? = nil,
          routeFactoryOwner: ((OwnershipRecord) -> Void)? = nil,
+         routePhotoInvitation: ((FrameInvitationCode) -> Void)? = nil,
          didFinishFactory: ((URL, OwnershipRecord, FactorySetupStatus) async -> Bool)? = nil,
          didFinish: @escaping (URL, OwnershipRecord) async -> Void) {
         let transport = BluetoothTransport()
@@ -46,6 +49,7 @@ struct BluetoothSetupView: View {
         self.onClose = onClose
         self.routeFactoryCode = routeFactoryCode
         self.routeFactoryOwner = routeFactoryOwner
+        self.routePhotoInvitation = routePhotoInvitation
         _initialBootstrapCode = State(initialValue: initialBootstrapCode)
         _initialFactoryOwner = State(initialValue: initialFactoryOwner)
     }
@@ -75,7 +79,7 @@ struct BluetoothSetupView: View {
                     }.accessibilityIdentifier("bluetooth.close")
                 }
             }
-            .sheet(isPresented: $scanningQR) { scanner }
+            .sheet(isPresented: $scanningQR, onDismiss: routeScannedCode) { scanner }
             .confirmationDialog("Quitter la vérification Wi-Fi ?", isPresented: $confirmClose) {
                 Button("Quitter et reprendre plus tard") { onClose?(); coordinator.close(); dismiss() }
                 Button("Continuer la vérification", role: .cancel) {}
@@ -110,10 +114,12 @@ struct BluetoothSetupView: View {
                 if phase == .background {
                     transport.stopScan(); onClose?(); coordinator.suspend(); password = ""
                     initialBootstrapCode = nil
+                    scannedCode = nil
+                    scanningQR = false
                 } else if phase == .active, coordinator.stage == .suspended { Task { await coordinator.resume() } }
                 updateDiscovery(stage: coordinator.stage, isActive: phase == .active)
             }
-            .onDisappear { transport.stopScan(); onClose?(); coordinator.close(); password = ""; initialBootstrapCode = nil }
+            .onDisappear { transport.stopScan(); onClose?(); coordinator.close(); password = ""; initialBootstrapCode = nil; scannedCode = nil }
         }
         .preferredColorScheme(uiTestColorScheme)
     }
@@ -380,11 +386,25 @@ struct BluetoothSetupView: View {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
     private func acceptScannedCode(_ text: String) {
-        Task {
-            if let code = try? FrameBootstrapCode.parse(text) {
-                if let routeFactoryCode { routeFactoryCode(code); scanningQR = false; dismiss(); return }
+        scannedCode = text
+        scanningQR = false
+    }
+
+    private func routeScannedCode() {
+        guard let text = scannedCode else { return }
+        scannedCode = nil
+        // Route only after the camera sheet is gone. Its parent must also finish
+        // closing before the final presenter starts local authentication.
+        if let code = try? FrameBootstrapCode.parse(text) {
+            if let routeFactoryCode { routeFactoryCode(code); dismiss(); return }
+            Task {
                 guard await authorize?() == true else { return }
+                coordinator.acceptQRCode(text)
             }
+        } else if let invitation = try? FrameInvitationCode.parse(text), let routePhotoInvitation {
+            routePhotoInvitation(invitation)
+            dismiss()
+        } else {
             coordinator.acceptQRCode(text)
         }
     }
@@ -399,23 +419,25 @@ struct BluetoothSetupView: View {
             VStack(spacing: 20) {
                 Text("Placez le QR affiché sur le cadre dans le viseur.").font(.subheadline).foregroundStyle(Bento.secondaryInk)
                 #if DEBUG && targetEnvironment(simulator)
-                if ProcessInfo.processInfo.arguments.contains("--uitesting") {
-                    QRTestInput { text in scanningQR = false; acceptScannedCode(text) }
+                if ProcessInfo.processInfo.arguments.contains("--uitesting"),
+                   ProcessInfo.processInfo.arguments.contains("--qr-input-fixture") {
+                    QRTestInput { text in acceptScannedCode(text) }
                 } else { cameraScanner }
                 #else
                 cameraScanner
                 #endif
             }.padding(20).background(Bento.background).navigationTitle("Scanner le cadre")
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annuler") { scanningQR = false } } }
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annuler") { scannedCode = nil; scanningQR = false } } }
         }
     }
     private var cameraScanner: some View {
         QRScannerView { result in
-            scanningQR = false
             switch result {
             case .success(let text): acceptScannedCode(text)
-            case .failure(let error): coordinator.scannerFailed(error)
+            case .failure(let error):
+                scanningQR = false
+                coordinator.scannerFailed(error)
             }
         }.clipShape(RoundedRectangle(cornerRadius: 20)).frame(minHeight: 280)
     }
