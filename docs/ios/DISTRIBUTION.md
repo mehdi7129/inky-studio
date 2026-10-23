@@ -1,5 +1,13 @@
 # iPhone and TestFlight distribution
 
+> **Current checkpoint — 23 October 2026:** iPhone **1.0.0 (17)** is validated by Apple and available in the existing internal TestFlight group. The [beta source branch](https://github.com/mehdi7129/inky-studio/tree/release/ios-1.0.0-build17) is separate from `main`. Build 16 was reported working on the physical setup; the sharing backend still awaits SD maintenance. See the [current iPhone guide](../../ios/README.md) and [ecosystem checkpoint](../ECOSYSTEM.md).
+>
+> **Historical guide below:** its original password/HTTP flow, version numbers and encryption declarations describe the earlier integration. For the current TLS branch, use that branch's signing/export options and encryption declarations. Do not apply legacy update instructions to an Imager/LAN card. No public App Store release is asserted here.
+
+> The frozen beta source keeps `CURRENT_PROJECT_VERSION=7`; its delivered archive used the explicit `CURRENT_PROJECT_VERSION=17` override. The historical commands below are not a reproduction recipe for that signed package.
+
+## Historical distribution reference
+
 The native app has an independent version (`1.0.0`, build `3`). It does not change the Raspberry release version. Bundle ID: `fr.mehdiguiard.inkystudio`. The project currently uses Mehdi's signing team `X524H8XA4L`; another developer must select their own team and bundle ID.
 
 ## Personal iPhone
