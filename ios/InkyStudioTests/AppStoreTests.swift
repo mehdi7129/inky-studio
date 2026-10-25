@@ -1567,6 +1567,153 @@ final class AppStoreTests: XCTestCase {
         XCTAssertEqual(fixture.stub.requests.count, before)
     }
 
+    func testColdPhotoUnlockWaitsForWindowActivationAndConnectsWithoutSecondTap() async throws {
+        let authentication = LocalAuthGate()
+        var pauseAuthentication = false
+        let fixture = StoreFixture(authenticateLocal: {
+            if pauseAuthentication { try await authentication.wait() }
+        })
+        defer { fixture.dispose() }
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity, canInvite: true)
+        await fixture.store.claimInvitation(code)
+        await fixture.store.logout()
+        pauseAuthentication = true
+        let before = fixture.stub.requests.count
+        let unlock = Task { await fixture.store.unlock() }
+        await fulfillment(of: [authentication.started], timeout: 3)
+        fixture.store.sceneChanged(.inactive)
+        authentication.release()
+        for _ in 0..<16 { await Task.yield() }
+        XCTAssertTrue(fixture.store.unlocking, "The first tap must remain in progress until UIKit returns to active.")
+        XCTAssertTrue(fixture.store.localUnlocked)
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertEqual(fixture.stub.requests.count, before)
+        fixture.store.sceneChanged(.active)
+        await unlock.value
+        XCTAssertFalse(fixture.store.unlocking)
+        XCTAssertTrue(fixture.store.authenticated, "Activation must resume the original unlock, without a second tap.")
+        XCTAssertTrue(fixture.store.connected)
+        XCTAssertTrue(fixture.store.photoAccessCanInvite)
+        XCTAssertEqual(fixture.stub.requests.dropFirst(before).filter { $0.url?.path == "/api/auth/device-session" }.count, 1)
+        XCTAssertFalse(fixture.stub.requests.dropFirst(before).contains { $0.url?.path == "/api/auth/invitations/claim" })
+    }
+
+    func testColdLegacyUnlockWaitsForAuthenticationAndCredentialWindows() async throws {
+        for stage in ["authentication", "credential"] {
+            let gate = LocalAuthGate()
+            let fixture = StoreFixture(authenticateLocal: {
+                if stage == "authentication" { try await gate.wait() }
+            }, loadCredential: { _ in
+                if stage == "credential" { try await gate.wait() }
+                return "protected-password"
+            })
+            defer { fixture.dispose() }
+            let address = "http://192.168.1.120:8000"
+            fixture.defaults.set(address, forKey: "frameAddress")
+            fixture.store.address = address
+            fixture.credentials.passwords[address] = "protected-password"
+            let unlock = Task { await fixture.store.unlock() }
+            await fulfillment(of: [gate.started], timeout: 3)
+            fixture.store.sceneChanged(.inactive)
+            gate.release()
+            for _ in 0..<16 { await Task.yield() }
+            XCTAssertTrue(fixture.store.unlocking)
+            XCTAssertTrue(fixture.stub.requests.isEmpty, "Credential recovery must not start a connection while inactive.")
+            fixture.store.sceneChanged(.active)
+            await unlock.value
+            XCTAssertTrue(fixture.store.authenticated)
+            XCTAssertTrue(fixture.store.connected)
+            XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == "/api/auth/login" }.count, 1)
+            XCTAssertEqual(fixture.credentials.passwords[address], "protected-password")
+        }
+    }
+
+    func testColdPhotoUnlockResumesAfterProtectedCredentialWindow() async throws {
+        let credentialRead = LocalAuthGate()
+        var pauseRead = false
+        let fixture = StoreFixture(beforePhotoCredentialRead: {
+            if pauseRead { try await credentialRead.wait() }
+        })
+        defer { fixture.dispose() }
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity)
+        await fixture.store.claimInvitation(code)
+        await fixture.store.logout()
+        pauseRead = true
+        let before = fixture.stub.requests.count
+        let unlock = Task { await fixture.store.unlock() }
+        await fulfillment(of: [credentialRead.started], timeout: 3)
+        fixture.store.sceneChanged(.inactive)
+        credentialRead.release()
+        for _ in 0..<16 { await Task.yield() }
+        XCTAssertTrue(fixture.store.unlocking)
+        XCTAssertEqual(fixture.stub.requests.count, before)
+        fixture.store.sceneChanged(.active)
+        await unlock.value
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.connected)
+        XCTAssertEqual(fixture.stub.requests.dropFirst(before).filter { $0.url?.path == "/api/auth/device-session" }.count, 1)
+    }
+
+    func testColdPhotoUnlockKeepsCompletedSessionPendingUntilActive() async throws {
+        let fixture = StoreFixture()
+        defer { fixture.dispose() }
+        let code = try invitationCode()
+        fixture.stub.enablePhotoAccess(code.identity)
+        await fixture.store.claimInvitation(code)
+        await fixture.store.logout()
+        let before = fixture.stub.requests.count
+        let session = fixture.stub.hold(host: "invited-frame.local", path: "/api/auth/device-session", method: "POST")
+        let unlock = Task { await fixture.store.unlock() }
+        await fulfillment(of: [session.started], timeout: 3)
+        fixture.store.sceneChanged(.inactive)
+        session.release()
+        // Let the URLProtocol callback reach the state machine while still inactive.
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(fixture.store.unlocking)
+        XCTAssertFalse(fixture.store.authenticated)
+        fixture.store.sceneChanged(.active)
+        await unlock.value
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.store.connected)
+        XCTAssertEqual(fixture.stub.requests.dropFirst(before).filter { $0.url?.path == "/api/auth/device-session" }.count, 1)
+    }
+
+    func testColdPhotoUnlockForegroundWaitCancelsOnBackgroundOrTaskCancellation() async throws {
+        for background in [false, true] {
+            let authentication = LocalAuthGate()
+            var pauseAuthentication = false
+            let fixture = StoreFixture(authenticateLocal: {
+                if pauseAuthentication { try await authentication.wait() }
+            })
+            defer { fixture.dispose() }
+            let code = try invitationCode()
+            fixture.stub.enablePhotoAccess(code.identity)
+            await fixture.store.claimInvitation(code)
+            await fixture.store.logout()
+            let saved = fixture.photoCredentials.passwords
+            let before = fixture.stub.requests.count
+            pauseAuthentication = true
+            let unlock = Task { await fixture.store.unlock() }
+            await fulfillment(of: [authentication.started], timeout: 3)
+            fixture.store.sceneChanged(.inactive)
+            authentication.release()
+            for _ in 0..<16 { await Task.yield() }
+            XCTAssertTrue(fixture.store.unlocking)
+            if background { fixture.store.sceneChanged(.background) }
+            else { unlock.cancel() }
+            await unlock.value
+            fixture.store.sceneChanged(.active)
+            for _ in 0..<16 { await Task.yield() }
+            XCTAssertFalse(fixture.store.unlocking)
+            XCTAssertFalse(fixture.store.localUnlocked)
+            XCTAssertFalse(fixture.store.authenticated)
+            XCTAssertEqual(fixture.stub.requests.count, before)
+            XCTAssertEqual(fixture.photoCredentials.passwords, saved)
+        }
+    }
+
     func testColdPhotoRestoreUsesDeviceSessionAnd401NeverFallsBackToLegacy() async throws {
         let fixture = StoreFixture()
         defer { fixture.dispose() }
@@ -2300,6 +2447,7 @@ private final class StoreFixture {
          saveCredential: (@MainActor (String, String) throws -> Void)? = nil,
          loadCredential: (@MainActor (String) async throws -> String)? = nil,
          savePhotoValue: (@MainActor (String, String) throws -> Void)? = nil,
+         beforePhotoCredentialRead: (@MainActor () async throws -> Void)? = nil,
          pin: FrameIdentity? = nil,
          candidatePin: FrameIdentity? = nil,
          proveLegacyTLS: (@MainActor (URL, String) async throws -> VerifiedLegacyTLSEndpoint)? = nil) {
@@ -2314,6 +2462,7 @@ private final class StoreFixture {
             guard !photoMemory.rejectWrites else { throw VaultError.unavailable }
             photoMemory.passwords[account] = value
         }, loadValue: { account in
+            try await beforePhotoCredentialRead?()
             guard let value = photoMemory.passwords[account] else { throw VaultError.missing }
             return value
         }, containsValue: { photoMemory.passwords[$0] != nil }, removeValue: { account in

@@ -314,8 +314,16 @@ final class AppStore: ObservableObject {
         guard !unlocking, !connecting else { return }
         let attempt = localAuthenticationGeneration
         unlocking = true
-        defer { if attempt == localAuthenticationGeneration { unlocking = false } }
+        defer {
+            if attempt == localAuthenticationGeneration {
+                if Task.isCancelled { lock() }
+                else { unlocking = false }
+            }
+        }
         guard await authorizeLocally() else { return }
+        // Face ID/passcode can finish before UIKit reactivates this window.
+        // Resume this same unlock on activation instead of requiring another tap.
+        guard await waitForActiveScene(authentication: attempt), localUnlocked else { return }
         if authenticated, api != nil {
             // Cookie-only sessions remain usable. Do not require a lost QR or force logout.
             credentialStored = selectedPhotoAccess.map { photoAccessVault.contains(account: $0.account) } ??
@@ -334,7 +342,7 @@ final class AppStore: ObservableObject {
         guard hasSavedFrame || credentialStored else { return }
         do {
             let password = try await readCredential(credentialAccount)
-            guard attempt == localAuthenticationGeneration, localUnlocked, !Task.isCancelled else { return }
+            guard await waitForActiveScene(authentication: attempt), localUnlocked else { return }
             credentialStored = true
             await connect(password: password, at: nil, savePassword: false)
         } catch {
@@ -1604,12 +1612,12 @@ private extension AppStore {
         }
         do {
             let credential = try await photoAccessVault.loadCredential(account: selection.account)
-            guard attempt == localAuthenticationGeneration, epoch == generation, localUnlocked, active, !Task.isCancelled else { return }
+            guard await waitForActiveScene(authentication: attempt), epoch == generation, localUnlocked else { return }
             guard selection.validates(credential) else { throw PhotoAccessError.identityMismatch }
             let client = makePinnedAPI(selection.endpoint, selection.identity)
             candidate = client; pendingClient = client
             let session = try await PhotoAccessClient(api: client, identity: selection.identity).openSession(credential)
-            guard attempt == localAuthenticationGeneration, epoch == generation, localUnlocked, active, !Task.isCancelled else { return }
+            guard await waitForActiveScene(authentication: attempt), epoch == generation, localUnlocked else { return }
             // Keep the candidate out of resetSession's cancellation path at commit.
             pendingClient = nil
             try commitPhotoAccess(credential, client: client, canInvite: session.canInvite)
