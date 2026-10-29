@@ -80,7 +80,7 @@ These are not physical-frame proof or live pairing credentials.
 ## Build and contribute
 
 - [iPhone delivery and source instructions](docs/ios/CURRENT-RELEASE.md), iOS18 minimum.
-- [Backend development](server/README.md) and [explicit LAN runtime](docs/IMAGER-LAN.md).
+- [Backend development](server/README.md) and [explicit LAN runtime](https://github.com/mehdi7129/inky-studio/blob/release/backend-lan-photo-sharing-20261023/docs/IMAGER-LAN.md).
 - `client/` retains the earlier React interface; its legacy installer is distinct
   from the InkyOS/inkyImager image. New frame users should follow the links above.
 

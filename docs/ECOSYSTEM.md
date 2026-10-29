@@ -38,7 +38,7 @@ The LAN frame advertises a pinned HTTPS PHOTO endpoint and `can_invite` capabili
 Its initial QR grants photo access; it does not manufacture owner/admin authority.
 Every authorized photo member may invite a further member on this runtime.
 Invitations are5-minute, single-use; device authorizations outlive consumed QR codes.
-See [IMAGER-LAN](IMAGER-LAN.md), [release notes](releases/ios-v1.0.0-build19.md)
+See [IMAGER-LAN](https://github.com/mehdi7129/inky-studio/blob/release/backend-lan-photo-sharing-20261023/docs/IMAGER-LAN.md), [release notes](releases/ios-v1.0.0-build19.md)
 and the respective OS/Mac release pages. Legacy browser/installer paths and inactive
 factory/SoftAP/Bluetooth prototypes are distinct. Paused work is not resumed.
 
