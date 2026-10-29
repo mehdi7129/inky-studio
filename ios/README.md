@@ -1,5 +1,14 @@
 # Inky Studio for iPhone
 
+> **Current delivery —29 October2026:** use the [current release guide](../docs/releases/ios-v1.0.0-build19.md).
+> iPhone1.0.0(19) and PHOTO0.5.0rc2 are preserved in the source release tag
+> `ios-v1.0.0-build19` and separate frozen component branches.
+> **This main checkout retains the earlier implementation.** Check out the
+> matching tag/branch before following candidate build or installation instructions.
+> The older sections below retain their historical scope; they are not current
+> TestFlight availability or proof of a public AppStore release.
+
+
 Native SwiftUI app for an Inky photo frame on the same local network. Requires iOS 18 or newer. Photos stay between the iPhone and the frame; no developer-operated cloud account is required.
 
 ## Source branches and beta status

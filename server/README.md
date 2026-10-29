@@ -1,5 +1,14 @@
 # Inky Studio — photo service
 
+> **Current delivery —29 October2026:** use the [current release guide](../docs/releases/ios-v1.0.0-build19.md).
+> iPhone1.0.0(19) and PHOTO0.5.0rc2 are preserved in the source release tag
+> `ios-v1.0.0-build19` and separate frozen component branches.
+> **This main checkout retains the earlier implementation.** Check out the
+> matching tag/branch before following candidate build or installation instructions.
+> The older sections below retain their historical scope; they are not current
+> TestFlight availability or proof of a public AppStore release.
+
+
 The Python/FastAPI service runs on the frame. It receives photos, maintains their queue/history and schedule, and controls display operations. The React web interface is retained for the legacy installation; the current InkyOS/Imager path is used with the native iPhone app.
 
 ## Select the right source and runtime
