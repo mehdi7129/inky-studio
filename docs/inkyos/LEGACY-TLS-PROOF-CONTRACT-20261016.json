@@ -1,0 +1,94 @@
+{
+  "client_requirements": [
+    "Generate new unpredictable nonce per outstanding attempt; no password/cookie/device credentials on proof request.",
+    "Fetch only nonce proof through unauthenticated transport; reject redirects and unexpected response/schema/nonce/MAC.",
+    "Verify MAC locally using QR secret recovered through native device-owner authentication; bind completion to same selected frame and lock generation.",
+    "Only then create strict TLS transport with returned UUID/SPKI and authenticate original QR secret over TLS; only then enroll protected PHOTO device credential.",
+    "Preserve previous connection and protected data on cancellation, failure, backgrounding or stale completion.",
+    "If bootstrap proof unavailable, retain previous connection and report capability unavailable; do not use TOFU, weaken TLS or reassign BLE roles."
+  ],
+  "endpoint": {
+    "cache_control": "no-store",
+    "method": "POST",
+    "methods_other_than_POST": "no proof",
+    "path": "/api/auth/legacy-tls-proof",
+    "request": {
+      "nonce": "fresh client-generated32bytes CSPRNG encoded lowercasehex64",
+      "v": "strict integer1; bool/float/string refused"
+    },
+    "request_extra_fields": "forbidden",
+    "request_fields": [
+      "v",
+      "nonce"
+    ],
+    "request_has_no_password_cookie_device_token": true,
+    "response": {
+      "identity": {
+        "frame_id": "canonical UUID",
+        "spki_sha256": "lowercasehex64 of already-loaded public TLS certificate SPKI",
+        "url": "explicit canonical HTTPS origin from INKY_STUDIO_PHOTO_ACCESS_URL; no path/query/fragment/userinfo"
+      },
+      "nonce": "exact request nonce",
+      "proof": "lowercasehex64 HMAC-SHA256",
+      "v": 1
+    },
+    "response_fields": [
+      "v",
+      "nonce",
+      "identity",
+      "proof"
+    ],
+    "response_sets_no_cookie": true
+  },
+  "mac": {
+    "algorithm": "HMAC-SHA256",
+    "key": "UTF8 of existing generated16ASCIIalphanumeric bootstrap_password; no new secret/key is generated or stored",
+    "message": "ASCII inky-legacy-tls-proof-v1 then NUL; nonce32rawbytes; UUID16RFCbytes; SPKI32rawbytes; URL_UTF8_length_u16_big_endian; exact URL_UTF8 bytes",
+    "normalization": "Verify MAC over exact returned URL bytes after schema validation; never normalize URL before MAC",
+    "vectors": [
+      {
+        "fixture_secret": "Abcdef0123456789",
+        "identity": {
+          "frame_id": "11111111-1111-4111-8111-111111111111",
+          "spki_sha256": "abababababababababababababababababababababababababababababababab",
+          "url": "https://inky-fixture.local:8443"
+        },
+        "message_hex": "696e6b792d6c65676163792d746c732d70726f6f662d763100000000000000000000000000000000000000000000000000000000000000000011111111111141118111111111111111abababababababababababababababababababababababababababababababab001f68747470733a2f2f696e6b792d666978747572652e6c6f63616c3a38343433",
+        "proof": "f2bd35f28b36c364a9b2447e89a2158195e4f4b506d3f993e26cd2804fc8456d",
+        "request": {
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000",
+          "v": 1
+        }
+      },
+      {
+        "fixture_secret": "Zyxwv9876543210A",
+        "identity": {
+          "frame_id": "22222222-2222-4222-8222-222222222222",
+          "spki_sha256": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "url": "https://[::1]:8443"
+        },
+        "message_hex": "696e6b792d6c65676163792d746c732d70726f6f662d763100ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff22222222222242228222222222222222cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd001268747470733a2f2f5b3a3a315d3a38343433",
+        "proof": "25f160a10af95cd5c1fafe9c2787c83c6446f80d9a62cc4857bb4f9dde4b8cca",
+        "request": {
+          "nonce": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "v": 1
+        }
+      }
+    ]
+  },
+  "non_goals": [
+    "No authority to claim factory, configure clock/country/WiFi, publish TLS identity or enroll the first factory PHOTO owner.",
+    "No permission to mint an owner from a media/device cookie.",
+    "Does not recover a QR secret already lost before protected storage."
+  ],
+  "schema_version": 1,
+  "scope": "legacy-LAN-QR-to-pinned-TLS-upgrade-only",
+  "server_requirements": [
+    "Use only existing already-validated bootstrap_password; absent/custom/invalid format refuses.",
+    "Read durable credentials without create/migrate/chmod; exact current record must match loaded credentials while holding auth rotation lock.",
+    "Public identity comes from already-loaded public TLS certificate; never read identity/private-key files.",
+    "Use bounded global throttle, fixed unavailable responses, no secret logging, no cookie issuance or storage/authority mutations.",
+    "All existing enroll/device/invitation endpoints remain HTTPS-only; no forwarded-scheme trust."
+  ],
+  "status": "implementation-candidate-not-deployed"
+}

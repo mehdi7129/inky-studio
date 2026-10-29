@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Inky Studio one-line installer for Raspberry Pi (Raspberry Pi OS / Debian).
 #
-#   curl -fsSL https://raw.githubusercontent.com/mehdi7129/inky-studio/main/install.sh | bash
+# Configure INKY_STUDIO_REPO_SLUG=owner/repo before running this installer.
 #
 # By default it installs the latest *prebuilt release* (the frontend is built in
 # CI, so the Pi needs no Node and no build step). Set INKY_STUDIO_CHANNEL=source
@@ -14,10 +14,23 @@
 #   INKY_STUDIO_USER        service user (default: current user)
 #   INKY_STUDIO_INSTALL_DIR install dir (default: /home/<user>/inky-studio)
 #   INKY_STUDIO_DATA_DIR    data dir (default: /var/lib/inky-studio)
-#   INKY_STUDIO_REPO_SLUG   GitHub slug (default: mehdi7129/inky-studio)
+#   INKY_STUDIO_REPO_SLUG   GitHub slug (required: owner/repo)
 #   INKY_STUDIO_NO_REBOOT=1 don't auto-reboot even if one is required
 
 set -euo pipefail
+
+# Validate before privileged commands, downloads or changes to the installation.
+# Keep the same ASCII owner/repo contract as the application's updater.
+validate_repo_slug() {
+  local LC_ALL=C
+  local pattern='^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}$'
+  [[ "$1" =~ ${pattern} && "${1%%/*}" != *--* && "${1#*/}" != . && "${1#*/}" != .. ]]
+}
+REPO_SLUG="${INKY_STUDIO_REPO_SLUG-}"
+if ! validate_repo_slug "${REPO_SLUG}"; then
+  echo "Inky Studio: set INKY_STUDIO_REPO_SLUG to a valid ASCII owner/repo before installing." >&2
+  exit 2
+fi
 
 CHANNEL="${INKY_STUDIO_CHANNEL:-release}"
 # Default to the user running the installer (not a hardcoded 'pi'), so the
@@ -28,7 +41,6 @@ RUN_HOME="$(getent passwd "${RUN_USER}" 2>/dev/null | cut -d: -f6)"
 [[ -n "${RUN_HOME}" ]] || RUN_HOME="/home/${RUN_USER}"
 INSTALL_DIR="${INKY_STUDIO_INSTALL_DIR:-${RUN_HOME}/inky-studio}"
 DATA_DIR="${INKY_STUDIO_DATA_DIR:-/var/lib/inky-studio}"
-REPO_SLUG="${INKY_STUDIO_REPO_SLUG:-mehdi7129/inky-studio}"
 REPO_URL="${INKY_STUDIO_REPO:-https://github.com/${REPO_SLUG}.git}"
 SERVICE_NAME="inky-studio.service"
 LEGACY_SERVICE_NAME="inky-photo-frame.service"
@@ -270,13 +282,9 @@ sudo visudo -cf /etc/sudoers.d/inky-studio >/dev/null
 # ── 10. CLI wrapper ──────────────────────────────────────────────────────────
 say "Installing CLI at /usr/local/bin/inky-studio…"
 # Keep only a stable dispatcher outside the release tree. Later updates replace
-# the delegated CLI automatically; paths are quoted literally by the generator.
-if [[ -f "${INSTALL_DIR}/scripts/inky-studio-launcher" && -r "${INSTALL_DIR}/scripts/inky-studio-launcher" ]]; then
-  bash "${INSTALL_DIR}/scripts/inky-studio-launcher" --install "${INSTALL_DIR}" "${DATA_DIR}"
-else
-  # A newer bootstrap can download an older stable payload (v0.4.2 has the CLI
-  # but no launcher generator). Keep this fallback self-contained for curl | bash;
-  # do not fetch a second script from a moving branch or copy the legacy CLI.
+# the delegated CLI automatically. Always use this bootstrap's generator: an
+# older payload's generator may not preserve repository configuration. Keep the
+# stage self-contained for curl | bash, without fetching a second moving script.
   (
     if [[ "${INSTALL_DIR}" != /* || "${DATA_DIR}" != /* ]]; then
       echo "Inky Studio: INSTALL_DIR and DATA_DIR must be absolute paths." >&2
@@ -297,9 +305,11 @@ set -euo pipefail
 HEADER
       printf 'INKY_DEFAULT_INSTALL_DIR=%q\n' "${INSTALL_DIR}"
       printf 'INKY_DEFAULT_DATA_DIR=%q\n' "${DATA_DIR}"
+      printf 'INKY_DEFAULT_REPO_SLUG=%q\n' "${REPO_SLUG}"
       cat <<'BODY'
 export INKY_STUDIO_INSTALL_DIR="${INKY_STUDIO_INSTALL_DIR:-${INKY_DEFAULT_INSTALL_DIR}}"
 export INKY_STUDIO_DATA_DIR="${INKY_STUDIO_DATA_DIR:-${INKY_DEFAULT_DATA_DIR}}"
+export INKY_STUDIO_REPO_SLUG="${INKY_STUDIO_REPO_SLUG-${INKY_DEFAULT_REPO_SLUG}}"
 inky_cli="${INKY_STUDIO_INSTALL_DIR}/scripts/inky-studio-cli"
 if [[ ! -f "${inky_cli}" || ! -r "${inky_cli}" ]]; then
   printf 'Inky Studio: command script missing or unreadable: %s\n' "${inky_cli}" >&2
@@ -313,7 +323,6 @@ BODY
     sudo install -o root -g root -m 0755 "${CLI_TMP}" /usr/local/bin/inky-studio
     echo "Installed stable Inky Studio launcher at /usr/local/bin/inky-studio."
   )
-fi
 
 # ── 11. systemd unit ─────────────────────────────────────────────────────────
 say "Writing systemd unit…"
@@ -329,10 +338,16 @@ User=${RUN_USER}
 WorkingDirectory=${INSTALL_DIR}/server
 Environment="INKY_STUDIO_DATA_DIR=${DATA_DIR}"
 Environment="INKY_STUDIO_REPO_SLUG=${REPO_SLUG}"
+Environment="INKY_STUDIO_DISPLAY_MODE=hardware"
 ExecStart=${INSTALL_DIR}/server/.venv/bin/inky-studio-server
 Restart=on-failure
 RestartSec=5
-TimeoutStopSec=20
+# The main process closes admission, then drains its current SPI operation.
+# A slow or blocked panel must never be interrupted by a service deadline.
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=infinity
+SendSIGKILL=no
 StandardOutput=journal
 StandardError=journal
 

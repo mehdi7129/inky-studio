@@ -2,6 +2,14 @@
 
 Guidance for Claude Code (and human contributors) working in this repository.
 
+## Current public source checkpoint
+
+Read README.md and docs/ECOSYSTEM.md first. The current release combines the
+frozen iPhone build19 and PHOTO716104 source components. `ios-*` tags are iPhone
+source prereleases and must not be confused with the legacy `v*` backend release
+workflow or a public AppStore approval. Keep private IPA/card/credential artifacts
+out of GitHub. Do not resume paused work or touch a Pi/SD as a documentation task.
+
 ## What this is
 
 Inky Studio is a self-hosted web app that drives a Pimoroni Inky Impression
@@ -40,13 +48,13 @@ install.sh              one-line installer (repo root)
 
 ## Dev commands
 
-Backend (works off-Pi — the display driver auto-mocks):
+Backend (auto mode mocks off Linux; select mock explicitly on Linux dev/CI):
 
 ```bash
 cd server
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"     # ".[pi]" only installs on a real Pi
-inky-studio-server          # serves on :8000
+INKY_STUDIO_DISPLAY_MODE=mock inky-studio-server  # serves on :8000, no GPIO
 ruff check . && pytest
 ```
 
@@ -108,8 +116,17 @@ The installer and updater pull the **latest GitHub Release**, so shipping is:
 
 ## Hardware notes
 
-- The `inky` package is pinned to `2.3.0`: `2.4.0` re-claims SPI/GPIO on every
-  `show()` and aborts. Don't bump without testing on real hardware.
+- The new source candidate pins `inky==2.5.0`; BUSY observation is specific to
+  each driver family. Keep the strict version/EEPROM guards and nominal driver
+  sequence. EL133UF1 refuses POF after an unverified refresh wait. This is not
+  physical qualification. The installed 2.3.0 TEST payload and the immutable
+  a071 bundle are historical artifacts; never relabel or rebuild them with this
+  pin. New native closure, image and panel qualification are coordinated with
+  InkyOS. See `docs/inkyos/DISPLAY-DRIVER-250.md`.
 - Newer Inky panels need `dtoverlay=spi0-0cs` (no kernel chip-select on SPI0)
   or the first refresh fails with "pins in use" on GPIO8.
-- Off-Pi, `DisplayController` falls back to a mock (no SPI/GPIO required).
+- `INKY_STUDIO_DISPLAY_MODE=auto|hardware|mock`: auto selects hardware on Linux
+  and mock elsewhere. Hardware failures never fall back to mock. The diagnostic
+  API stays alive, while display/state/upload/actions return 503 until restart.
+- The explicit `ac073-800x480` display profile accepts only the reviewed raw
+  EEPROM tuples; see `docs/inkyos/HARDWARE-CANDIDATE.md`. Never rewrite EEPROM.

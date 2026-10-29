@@ -1,0 +1,423 @@
+{
+  "contract": "inky-factory-system-setup-wire",
+  "version": 2,
+  "status": "REVIEW_REQUIRED_NO_CODE",
+  "source_commit": "d67db9e44c37eb72b94851b4bba923228479cf00",
+  "transport": {
+    "qr": "Existing bootstrap QR v2 unchanged",
+    "bootstrap": {
+      "profile": "bootstrap",
+      "service_uuid": "713b0011-8890-4cc9-a2bf-26f32c43db22",
+      "tls": "TLS1.3",
+      "alpn": "inky-bootstrap/1"
+    },
+    "normal": {
+      "profile": "normal-v1",
+      "service_uuid": "713b0001-8890-4cc9-a2bf-26f32c43db22",
+      "tls": "TLS1.3",
+      "alpn": null
+    },
+    "framing": "Existing GATT acknowledged stream and uint32-big-endian application length, unchanged",
+    "max_message_bytes": 16384,
+    "max_json_depth": 32,
+    "max_sessions": 2,
+    "max_registered_operations": 2,
+    "integers": "JSON integer lexemes only: no boolean, float, exponent, coercion, duplicate names, NaN or Infinity",
+    "rpc_v1": "bootstrap.claim and bootstrap.status exact existing v1 shapes/responses remain unchanged on bootstrap profile",
+    "rpc_v2": "No v2 setup request except negotiate before this exact TLS peer negotiated v2; next_step never triggers a mutation"
+  },
+  "types": {
+    "rpc_v2": {
+      "json_type": "integer",
+      "exact_lexeme": "2"
+    },
+    "uuid": {
+      "json_type": "string",
+      "format": "canonical lowercase hyphenated UUID",
+      "utf8_bytes": 36
+    },
+    "hex64": {
+      "json_type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "uint63": {
+      "json_type": "integer",
+      "minimum": 0,
+      "maximum": 9223372036854775807
+    },
+    "utc_seconds": {
+      "json_type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "narrower_policy": "ipc-contract.json exact accepted clock policy applies; representation bound is not UTC authority"
+    },
+    "country": {
+      "json_type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "semantic": "Explicit phone choice; exact OS policy and observed firmware/kernel/channel agreement required; no default"
+    },
+    "nullable_uuid": {
+      "one_of": [
+        "uuid",
+        null
+      ]
+    },
+    "nullable_identity": {
+      "one_of": [
+        {
+          "closed": true,
+          "fields": {
+            "frame_id": "uuid",
+            "spki_sha256": "hex64",
+            "publication_op_id": "uuid"
+          }
+        },
+        null
+      ]
+    },
+    "nullable_origin": {
+      "one_of": [
+        {
+          "json_type": "string",
+          "max_utf8_bytes": 267,
+          "format": "https://verified-existing-mdns-fqdn:8443"
+        },
+        null
+      ]
+    }
+  },
+  "requests": {
+    "negotiate": {
+      "closed": true,
+      "fields": {
+        "v": "rpc_v2",
+        "id": "uuid",
+        "op": {
+          "const": "system_setup.negotiate"
+        },
+        "owner_id": "uuid",
+        "owner_token": "hex64",
+        "claim_request_id": "uuid",
+        "versions": {
+          "const": [
+            2
+          ]
+        }
+      }
+    },
+    "challenge": {
+      "closed": true,
+      "fields": {
+        "v": "rpc_v2",
+        "id": "uuid",
+        "op": {
+          "const": "system_setup.challenge"
+        },
+        "owner_id": "uuid",
+        "owner_token": "hex64",
+        "claim_request_id": "uuid",
+        "op_id": "uuid",
+        "supersedes_op_id": "nullable_uuid"
+      }
+    },
+    "apply": {
+      "closed": true,
+      "fields": {
+        "v": "rpc_v2",
+        "id": "uuid",
+        "op": {
+          "const": "system_setup.apply"
+        },
+        "owner_id": "uuid",
+        "owner_token": "hex64",
+        "claim_request_id": "uuid",
+        "op_id": "uuid",
+        "challenge_id": "uuid",
+        "nonce": "hex64",
+        "utc_seconds": "utc_seconds",
+        "country": "country"
+      }
+    },
+    "status": {
+      "closed": true,
+      "fields": {
+        "v": "rpc_v2",
+        "id": "uuid",
+        "op": {
+          "const": "system_setup.status"
+        },
+        "owner_id": "uuid",
+        "owner_token": "hex64",
+        "claim_request_id": "uuid",
+        "op_id": "uuid"
+      }
+    },
+    "continue": {
+      "closed": true,
+      "fields": {
+        "v": "rpc_v2",
+        "id": "uuid",
+        "op": {
+          "const": "system_setup.continue"
+        },
+        "owner_id": "uuid",
+        "owner_token": "hex64",
+        "claim_request_id": "uuid",
+        "op_id": "uuid"
+      }
+    }
+  },
+  "responses": {
+    "success_envelope": {
+      "closed": true,
+      "fields": {
+        "v": "rpc_v2",
+        "id": "uuid",
+        "ok": {
+          "const": true
+        },
+        "result": "operation_specific_result"
+      }
+    },
+    "error_envelope": {
+      "closed": true,
+      "fields": {
+        "v": "rpc_v2",
+        "id": {
+          "one_of": [
+            "uuid",
+            null
+          ]
+        },
+        "ok": {
+          "const": false
+        },
+        "error": "public_error"
+      }
+    },
+    "negotiate_result": {
+      "closed": true,
+      "fields": {
+        "selected_version": {
+          "const": 2
+        },
+        "latest_operation_id": "nullable_uuid",
+        "capabilities": {
+          "const": [
+            "system_setup.challenge",
+            "system_setup.apply",
+            "system_setup.status",
+            "system_setup.continue"
+          ]
+        }
+      }
+    },
+    "challenge_result": {
+      "closed": true,
+      "fields": {
+        "op_id": "uuid",
+        "challenge_id": "uuid",
+        "nonce": "hex64",
+        "boot_id": "uuid",
+        "issued_boottime_ns": "uint63",
+        "expires_boottime_ns": "uint63"
+      }
+    },
+    "apply_ack_result": {
+      "closed": true,
+      "fields": {
+        "op_id": "uuid",
+        "state": {"const":"applying"},
+        "submission": {"const":"registered"},
+        "durability": {"const":"not_confirmed"},
+        "frame_id": "uuid",
+        "owner_id": "uuid",
+        "claim_request_id": "uuid",
+        "next_step": {"const":"status"}
+      }
+    },
+    "status_result": {
+      "closed": true,
+      "fields": {
+        "op_id": "uuid",
+        "state": {
+          "enum": [
+            "challenge_issued",
+            "applying",
+            "uncertain",
+            "setup_ready",
+            "tls_ready",
+            "wifi_pending",
+            "complete",
+            "refused"
+          ]
+        },
+        "frame_id": "uuid",
+        "owner_id": "uuid",
+        "claim_request_id": "uuid",
+        "normal_identity": "nullable_identity",
+        "https_origin": "nullable_origin",
+        "completion_id": "nullable_uuid",
+        "next_step": {
+          "enum": [
+            "apply",
+            "status",
+            "recover_explicit",
+            "continue",
+            "wifi",
+            "wait_origin",
+            "photo_enroll"
+          ]
+        }
+      }
+    },
+    "continue_result": {
+      "closed": true,
+      "fields": {
+        "op_id": "uuid",
+        "state": {
+          "enum": ["tls_ready", "wifi_pending", "complete"]
+        },
+        "action": {
+          "enum": ["publication_finalized", "completion_finalized", "already_complete", "wifi_pending"]
+        },
+        "frame_id": "uuid",
+        "owner_id": "uuid",
+        "claim_request_id": "uuid",
+        "normal_identity": {
+          "closed": true,
+          "fields": {
+            "frame_id": "uuid",
+            "spki_sha256": "hex64",
+            "publication_op_id": "uuid"
+          }
+        },
+        "https_origin": "nullable_origin",
+        "completion_id": "nullable_uuid",
+        "next_step": {
+          "enum": ["wifi", "wait_origin", "photo_enroll"]
+        }
+      },
+      "exact_variants": [
+        {"action":"publication_finalized","state":"tls_ready","completion_id":null,"next_step":"wifi_if_origin_else_wait_origin"},
+        {"action":"wifi_pending","state":"wifi_pending","completion_id":null,"next_step":"wifi_if_origin_else_wait_origin"},
+        {"action":"completion_finalized","state":"complete","completion_id":"uuid","next_step":"photo_enroll_if_origin_else_wait_origin"},
+        {"action":"already_complete","state":"complete","completion_id":"uuid","next_step":"photo_enroll_if_origin_else_wait_origin"}
+      ]
+    },
+    "result_by_operation": {
+      "system_setup.negotiate":"negotiate_result",
+      "system_setup.challenge":"challenge_result",
+      "system_setup.apply":"apply_ack_result",
+      "system_setup.status":"status_result",
+      "system_setup.continue":"continue_result"
+    },
+    "public_error": {
+      "enum": [
+        "invalid_request",
+        "unsupported_version",
+        "negotiation_required",
+        "unauthorized",
+        "request_not_found",
+        "request_conflict",
+        "epoch_changed",
+        "rate_limited",
+        "service_stopping",
+        "recovery_required",
+        "unavailable"
+      ]
+    }
+  },
+  "authorization": {
+    "before_each_request": "Fresh main writer/admission guard and credential epoch; reopen prepared binding; factory ledger v2 ADOPTED and same first_owner_id; owners.status(owner_id, owner_token, request_id=claim_request_id)",
+    "before_each_new_effect": "Same live local peer generation and current OS session, admission and epoch; failure closes admission",
+    "before_delivery": "Same peer/lock/workflow generation; stale completion is retained durably but not delivered to a different session",
+    "local_context": "Server-generated session_id UUID and monotone generation in a handler closure per actual TLS peer; never supplied/authorized by RESET nonce or JSON",
+    "invalidation": [
+      "RESET replacing the peer",
+      "CLOSE",
+      "disconnect",
+      "handshake/idle expiration",
+      "runtime drain",
+      "credential epoch/admission change",
+      "bootstrap-to-normal transition"
+    ],
+    "draining": "Never cancel/abandon an admitted syscall/subprocess/thread. After invalidation, no later sub-effect is admitted; partial operation becomes uncertain as specified by OS.",
+    "setup_socket": "One persistent OS IPC connection per authorized local peer context; close it on every invalidation"
+  },
+  "clock_and_retry": {
+    "apply_ack":"Register the immutable apply task in OperationRegistry without awaiting the up-to-45-second OS apply. Return apply_ack_result promptly within the existing 20-second client RPC budget. registered means owned in memory, not OS durability. Worker checkpoints the exact original intent/UTC before IPC submission; status readonly observes progress. Disconnect never abandons the owned worker.",
+    "client_checkpoint":"Client durably saves operation/challenge identifiers before challenge and exact apply UTC/country intent before apply. Retry preserves the identical UTC and intent; never silently resample UTC. Missing checkpoint recovers latest_operation_id via owner/init-scoped OS inspect during negotiate, then polls readonly status; a new real attempt requires explicit fresh operation/challenge.",
+    "negotiate_discovery":"latest_operation_id is obtained from successful readonly setup.inspect scoped to this verified initialization/owner/claim. null means proven not_started, not an inspect failure. unavailable/contradictory inspection refuses rather than inventing an operation or authority.",
+    "challenge_ttl_seconds": 30,
+    "nonce": "OS CSPRNG 32 bytes; boot-bound CLOCK_BOOTTIME challenge, not client RESET nonce",
+    "utc_semantics": "Phone samples UTC seconds immediately before constructing apply after receiving the challenge. It is authorized claimed UTC, not independent time-source verification.",
+    "same_op_same_intent": "Return same durable result; never extend challenge expiry or replay an uncertain effect",
+    "mismatch": "request_conflict",
+    "supersede": "New explicit op_id with supersedes_op_id; only after old operation is drained and OS has observed prior effects and closed radio; new live owner/claim/session/current-boot challenge required",
+    "status": "Read-only history, never a grant to set time/publish a new certificate or reuse old BOOTTIME"
+  },
+  "transition": {
+    "initial_publication": "Only PreparedFactoryIdentity.publish_initial, using validated real current-boot OS clock result; no ClockResult from network JSON or historical status alone",
+    "same_identity": "Keep frame UUID, P256 key and SPKI; completion binds initial publication identity/op, not an immutable current DER",
+    "handoff": "Close bootstrap admission, complete registered work, then stop old transport before normal TLS. Reuse one display, ownership store v2 and current writer lease; do not close store/display during transfer or call legacy selection.",
+    "normal_status": "The v2 negotiation/challenge/apply/status/continue service is also available to the admitted owner on normal profile for interrupted continuation, without rescanning QR",
+    "normal_wifi": "Reuse existing normal Wi-Fi operations through injected NetworkClient(peer_guard=proof.network_guard), then HTTPS /api/provisioning/wifi/confirm with owner headers",
+    "completion": "Backend requests OS setup.complete only after real network committed inspection and current normal identity binding. Initial publication_op_id is historical and may DIFFER from the current recovery setup op_id; require same initialization lineage/frame UUID/SPKI and real completed explicitly admitted setup effects, without recertification. See IPC contract.",
+    "continue": "Explicit DATA-ONLY mutation after fresh owner/claim/epoch/session/admission checks. Finalize only an existing durable certificate candidate at identical bytes/intent, or an idempotent root completion backed by real committed network facts. Never clock/country/radio replay, never generate a new candidate from historical status, never restore an old leaf over a renewed current leaf. No candidate plus lost clock context/boot returns recovery_required and requires a new explicit setup operation.",
+    "network_changes": "NORMAL completion does not pin the original transaction/profile forever. Follow inspect_latest_committed from the actually attested helper process, parse strictly, independently check persisted NM profile/interface/country and atomically update the root-owned network-head. This is not a cryptographic signature claim about helper journal bytes. At gated reboot ipv4=[] is allowed before activation; network_ready requires actual activation/IP. An absent/pending/uncertain helper journal never selects an arbitrary profile or falls back to the old initial profile; keep NORMAL_RECOVERY with WLAN closed, photo/identity/owners preserved.",
+    "no_photo_before_completion": true
+  },
+  "factory_photo_enrollment": {
+    "method": "POST",
+    "path": "/api/auth/factory-device-enroll",
+    "transport": "Actual HTTPS only; no forwarded-scheme trust",
+    "owner_headers": [
+      "X-Inky-Owner-Id",
+      "X-Inky-Owner-Token"
+    ],
+    "body": {
+      "closed": true,
+      "fields": {
+        "device_id": "uuid",
+        "device_token": "hex64",
+        "request_id": "uuid",
+        "claim_request_id": "uuid",
+        "setup_op_id": "uuid"
+      }
+    },
+    "checks": [
+      "Current owner/claim/epoch via owners.status; first_owner_id same",
+      "OS completion + current normal branch and frame/SPKI bound",
+      "request_id equals claim_request_id",
+      "device_id differs from BLE owner_id; device_token differs from owner_token",
+      "No cookie authorizes enrollment; no password login"
+    ],
+    "persistence": "Existing PhotoAccessStore.enroll(device_id,device_token,request_id=claim_request_id) under authorization gate; one idempotent credential per factory claim without a new PHOTO schema",
+    "response": {
+      "closed": true,
+      "fields": {
+        "device_id": "uuid",
+        "role": {
+          "const": "owner"
+        },
+        "identity": {
+          "closed": true,
+          "fields": {
+            "frame_id": "uuid",
+            "spki_sha256": "hex64"
+          }
+        }
+      }
+    },
+    "next": "Client already persisted a NEW PHOTO secret before request, then calls existing HTTPS device-session; no cookie issued by factory enroll",
+    "media": "Existing media/invitation route scope unchanged; never promote a media/device cookie or reuse BLE secret"
+  },
+  "origin": {
+    "lan_gate":"For status/continue results that require a LAN transition, https_origin=null forces next_step=wait_origin and readonly polling. Never confirm Wi-Fi or enroll PHOTO over LAN until the explicit origin is verified. While waiting, current-owner BLE Wi-Fi scan/begin/status remain available on normal profile; wait_origin is not a ban on configuring Wi-Fi and cannot create a pre-IP deadlock.",
+    "legacy": "Existing explicit INKY_STUDIO_PHOTO_ACCESS_URL policy unchanged",
+    "factory": "OS observes existing persisted inky-<32hex>.local hostname using rootstate/etc hostname + Avahi GetHostNameFqdn/GetState + current interfaces/NM; returns explicit https_origin or null",
+    "backend": "Inject a factory origin provider bound to current attestation/boot and identity. Never synthesize from Host, SAN, socket.gethostname or unauthenticated IP; do not mutate process environment.",
+    "invitation": "public_identity(with_url=True) uses the explicit verified factory origin in factory mode; absent/unverified origin refuses invitation creation"
+  }
+}

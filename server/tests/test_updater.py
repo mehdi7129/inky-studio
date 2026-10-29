@@ -3,13 +3,154 @@ from __future__ import annotations
 
 import fcntl
 import io
+import runpy
 import tarfile
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 import inky_web
+from inky_web.api import system
 from inky_web.services import updater
+
+
+@pytest.fixture(autouse=True)
+def configured_release_source(monkeypatch):
+    monkeypatch.setattr(updater, "REPO_SLUG", "fixture/inky")
+    monkeypatch.setattr(updater, "_status_cache", {"at": 0.0, "value": None, "repo_slug": None})
+
+
+INVALID_REPO_SLUGS = [
+    "https://github.com/fixture/inky", "fixture/inky?token=private", "fixture/inky#fragment",
+    "fixture/../inky", "fixture/..", "fixture/.", "../inky", "fixture/%2e%2e",
+    "fixture/inky/extra", " fixture/inky", "fixture/inky ", "fixture/inky\n",
+    "fixture\\inky", "fíxture/inky", "fixture/ínky", "fixture／inky", "fixture_1/inky",
+    "-fixture/inky", "fixture-/inky", "fix--ture/inky", "a" * 40 + "/inky",
+    "fixture/" + "a" * 101, "/inky", "fixture/",
+]
+
+
+def test_release_source_has_no_implicit_default(monkeypatch):
+    monkeypatch.delenv("INKY_STUDIO_REPO_SLUG", raising=False)
+    request = Mock(side_effect=AssertionError("Unconfigured status must remain offline"))
+    monkeypatch.setattr(updater.urllib.request, "urlopen", request)
+    imported = runpy.run_path(updater.__file__)
+    assert imported["REPO_SLUG"] == ""
+    assert imported["get_status"]() == {
+        "current": updater.__version__, "latest": None, "update_available": False,
+    }
+    request.assert_not_called()
+
+
+@pytest.mark.parametrize("slug", ["fixture/inky", "Fixture-123/inky-studio_2.5", "fixture/.github"])
+def test_configured_release_source_fetches_only_its_github_endpoint(monkeypatch, slug):
+    monkeypatch.setattr(updater, "REPO_SLUG", slug)
+    release = {"tag_name": "v9.0.0"}
+    request = Mock(return_value=release)
+    monkeypatch.setattr(updater, "_http_json", request)
+    assert updater._fetch_latest_release() == release
+    request.assert_called_once_with(f"https://api.github.com/repos/{slug}/releases/latest")
+
+
+@pytest.mark.parametrize("slug", ["", *INVALID_REPO_SLUGS])
+def test_unconfigured_or_invalid_status_is_offline_even_with_a_warm_cache(monkeypatch, slug):
+    monkeypatch.setattr(updater, "REPO_SLUG", slug)
+    monkeypatch.setattr(updater, "__version__", "0.5.0")
+    monkeypatch.setattr(updater, "_status_cache", {
+        "at": updater.time.time(), "repo_slug": slug,
+        "value": {"current": "0.5.0", "latest": "9.0.0", "update_available": True},
+    })
+    fetch = Mock(side_effect=AssertionError("Invalid status must not fetch a release"))
+    request = Mock(side_effect=AssertionError("Invalid source must not contact GitHub"))
+    monkeypatch.setattr(updater, "_fetch_latest_release", fetch)
+    monkeypatch.setattr(updater, "_http_json", request)
+    expected = {"current": "0.5.0", "latest": None, "update_available": False}
+    app = FastAPI()
+    app.include_router(system.router, prefix="/api")
+    with TestClient(app) as client:
+        for path in ("/api/system/update", "/api/system/update?refresh=1"):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert response.json() == expected
+    fetch.assert_not_called()
+    request.assert_not_called()
+
+
+@pytest.mark.parametrize("slug", ["", *INVALID_REPO_SLUGS])
+def test_direct_release_fetch_is_also_offline_for_invalid_sources(monkeypatch, slug):
+    monkeypatch.setattr(updater, "REPO_SLUG", slug)
+    request = Mock(side_effect=AssertionError("Invalid source must not contact GitHub"))
+    monkeypatch.setattr(updater, "_http_json", request)
+    assert updater._fetch_latest_release() is None
+    request.assert_not_called()
+
+
+def _forbid_update_effects(monkeypatch):
+    operations = []
+    for target, name in (
+        (updater, "get_status"), (updater, "_fetch_latest_release"), (updater, "_http_json"),
+        (updater.fcntl, "flock"), (updater.tempfile, "mkdtemp"),
+        (updater, "_download"), (updater, "_safe_extract"), (updater, "_backup_current"),
+        (updater, "_apply"), (updater, "_restore"), (updater.shutil, "rmtree"),
+    ):
+        operation = Mock(side_effect=AssertionError(f"Invalid configuration reached {name}"))
+        monkeypatch.setattr(target, name, operation)
+        operations.append(operation)
+    pip = AsyncMock(side_effect=AssertionError("Invalid configuration started pip"))
+    monkeypatch.setattr(updater, "_run_streaming", pip)
+    operations.append(pip)
+    process = AsyncMock(side_effect=AssertionError("Invalid configuration launched a subprocess"))
+    monkeypatch.setattr(updater.asyncio, "create_subprocess_exec", process)
+    operations.append(process)
+    return operations
+
+
+@pytest.mark.parametrize("slug", ["", *INVALID_REPO_SLUGS])
+async def test_update_refuses_bad_configuration_before_lock_temp_network_or_process(
+    tmp_path, monkeypatch, slug,
+):
+    monkeypatch.setattr(updater, "REPO_SLUG", slug)
+    operations = _forbid_update_effects(monkeypatch)
+    before = {str(path.relative_to(tmp_path)): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
+    install = tmp_path / "absent-install"
+    events = []
+    assert not await updater.perform_update(lambda *args, **kwargs: events.append(args), install_dir=install)
+    assert not install.exists()  # Even opening the update lock would have failed here.
+    assert events == [("error", (
+        "La configuration des mises à jour du cadre est invalide." if slug
+        else "Les mises à jour ne sont pas configurées pour ce cadre."
+    ))]
+    assert {str(path.relative_to(tmp_path)): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()} == before
+    for operation in operations:
+        operation.assert_not_called()
+
+
+@pytest.mark.parametrize("slug", ["", *INVALID_REPO_SLUGS])
+def test_cli_refuses_bad_configuration_instead_of_claiming_up_to_date(monkeypatch, capsys, slug):
+    monkeypatch.setattr(updater, "REPO_SLUG", slug)
+    operations = _forbid_update_effects(monkeypatch)
+    perform = AsyncMock(side_effect=AssertionError("Invalid CLI must not start an update"))
+    monkeypatch.setattr(updater, "perform_update", perform)
+    assert updater.main() == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "INKY_STUDIO_REPO_SLUG=owner/repo" in captured.err
+    assert "Already up to date" not in captured.err
+    for operation in [*operations, perform]:
+        operation.assert_not_called()
+
+
+def test_status_cache_does_not_mix_explicit_release_sources(monkeypatch):
+    releases = [{"tag_name": "v8.0.0"}, {"tag_name": "v9.0.0"}]
+    fetch = Mock(side_effect=releases)
+    monkeypatch.setattr(updater, "_fetch_latest_release", fetch)
+    assert updater.get_status()["latest"] == "8.0.0"
+    assert updater.get_status()["latest"] == "8.0.0"
+    monkeypatch.setattr(updater, "REPO_SLUG", "other/inky")
+    assert updater.get_status()["latest"] == "9.0.0"
+    assert fetch.call_count == 2
 
 
 def test_parse_version():

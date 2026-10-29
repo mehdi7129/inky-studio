@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "releaseTag": "ios-v1.0.0-build19",
+  "date": "2026-10-29",
+  "kind": "GitHub source prerelease; no public iOS binary",
+  "iOS": {
+    "version": "1.0.0",
+    "build": 19,
+    "source": "65e626e8760bc956e17a118f2a18175b184a6f3c",
+    "sourceBranch": "release/ios-1.0.0-build19",
+    "distribution": "Existing internal TestFlight group; AppStore review/public release pending"
+  },
+  "backend": {
+    "packageVersion": "0.5.0rc2",
+    "apiVersion": "0.5.0-rc.2",
+    "source": "716104b130d34d1973001e78f15e25989d4c2e76",
+    "sourceBranch": "release/backend-lan-photo-sharing-20261023"
+  },
+  "runtimeAndTestGitObjects": {
+    "ios": {
+      "ios/InkyStudio": "05b1c5d173167546d2cc92f223969a133b4b1397",
+      "ios/InkyStudioTests": "46de55bc849855acbcd721b4c918ce6b3bb91a30",
+      "ios/InkyStudio.xcodeproj": "9b63ce4a94a341c94f0046551cd3b69048302d8c",
+      "ios/Packages": "4d456d533927843e6f2dfdce8ca27969bd611371"
+    },
+    "backend": {
+      "server/inky_web": "9925c60c11c12d5a17a6e3428633b1c258e98225",
+      "server/tests": "57fd8f9654409fbfac7bbc3e06c9be18f5477287",
+      "server/pyproject.toml": "0fd1b9148b5ab94a1b1106e9763153776a1ad652"
+    }
+  },
+  "Mac": {
+    "version": "0.1.2 (3)",
+    "url": "https://github.com/mehdi7129/inkyImager/releases/tag/v0.1.2",
+    "notarized": true
+  },
+  "OS": {
+    "version": "2026.10.29-rc1",
+    "url": "https://github.com/mehdi7129/inkyOS/releases/tag/2026.10.29-rc1",
+    "prerelease": true,
+    "rawSHA256": "ad176c1f5354c4bcc8944370733da132228bcc6810098c75b58fc568161d021a",
+    "newGenericPhysicalBootObserved": false
+  },
+  "sourceScope": "The source tag combines the pinned component runtime/test objects; documentation is current. Main keeps its earlier implementation and links to the tagged sources.",
+  "physicalEvidence": "Maintainer acceptance of existing frame/photo sharing; not a claim of independent execution of every scenario or first boot of the new generic artifact.",
+  "publicAssetsExclude": [
+    "IPA",
+    "mobile signing material",
+    "live pairing QR",
+    "personalized SD image",
+    "user credentials and photos",
+    "private deployment logs"
+  ]
+}

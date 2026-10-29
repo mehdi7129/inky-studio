@@ -19,8 +19,11 @@ import logging
 import time
 from datetime import datetime, timedelta
 
+from fastapi import HTTPException
+
 from inky_web.events import EventBus
 from inky_web.inky.display import DisplayController
+from inky_web.inky.errors import DisplayConfirmationPending, DisplayUnavailableError
 from inky_web.models import ChangeMode
 from inky_web.services import history, queue, settings
 from inky_web.services.photos import path_for
@@ -45,16 +48,20 @@ class Scheduler:
         logger.info("Scheduler started")
 
     async def stop(self) -> None:
-        self._stop.set()
+        self.request_stop()
         if self._task is not None:
             await self._task
             self._task = None
         logger.info("Scheduler stopped")
 
+    def request_stop(self) -> None:
+        """Stop producing work without waiting for an already admitted refresh."""
+        self._stop.set()
+
     def next_change_at(self) -> float | None:
         """Return the unix timestamp of the next scheduled change, or None for manual mode."""
         cfg = settings.get()
-        if cfg.change_mode == ChangeMode.manual:
+        if cfg.change_mode == ChangeMode.manual or self._display.automatic_rotation_paused:
             return None
         last = history.current()
         last_ts = last.displayed_at if last else None
@@ -73,7 +80,7 @@ class Scheduler:
 
     async def _tick(self) -> None:
         cfg = settings.get()
-        if cfg.change_mode == ChangeMode.manual:
+        if cfg.change_mode == ChangeMode.manual or self._display.automatic_rotation_paused:
             return
 
         last = history.current()
@@ -89,6 +96,9 @@ class Scheduler:
 
     def _advance(self, source: str) -> None:
         with self._display.operation():
+            self._display.require_available()
+            if self._display.reserved or self._display.automatic_rotation_paused:
+                return
             # A manual refresh can complete while this worker waits for the display.
             cfg = settings.get()
             current = history.current()
@@ -125,15 +135,20 @@ def _compute_next_change(
 
 async def trigger_next(display: DisplayController, bus: EventBus) -> None:
     """Manual next — same logic as scheduler tick but with source=manual_next."""
-    await asyncio.to_thread(_manual_next, display, bus)
+    retry_confirmation = display.pending_confirmation
+    await asyncio.to_thread(_manual_next, display, bus, retry_confirmation)
 
 
-def _manual_next(display: DisplayController, bus: EventBus) -> None:
+def _manual_next(display: DisplayController, bus: EventBus, retry_confirmation=None) -> None:
     with display.operation():
-        _advance(display, bus, source="manual_next", recycle_source="manual_next")
+        _require_available(display, retry_confirmation)
+        _advance(display, bus, source="manual_next", recycle_source="manual_next", retry_confirmation=retry_confirmation)
 
 
-def _advance(display: DisplayController, bus: EventBus, *, source: str, recycle_source: str) -> None:
+def _advance(
+    display: DisplayController, bus: EventBus, *, source: str, recycle_source: str,
+    retry_confirmation: DisplayConfirmationPending | None = None,
+) -> None:
     while (entry := queue.peek_next()) is not None:
         if not path_for(entry.photo.id).exists():
             # A permanently missing source must not block every later photo.
@@ -145,7 +160,7 @@ def _advance(display: DisplayController, bus: EventBus, *, source: str, recycle_
                 "action": "skipped", "photo_id": entry.photo.id, "reason": "file_missing",
             })
             continue
-        _show(display, bus, entry.photo.id, source=source)
+        _show(display, bus, entry.photo.id, source=source, retry_confirmation=retry_confirmation)
         queue.remove_entry(entry.id)
         bus.broadcast("queue_updated", {"action": "popped", "photo_id": entry.photo.id})
         return
@@ -154,32 +169,55 @@ def _advance(display: DisplayController, bus: EventBus, *, source: str, recycle_
         current_entry.photo.id if current_entry else None
     )
     if recycled is None:
+        if display.pending_confirmation is not None:
+            raise display.pending_confirmation
         return
-    _show(display, bus, recycled, source=recycle_source)
+    _show(display, bus, recycled, source=recycle_source, retry_confirmation=retry_confirmation)
 
 
 async def trigger_previous(display: DisplayController, bus: EventBus) -> None:
-    await asyncio.to_thread(_manual_previous, display, bus)
+    retry_confirmation = display.pending_confirmation
+    await asyncio.to_thread(_manual_previous, display, bus, retry_confirmation)
 
 
-def _manual_previous(display: DisplayController, bus: EventBus) -> None:
+def _manual_previous(display: DisplayController, bus: EventBus, retry_confirmation=None) -> None:
     with display.operation():
+        _require_available(display, retry_confirmation)
         prev = history.previous()
         if prev is not None:
             _show(
                 display, bus, prev.photo.id,
                 source="manual_previous", navigation_history_id=prev.id,
+                retry_confirmation=retry_confirmation,
             )
+        elif display.pending_confirmation is not None:
+            raise display.pending_confirmation
+
+
+def _require_available(display: DisplayController, retry_confirmation=None) -> None:
+    display.require_available()
+    if display.reserved:
+        raise HTTPException(status_code=409, detail="Termine la connexion Bluetooth avant de changer de photo")
+    pending = display.pending_confirmation
+    if pending is not None and retry_confirmation is not pending:
+        raise pending
 
 
 def _show(
     display: DisplayController, bus: EventBus, photo_id: str, source: str,
-    *, navigation_history_id: int | None = None,
+    *, navigation_history_id: int | None = None, retry_confirmation: DisplayConfirmationPending | None = None,
 ) -> None:
     path = path_for(photo_id)
     if not path.exists():
         raise FileNotFoundError(f"Photo file missing for {photo_id}")
-    display.display_image(path, saturation=settings.get().saturation)
+    try:
+        if retry_confirmation is None:
+            display.display_image(path, saturation=settings.get().saturation)
+        else:
+            display.display_image(path, saturation=settings.get().saturation, retry_confirmation=retry_confirmation)
+    except DisplayUnavailableError as exc:
+        bus.broadcast("display_error", exc.payload())
+        raise
     entry = history.record(
         photo_id, source=source, navigation_history_id=navigation_history_id,  # type: ignore[arg-type]
     )

@@ -1,6 +1,6 @@
 [project]
 name = "inky-studio-server"
-version = "0.5.0rc1"
+version = "0.5.0rc2"
 description = "FastAPI backend for Inky Studio — web UI for Inky e-ink photo frame"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,18 +15,25 @@ dependencies = [
     "python-multipart>=0.0.12",
     "pillow>=11.0",
     "websockets>=13.1",
+    "cryptography>=44,<51",
+    "dbus-fast>=5.0.22,<6",
+    "qrcode[pil]>=8,<9",
 ]
 
 [project.optional-dependencies]
 pi = [
-    # inky 2.4.0 regression: inky_ac073tc1a.py calls setup() on every show(),
-    # which re-claims the SPI/GPIO pins and aborts with SystemExit. 2.3.0 was
-    # what the v2.0 deployment used successfully on the same hardware.
-    "inky==2.3.0",
+    # Source candidate only: per-family BUSY contracts target this exact wheel.
+    # A new native dependency closure and physical qualification are required
+    # before this candidate replaces an installed 2.3.0 payload.
+    "inky==2.5.0",
     "gpiod>=2.2",
     "RPi.GPIO>=0.7",
 ]
 dev = [
+    # Exercise the non-editable wheel and its installed frontend path in CI.
+    "hatchling",
+    # Execute the hash-verified upstream driver's actual pixel pipeline in tests.
+    "numpy>=2,<3",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "httpx>=0.27",
@@ -37,7 +44,9 @@ dev = [
 inky-studio-server = "inky_web.main:run"
 
 [build-system]
-requires = ["hatchling"]
+# Hatchling's editable hook requires editables too. Declare it explicitly so
+# an offline build environment can be closed without executing a build hook.
+requires = ["hatchling", "editables>=0.3,<1"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

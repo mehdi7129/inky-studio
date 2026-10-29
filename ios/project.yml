@@ -13,14 +13,19 @@ settings:
     DEVELOPMENT_TEAM: X524H8XA4L
     TARGETED_DEVICE_FAMILY: "1"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "3"
+    CURRENT_PROJECT_VERSION: "7"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+packages:
+  InkyTLS:
+    path: Packages/InkyTLS
 targets:
   InkyStudio:
     type: application
     platform: iOS
     sources:
       - InkyStudio
+    dependencies:
+      - package: InkyTLS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.mehdiguiard.inkystudio
@@ -28,6 +33,7 @@ targets:
         INFOPLIST_FILE: InkyStudio/Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: InkyStudio/Resources/InkyStudio.entitlements
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
   InkyStudioTests:

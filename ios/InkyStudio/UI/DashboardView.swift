@@ -8,14 +8,14 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Label(store.connected ? "Raspberry connecté" : "Connexion interrompue", systemImage: "circle.fill")
+                    Label(store.connected ? "Cadre connecté" : "Connexion interrompue", systemImage: "circle.fill")
                         .font(.caption).foregroundStyle(store.connected ? Bento.success : Bento.secondaryInk)
                     if let current = store.state?.current {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Sur le cadre").font(.subheadline).foregroundStyle(.secondary)
+                            Text("Sur le cadre").font(.subheadline).foregroundStyle(Bento.secondaryInk)
                             FramePhoto(photo: current.photo, accessibilityDescription: "Photo actuellement affichée sur le cadre")
-                            Text("Affichée \(Date(timeIntervalSince1970: current.displayedAt).formatted(date: .abbreviated, time: .shortened))")
-                                .font(.caption).foregroundStyle(.secondary)
+                            Text("Affichée le \(Date(timeIntervalSince1970: current.displayedAt).formatted(date: .abbreviated, time: .shortened))")
+                                .font(.caption).foregroundStyle(Bento.secondaryInk)
                             displayControls
                         }.bentoCard()
                     } else {
@@ -27,23 +27,21 @@ struct DashboardView: View {
                     }
                     summaryLayout {
                         VStack(alignment: .leading, spacing: 10) {
-                            Image(systemName: "clock").font(.title2).foregroundStyle(Bento.amber)
-                            Text("Prochain changement").font(.caption).foregroundStyle(.secondary)
+                            Image(systemName: "clock").font(.title2).foregroundStyle(Bento.amber).accessibilityHidden(true)
+                            Text("Prochain changement").font(.caption).foregroundStyle(Bento.secondaryInk)
                             Text(nextChange).font(.headline)
-                        }.bentoCard().frame(maxWidth: .infinity, alignment: .topLeading)
+                        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).bentoCard()
                         VStack(alignment: .leading, spacing: 10) {
-                            Image(systemName: "square.stack").font(.title2).foregroundStyle(Bento.blue)
-                            Text("À suivre").font(.caption).foregroundStyle(.secondary)
+                            Image(systemName: "square.stack").font(.title2).foregroundStyle(Bento.blue).accessibilityHidden(true)
+                            Text("À suivre").font(.caption).foregroundStyle(Bento.secondaryInk)
                             Text("\(store.queue.count) photo\(store.queue.count == 1 ? "" : "s")").font(.headline)
-                        }.bentoCard().frame(maxWidth: .infinity, alignment: .topLeading)
+                        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).bentoCard()
                     }
                     Button { importing = true } label: { Label("Ajouter une photo", systemImage: "plus") }
                         .buttonStyle(PrimaryButtonStyle()).disabled(!store.canMutate || store.state == nil).accessibilityIdentifier("frame.add")
-                    if store.state?.display.isMock == true {
-                        Label("Écran de démonstration", systemImage: "desktopcomputer").font(.caption).foregroundStyle(.secondary)
-                    }
                 }.padding(16).frame(maxWidth: 680).frame(maxWidth: .infinity)
-            }.contentMargins(.bottom, 24, for: .scrollContent)
+            }.accessibilityIdentifier("frame.scroll")
+                .contentMargins(.bottom, 24, for: .scrollContent)
                 .navigationTitle("Inky Studio").screenBackground().refreshable { await store.refresh() }
                 .overlay { if store.state == nil && store.refreshing { ProgressView() } }
                 .sheet(isPresented: $importing) { PhotoImportView(panelWidth: store.panelWidth, panelHeight: store.panelHeight) { data, filename in try await store.upload(data, filename: filename) } }
@@ -53,7 +51,7 @@ struct DashboardView: View {
         controlsLayout {
             Button { Task { await store.display(previous: true) } } label: { Label("Précédente", systemImage: "chevron.left") }.accessibilityIdentifier("frame.previous")
             Button { Task { await store.display(previous: false) } } label: { Label("Suivante", systemImage: "chevron.right") }.accessibilityIdentifier("frame.next")
-        }.buttonStyle(OutlineButtonStyle()).disabled(!store.canMutate || store.displayBusy)
+        }.buttonStyle(OutlineButtonStyle()).disabled(!store.canDisplay || store.displayBusy)
     }
     private var summaryLayout: AnyLayout {
         dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 12))

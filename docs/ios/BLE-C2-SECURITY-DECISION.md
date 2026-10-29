@@ -5,6 +5,10 @@ premier banc en buffers réussi**, pas une intégration validée ni une fonction
 note précise le [plan produit](PRODUCT-EVOLUTION-PLAN.md) ; le résultat matériel
 de référence reste le [banc C1](BLUETOOTH-BENCH.md).
 
+**Suite de cette décision :** l’implémentation C2 et les preuves obtenues ensuite
+sont suivies dans [BLUETOOTH-INTEGRATION.md](BLUETOOTH-INTEGRATION.md). Les tableaux
+ci-dessous conservent l’état du prototype C2.0, avant cette intégration.
+
 ## Décision proposée
 
 Retenir pour qualification **TLS 1.3 sur un transport BLE fragmenté**, avec Mbed TLS **4.1.1**

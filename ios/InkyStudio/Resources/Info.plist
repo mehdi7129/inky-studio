@@ -11,9 +11,13 @@
 <key>LSRequiresIPhoneOS</key><true/>
 <key>UILaunchScreen</key><dict/>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
-<key>NSCameraUsageDescription</key><string>Photographiez un moment pour l’envoyer sur votre cadre Inky. La photo n’est pas enregistrée automatiquement dans votre photothèque.</string>
-<key>NSLocalNetworkUsageDescription</key><string>Inky Studio se connecte à votre Raspberry sur le même réseau Wi-Fi pour gérer les photos de votre cadre.</string>
-<key>NSFaceIDUsageDescription</key><string>Face ID autorise l’utilisation du mot de passe de votre cadre enregistré sur cet iPhone.</string>
+<key>NSCameraUsageDescription</key><string>Prenez une photo pour votre cadre ou scannez son QR de connexion. Les images ne sont pas enregistrées automatiquement dans votre photothèque.</string>
+<key>NSBluetoothAlwaysUsageDescription</key><string>Inky Studio utilise le Bluetooth pour reconnaître votre cadre et configurer son réseau Wi-Fi, même hors de votre réseau habituel.</string>
+<key>NSLocalNetworkUsageDescription</key><string>Inky Studio vérifie votre cadre sur son Wi-Fi temporaire pour le configurer, puis sur votre réseau Wi-Fi pour gérer ses photos.</string>
+<key>NSFaceIDUsageDescription</key><string>Face ID déverrouille Inky Studio et protège l’accès aux photos de votre cadre sur cet iPhone.</string>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
-<key>ITSAppUsesNonExemptEncryption</key><false/>
+<!-- Approved by Apple on 2026-10-08 for the declared build 8 cryptography.
+     Reassess the declaration if the cryptographic characteristics change. -->
+<key>ITSAppUsesNonExemptEncryption</key><true/>
+<key>ITSEncryptionExportComplianceCode</key><string>e1f9f3fe-8061-4d68-9bfc-955ac4ca05b4</string>
 </dict></plist>

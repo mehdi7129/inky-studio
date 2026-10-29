@@ -9,9 +9,12 @@ iPhone. La PR #8 est fusionnée. InkyOS reste explicitement une phase ultérieur
 
 État au 27 septembre après cette validation : le lot A est livré ; le backend du
 lot B et sa candidate `0.5.0-rc.1` sont testés, y compris sur le Pi avec des données
-synthétiques, puis déployés après migration administrative du lanceur. Le secret
-initial fonctionne toujours ; la personnalisation est disponible dans l’app. Le banc C1 valide le transport réel, pas l’identité.
-C2 est en préparation et ne configure encore aucun Wi-Fi.
+synthétiques, puis déployés après migration administrative du lanceur. Mehdi a
+personnalisé son mot de passe, confirmé la reconnexion et le refus d’un faux
+mot de passe. Le banc C1 valide le transport réel, pas l’identité.
+C2 est implémenté sur une branche dédiée et sa qualification matérielle reste
+ouverte ; aucun Wi-Fi de production n’a été changé.
+[État de l’intégration C2](BLUETOOTH-INTEGRATION.md).
 [Livraison serveur et étape restante](SERVER-CANDIDATE-DELIVERY.md).
 
 Visuels : [Bento 2](../../design/ios/2026-09-27-refinement/README.md).

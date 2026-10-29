@@ -5,6 +5,7 @@ import json
 import stat
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -203,7 +204,7 @@ def test_rate_limiter_bounds_rejected_attempt_storage_and_expires(monkeypatch):
 
 def test_expired_sessions_are_rejected_and_pruned(monkeypatch):
     now = [100.0]
-    monkeypatch.setattr(auth.time, "time", lambda: now[0])
+    monkeypatch.setattr(auth, "time", SimpleNamespace(monotonic=lambda: now[0]))
     sessions = auth.SessionStore()
     old = sessions.create()
     assert sessions.validate(old)
@@ -213,4 +214,29 @@ def test_expired_sessions_are_rejected_and_pruned(monkeypatch):
     now[0] += auth.SESSION_TTL_SECONDS
     newest = sessions.create()
     assert unvisited not in sessions._sessions
+    assert sessions.validate(newest)
+
+
+@pytest.mark.parametrize("wall_jump", [-100 * auth.SESSION_TTL_SECONDS, 100 * auth.SESSION_TTL_SECONDS])
+def test_wall_clock_jumps_neither_expire_nor_extend_session_ttl(monkeypatch, wall_jump):
+    monotonic, wall = [100.0], [1_800_000_000.0]
+    monkeypatch.setattr(auth, "time", SimpleNamespace(
+        monotonic=lambda: monotonic[0], time=lambda: wall[0],
+    ))
+    sessions = auth.SessionStore()
+    checked, unvisited = sessions.create(), sessions.create()
+
+    wall[0] += wall_jump
+    monotonic[0] += auth.SESSION_TTL_SECONDS - 1
+    assert sessions.validate(checked)
+    recent = sessions.create()  # Pruning must retain unexpired sessions too.
+    assert unvisited in sessions._sessions
+
+    # The deadline depends only on elapsed monotonic time, even if the wall clock
+    # stays at its corrected value for the remainder of this process's lifetime.
+    monotonic[0] += 1
+    assert not sessions.validate(checked)
+    newest = sessions.create()
+    assert unvisited not in sessions._sessions
+    assert sessions.validate(recent)
     assert sessions.validate(newest)

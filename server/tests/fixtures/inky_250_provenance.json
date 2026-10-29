@@ -1,0 +1,21 @@
+{
+  "purpose": "Offline tests of real wheel code with inert hardware ports; not an installed Pi runtime or ARM64 dependency closure",
+  "distribution": "inky",
+  "version": "2.5.0",
+  "wheel": "inky-2.5.0-py3-none-any.whl",
+  "sha256": "8589ad753b094ec5da482c090f88d5e8560457f15502221517993dc01b021573",
+  "url": "https://files.pythonhosted.org/packages/54/fb/b8a07dfc1bfa4dc606d8d68f8718698e609f9ebdc6eafd0ca37ec92f653c/inky-2.5.0-py3-none-any.whl",
+  "pypi_metadata": "https://pypi.org/pypi/inky/2.5.0/json",
+  "tag": "v2.5.0",
+  "tag_commit": "29e1af86db54dad8c997db544fc5deb3b047d779",
+  "license": "inky-2.5.0.dist-info/licenses/LICENSE",
+  "module_sha256": {
+    "inky/auto.py": "501e4de2bec361b84eed679ea7b13a5c8e55cce53c74bffa6742fa321ea76d17",
+    "inky/eeprom.py": "4ccb16e8bb7322379ff467b6a342c1dc00b7a9a73d78450c8b9cc0c51af04dc7",
+    "inky/inky_e640.py": "bc7942ed3791ad4d8087e1d7b6f7085deb7375d31df25c14f026f5dfa6229a1a",
+    "inky/inky_e673.py": "7dc4d2236097481dae804bf7defb6900c162d337f8a020e09e5f63a11e700ef0",
+    "inky/inky_el133uf1.py": "48ff387e6f9ee7b53c176beb7ca8cd58ea91a7e362e4eda9a75a05eef633374d",
+    "inky/inky_ac073tc1a.py": "07ef76f3854d279e19cc082b5bc96b8bc20b6aed967747357e5dff4cb9c65324",
+    "inky/inky_uc8159.py": "c597ed914036e8393ad7d04a9731ddc77f1f7ff12851580fef5a8c4f9db1411b"
+  }
+}

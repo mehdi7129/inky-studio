@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 EventType = Literal[
     "display_changed",
+    "display_error",
     "queue_updated",
     "settings_changed",
     "photo_uploaded",

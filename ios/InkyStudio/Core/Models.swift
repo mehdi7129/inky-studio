@@ -51,6 +51,30 @@ struct DisplayState: Codable, Equatable, Sendable {
     var nextChangeAt: Double?
 }
 
+/// Read-only diagnostics, independent of HTTP reachability and photo metadata.
+struct DisplayDiagnostics: Decodable, Equatable, Sendable {
+    struct Failure: Decodable, Equatable, Sendable {
+        let code: String
+        let detail: String
+    }
+    let mode: String
+    let profile: String?
+    let state: String
+    let isMock: Bool
+    let error: Failure?
+
+    var issue: String? {
+        if let error { return error.detail }
+        switch state {
+        case "ready", "mock": return nil
+        case "busy": return "L’écran est en cours d’actualisation. Les commandes d’affichage sont temporairement indisponibles."
+        case "stopping": return "L’écran est en cours d’arrêt. Les commandes d’affichage sont indisponibles."
+        case "uninitialized": return "L’écran n’est pas encore initialisé. Les commandes d’affichage sont indisponibles."
+        default: return "L’état de l’écran ne permet pas de confirmer sa disponibilité."
+        }
+    }
+}
+
 struct AuthStatus: Codable, Equatable, Sendable {
     var authenticated: Bool
     var authRequired: Bool

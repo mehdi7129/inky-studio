@@ -1,0 +1,211 @@
+# iOS stability and accessibility — 2026-10-08
+
+Scope: the existing rounded Bento interface, foreground/offline recovery,
+accessible action labels, system Reduce Motion, and export metadata. This work
+is stacked on `codex/ios-bento-polish` / PR #19, base
+`15b5e536e791b4e23215e9c1b60103d14e0c8e13`. It does not merge the dependent iOS
+or Bluetooth branches, deploy the Raspberry, or change the TLS implementation.
+
+## Confirmed findings and changes
+
+| Finding | Change / regression coverage |
+|---|---|
+| Cancelling a refresh marked a reachable frame offline | Ignore cancellation as connectivity evidence; preserve the session and loaded data |
+| A refresh requested during an in-flight failure was lost | Consume the pending refresh after a failure; hand it to a fresh task after cancellation only in the same active session |
+| A recovered refresh could retain its transient error or erase a newer operation error | Track whether the displayed error belongs to connection recovery; preserve a newer business error |
+| Offline and error banners overlapped each other and the navigation title in the captured queue screen | Give each banner space above the tab navigation; check their actual screen frames |
+| Progress spinners replaced some accessible button names | Keep stable labels for saving settings, loading older photos and enabling biometrics; expose progress separately |
+| Decorative dashboard and photo-selection images exposed SF Symbol names to VoiceOver | Hide those redundant images from the accessibility tree; keep the descriptive text and values |
+| Success notices were only visual | Post a native accessibility announcement for each new, nonempty notice |
+| Queue editing always animated | Respect the system Reduce Motion setting |
+| Export declaration still needed a manual questionnaire | Include the exact approval code supplied by Apple on 2026-10-08 and declare non-exempt encryption |
+
+The local fixture can now simulate temporary unavailability and bounded settings
+latency. These controls are loopback-only, preserve sessions during an outage,
+and reset between cases. They are not included in the Raspberry server.
+
+Six added unit tests cover cancellation, queued retries, newer operation errors,
+backgrounding and session changes. New UI checks cover background → offline →
+recovery without login, settings labels while saving, and native accessibility
+audits for descriptions/traits on the welcome screen, four tabs and photo flow.
+The accessibility audit does not suppress reported issues.
+
+## Validation
+
+Device: the existing **iPhone 15 Pro Max / iOS 27.0 Simulator**, Xcode 27.0.
+No additional simulator was created. All data is synthetic. DerivedData lives
+under `~/Library/Caches/inky-studio-ios-stability-derived-data` to avoid macOS
+File Provider metadata causing code-signing failures under Desktop.
+
+Before the fix, two new unit tests failed with three assertions: cancellation
+incorrectly cleared connectivity, and a requested retry never ran. The initial
+broad baseline passed 103 unit and 13 UI tests; two Bluetooth UI cases failed
+amid simulator accessibility/event-loop stalls. Both Bluetooth cases later
+passed unchanged in a targeted run with 105 unit tests passing. These are
+separate runs, not a claim of one successful consolidated run.
+
+The complete local run on `18849de` reached **109 unit + 11 UI passes** before
+infrastructure failures: a loopback reset timed out, its late callback was
+reported against the following test, and XCTest lost its accessibility server
+(`kAXErrorServerNotFound`). The UI-test runner then aborted in
+`_swift_task_dealloc_specific → XCTSwiftErrorObservation → addAsyncTeardownBlock`.
+The application process was still alive. This does not establish the root cause
+of the preceding accessibility loss. The run was interrupted and is **not a
+successful complete suite**.
+
+The harness now explicitly selects synchronous, MainActor-isolated teardown and
+confines request assertions to the current test. Late fixture callbacks are
+ignored after closing/cancelling the request. The reported abort occurred in
+**InkyStudioUITests-Runner**, not the shipping app; this is evidence of a test
+runner failure, without proving the framework's underlying root cause.
+
+On iOS 27 the tab query can resolve an SF Symbol child with an invalid hit point.
+The helper taps the observed tab rectangle and checks the destination. A further
+capture established that a correctly displayed static navigation title may not
+be `hittable`; a title is not itself an interactive control.
+
+| Evidence | Result |
+|---|---|
+| CI `ea07425`, [run 37812748085, attempt 2](https://github.com/mehdi7129/inky-studio/actions/runs/37812748085/attempts/2) | 109 unit tests pass; 11 fixture UI tests pass; one simulated Face ID case skipped. Three demo cases fail: two large-text scrolling helpers and an unlabelled decorative `photo.badge.plus` image. Overall run **failed**. |
+| Local `resume-light.xcresult`, `ea07425` | 2/2 targeted tests pass: offline/background recovery with separate banners; four rounded tabs, hidden filenames and portrait. |
+| Local `verified-dark.xcresult`, `fca004a` | Full public demo journey passes: guide, four tabs, crop, add photo, history, settings, reset and relaunch. Separate accessibility audit fails its navigation `hittable` oracle while the failure screenshot shows the correct unobscured Cadre screen. Overall run **failed**. |
+
+The first CI run also exposed slow test drags activating buttons/links instead
+of scrolling. Recordings, rather than increased timeouts or suppressed
+assertions, are used to qualify the helper corrections. The accessibility audit
+keeps every description/trait check; redundant decorative images are hidden
+individually in the app.
+
+The subsequent [CI run 37843573956](https://github.com/mehdi7129/inky-studio/actions/runs/37843573956)
+on head `1ef5592` (PR merge `04ee9733` into `15b5e536`) passed 109 unit and 15 UI
+tests; one Face ID case was skipped. Two demo tests failed, so the Release step
+was skipped. TLS 15/15, Bluetooth transport 13/13, HTTPS 52/52 and fixture 45
+checks passed. No runner SIGABRT was observed; all teardowns completed.
+
+The two remaining CI failures were reproduced in their recordings: a dynamic
+`firstMatch` history query switched from entry 2 to entry 1 while scrolling;
+entry 1 was already queued, so the app correctly kept two photos. The test now
+pins the intended, unqueued entry. A full-screen swipe also repeatedly moved
+Save from below to above the viewport; the helper uses bounded gestures based
+on the missing visible distance.
+
+Locally, `final-accessibility.log` on `1ef5592` records passing large-text guide
+and description/trait audits. The large-text photo test found a separate harness
+error: the tab bar **behind** the photo sheet shortened its viewport from y932
+to y849, rejecting a fully visible button ending at y854. Only root tab screens
+now subtract that bar. The later fixture test stalled in Simulator automation;
+the run was interrupted and is not a complete pass. A sample showed the app's
+main thread waiting in its UIKit run loop, without a blocking AppStore stack;
+this does not prove the runtime's underlying cause.
+
+The final [native CI run 37894502277](https://github.com/mehdi7129/inky-studio/actions/runs/37894502277)
+**passed on source `181edb2`**: 109 unit tests and 18 UI cases, comprising
+**17 passes and one expected simulated Face ID skip**, with zero failures.
+The previously failing large-text/import journey passed in 130.950 seconds;
+the complete public demo passed in 103.544 seconds. The description/trait audit
+and large-text guide also passed. XCTest reported **TEST SUCCEEDED** on
+October 9 at **06:58:55 UTC**; the iPhone Release step reported
+**BUILD SUCCEEDED at 07:01:16 UTC**. TLS 15/15, Bluetooth transport 13/13,
+HTTPS 52/52, fixture 45 checks and four general CI jobs passed.
+
+This CI ran remotely on an iPhone 16 / iOS 18.5 Simulator with Xcode 16.4;
+it created no local simulator. It tested PR merge `5251b25c` from head
+`181edb2` into the unchanged base `15b5e536`. The local iPhone 15 Pro Max /
+iOS 27 evidence is recorded separately above. The Face ID case is skipped
+because this CI fixture does not enable simulated biometric matching.
+
+This is a completed CI suite on that source. Earlier failed or interrupted
+local runs remain recorded above and are not reclassified as successful.
+The CI log, run status and artifact index are retained under ignored
+`build/ci-181edb2/{job.log,run.json,artifacts.json}`.
+
+The unsigned generic iPhone **Release build on `11dd76a` passed** with Xcode 27.
+Its compiled Info.plist contains non-exempt encryption = true and the exact Apple
+approval code. The build emits existing incomplete-umbrella warnings from
+MbedTLS and an AppIntents metadata warning; a successful build is not proof of
+installation or hardware behaviour.
+
+On October 9, clean source `181edb2f89034bb0c411b145c95fe303f112b460`
+produced the **signed Release archive and distribution IPA for build 9**.
+Both archive and export succeeded, and **76/76 package checks passed**.
+IPA SHA-256:
+`c7642ef10fca15494a41cf8581249dbcce6e25a85328a908f62f51bc49ff1070`.
+This packaging validation is separate from the successful native CI suite above.
+
+Local evidence is retained outside Git under
+`build/ios/stability-2026-10-07/` (the session began October 7).
+
+## Visual review
+
+Raw Simulator PNGs are committed below. Each capture's test, source commit,
+result bundle and hash are recorded in [captures.json](captures.json). Light
+screens use the isolated API fixture; dark screens use the public demo. The
+older large-text captures come from individually passing cases in a run that
+was interrupted later, and are labelled accordingly in the manifest.
+
+| Screen | Light | Dark |
+|---|---|---|
+| Cadre | [Capture](screenshots/cadre-light.png) | [Capture](screenshots/cadre-dark.png) |
+| File | [Capture](screenshots/file-light.png) | [Capture](screenshots/file-dark.png) |
+| Historique | [Capture](screenshots/historique-light.png) | [Capture](screenshots/historique-dark.png) |
+| Réglages | [Capture](screenshots/reglages-light.png) | [Capture](screenshots/reglages-dark.png) |
+| Photo crop | — | [Capture](screenshots/cadrage-dark.png) |
+
+The rounded cards, black/white hierarchy, restrained coloured accents and
+photo-first content remain consistent with the approved Bento. The inspected
+normal-size screenshots show no filename, clipped label or spelling error.
+The floating system tab bar overlays scrolling content temporarily; content
+must remain reachable by scrolling, which the UI journeys check.
+
+Offline banners: [before](before/offline-overlap-light.png) →
+[after](screenshots/offline-light.png). The after image separates the offline
+notice, API error and navigation title; the test asserts their actual frames.
+The English “Fixture API temporarily unavailable” message in this diagnostic
+capture is deliberately injected by the test API, not production interface copy.
+
+Accessibility text: [Cadre](screenshots/grand-texte-cadre-light.png),
+[photo submission](screenshots/grand-texte-envoi-light.png). Semantic audit and
+visual inspection are separate from a spoken VoiceOver listening check.
+
+## Reproduce
+
+Start the loopback fixture with simulated Face ID and seed only generated photos:
+
+```bash
+python3 ios/scripts/mock-server.py --biometric-device '<EXISTING_SIMULATOR_UDID>'
+# In another terminal:
+python3 ios/scripts/seed-simulator-photo.py '<EXISTING_SIMULATOR_UDID>'
+xcodebuild -project ios/InkyStudio.xcodeproj -scheme InkyStudio \
+  -destination 'platform=iOS Simulator,id=<EXISTING_SIMULATOR_UDID>' \
+  -derivedDataPath "$HOME/Library/Caches/inky-studio-ios-stability-derived-data" \
+  -parallel-testing-enabled NO -collect-test-diagnostics never \
+  -resultBundlePath /tmp/InkyStability.xcresult \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+```
+
+The final run disables optional verbose diagnostics collection after Xcode's
+`simctl diagnose` spent ten minutes timing out after the successful targeted
+run. Test assertions, coverage collection and result attachments remain enabled.
+Xcode also reported Security main-thread warnings in the existing trust unit
+tests; this review does not qualify runtime performance on a physical phone.
+
+## Delivery boundaries
+
+**Build 1.0.0 (9)**, from clean source `181edb2`, was uploaded successfully on
+October 9 at **06:46:08 UTC**. Apple processing completed without missing
+compliance information, and native CI passed on the same source. At
+**07:04 UTC**, App Store Connect confirmed **Groupe (1)**: the existing internal
+group **Mehdi — test iPhone**, one tester. French testing notes are saved.
+Build 9 is delivered to that group; its installation and physical acceptance
+are not yet established. No branch has been merged.
+
+The earlier **build 1.0.0 (8)**, assigned after Apple's export approval on
+October 8, remains the last version reported installed on the tester's iPhone
+15 Pro Max. That binary predates these corrections.
+See [delivery status](../../TESTFLIGHT-DELIVERY.md).
+
+Simulator and fixture results do not establish physical BLE/QR enrollment,
+Wi-Fi commit/rollback, real camera capture, or actual e-ink refresh. Spoken
+VoiceOver announcements still need a listening check; automated semantic audits
+are not comprehensive accessibility certification. No public App Review
+submission or public release is performed by this PR.

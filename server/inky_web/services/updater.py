@@ -15,6 +15,10 @@ the same routine can drive both:
 Restarting the service requires root; the installer grants the service user a
 tightly-scoped passwordless sudo rule for ``systemctl restart/stop/start
 inky-studio.service`` only (see ``install.sh``).
+
+Release discovery and installation require an explicit
+``INKY_STUDIO_REPO_SLUG=owner/repo`` configuration. Without it, status discovery
+stays offline and update commands fail before touching the installation.
 """
 from __future__ import annotations
 
@@ -23,7 +27,9 @@ import fcntl
 import json
 import logging
 import os
+import re
 import shutil
+import sys
 import tarfile
 import tempfile
 import time
@@ -33,15 +39,20 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from inky_web import __version__
+from inky_web.db import resolve_data_dir
+from inky_web.provisioning import factory_runtime
 
 logger = logging.getLogger(__name__)
 
-REPO_SLUG = os.environ.get("INKY_STUDIO_REPO_SLUG", "mehdi7129/inky-studio")
+REPO_SLUG = os.environ.get("INKY_STUDIO_REPO_SLUG", "")
 SERVICE_NAME = os.environ.get("INKY_STUDIO_SERVICE", "inky-studio.service")
 # server/inky_web/services/updater.py → parents[3] == install dir (repo root)
 INSTALL_DIR = Path(__file__).resolve().parents[3]
 
-_API_LATEST = f"https://api.github.com/repos/{REPO_SLUG}/releases/latest"
+_REPO_SLUG_PATTERN = re.compile(
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}",
+    re.ASCII,
+)
 _USER_AGENT = "inky-studio-updater"
 _CACHE_TTL = 600.0  # seconds — don't hammer the GitHub API
 _NEVER_OVERWRITE = {".venv", "node_modules", "data", ".git", ".env", ".env.local"}
@@ -49,10 +60,22 @@ _MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 
 EmitFn = Callable[..., None]
 
-_status_cache: dict[str, Any] = {"at": 0.0, "value": None}
+_status_cache: dict[str, Any] = {"at": 0.0, "value": None, "repo_slug": None}
 
 
 # ── version + release metadata ───────────────────────────────────────────────
+def _repo_configuration_error() -> str | None:
+    if not REPO_SLUG:
+        return "Les mises à jour ne sont pas configurées pour ce cadre."
+    if (
+        _REPO_SLUG_PATTERN.fullmatch(REPO_SLUG) is None
+        or "--" in REPO_SLUG.partition("/")[0]
+        or REPO_SLUG.partition("/")[2] in {".", ".."}
+    ):
+        return "La configuration des mises à jour du cadre est invalide."
+    return None
+
+
 def _http_json(url: str, timeout: float = 10.0) -> Any:
     req = urllib.request.Request(
         url,
@@ -76,8 +99,10 @@ def _parse_version(v: str | None) -> tuple[int, ...]:
 
 
 def _fetch_latest_release() -> dict[str, Any] | None:
+    if _repo_configuration_error() is not None:
+        return None
     try:
-        return _http_json(_API_LATEST)
+        return _http_json(f"https://api.github.com/repos/{REPO_SLUG}/releases/latest")
     except Exception as exc:  # noqa: BLE001 — network/parse errors must never crash the app
         logger.warning("Could not fetch latest release: %s", exc)
         return None
@@ -105,9 +130,14 @@ def _is_newer_release(current: str, latest: str | None) -> bool:
 
 def get_status(*, use_cache: bool = True) -> dict[str, Any]:
     """Return ``{current, latest, update_available}`` (latest may be ``None``)."""
+    if _repo_configuration_error() is not None:
+        return {"current": __version__, "latest": None, "update_available": False}
     now = time.time()
     cached = _status_cache["value"]
-    if use_cache and cached is not None and now - _status_cache["at"] < _CACHE_TTL:
+    if (
+        use_cache and cached is not None and _status_cache["repo_slug"] == REPO_SLUG
+        and now - _status_cache["at"] < _CACHE_TTL
+    ):
         return cached
 
     release = _fetch_latest_release()
@@ -117,7 +147,7 @@ def get_status(*, use_cache: bool = True) -> dict[str, Any]:
     update_available = _is_newer_release(current, latest)
 
     value = {"current": current, "latest": latest, "update_available": update_available}
-    _status_cache.update(at=now, value=value)
+    _status_cache.update(at=now, value=value, repo_slug=REPO_SLUG)
     return value
 
 
@@ -282,6 +312,15 @@ async def perform_update(emit: EmitFn, *, install_dir: Path | None = None) -> bo
     Returns True if the restart was triggered (the process will be killed
     shortly after), False on failure. Progress flows through ``emit``.
     """
+    try:
+        factory_runtime.guard_legacy_command(resolve_data_dir())
+    except factory_runtime.FactoryRuntimeError as error:
+        _emit(emit, "error", error.code)
+        return False
+    configuration_error = _repo_configuration_error()
+    if configuration_error is not None:
+        _emit(emit, "error", configuration_error)
+        return False
     install_dir = install_dir or INSTALL_DIR
     lock = (install_dir / ".inky-update.lock").open("a")
     try:
@@ -390,6 +429,16 @@ def bus_emitter(bus: Any) -> EmitFn:
 
 # ── CLI entry point: `python -m inky_web.services.updater` (used by `inky-studio update`)
 def main() -> int:
+    try:
+        factory_runtime.guard_legacy_command(resolve_data_dir())
+    except factory_runtime.FactoryRuntimeError as error:
+        print(error.code, file=sys.stderr)
+        return error.exit_status
+    configuration_error = _repo_configuration_error()
+    if configuration_error is not None:
+        print(f"{configuration_error} Définissez INKY_STUDIO_REPO_SLUG=owner/repo.", file=sys.stderr)
+        return 1
+
     def emit(stage: str, message: str = "", **extra: Any) -> None:
         version = extra.get("version")
         prefix = f"[{stage}]"

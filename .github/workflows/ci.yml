@@ -24,6 +24,8 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Lint
         run: ruff check .
+      - name: Prepare exact upstream display wheel for offline tests
+        run: pip download --no-deps --require-hashes -r tests/fixtures/inky_250_requirement.txt -d .test-wheels
       - name: Test
         run: pytest -q
       - name: Qualify password migration over HTTP and WebSocket
@@ -34,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: shellcheck install.sh scripts/inky-studio-cli scripts/inky-studio-launcher scripts/uninstall.sh scripts/bt-tls-bench/build.sh
+      - run: shellcheck install.sh scripts/inky-studio-cli scripts/inky-studio-launcher scripts/uninstall.sh scripts/bt-tls-bench/build.sh scripts/build-mbedtls-apple.sh scripts/install-bluetooth.sh scripts/test-bluetooth-channel.sh scripts/test-bootstrap-channel.sh scripts/test-https-wire.sh scripts/bt-tls-bench/build-mac-secure.sh
 
   frontend:
     name: Frontend (lint + typecheck + test + build)

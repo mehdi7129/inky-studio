@@ -35,7 +35,11 @@ PASSWORD_ALPHABET: Final = string.ascii_letters + string.digits
 SCRYPT_N: Final = 32768
 SCRYPT_R: Final = 8
 SCRYPT_P: Final = 1
-PUBLIC_PATHS: Final = frozenset({"/api/health", "/api/auth/login", "/api/auth/status"})
+PUBLIC_PATHS: Final = frozenset({
+    "/api/health", "/api/auth/login", "/api/auth/status",
+    "/api/auth/device-session", "/api/auth/invitations/claim",
+    "/api/auth/legacy-tls-proof", "/api/auth/factory-device-enroll",
+})
 
 
 def auth_disabled() -> bool:
@@ -214,19 +218,32 @@ def display_password(data_dir: Path) -> str | None:
 
 
 class SessionStore:
-    """Process-local sessions with immediate notification of revocation to WebSockets."""
+    """Process-local sessions with monotonic TTL and immediate WebSocket revocation."""
 
     def __init__(self) -> None:
         self._sessions: dict[str, float] = {}
+        self._principals: dict[str, object] = {}
+        self.principal_validator = None
         self._lock = threading.RLock()
         self._watchers: dict[asyncio.Event, asyncio.AbstractEventLoop] = {}
 
-    def create(self) -> str:
+    def create(self, principal=None) -> str:
         with self._lock:
-            now = time.time()
+            now = time.monotonic()
             self._sessions = {token: expiry for token, expiry in self._sessions.items() if expiry > now}
+            self._principals = {token: value for token, value in self._principals.items() if token in self._sessions}
             token = secrets.token_urlsafe(32)
             self._sessions[token] = now + SESSION_TTL_SECONDS
+            if principal is not None:
+                # Bound persistent-device sessions and close displaced idle WS.
+                previous = [old for old, actor in self._principals.items()
+                            if actor.device_id == principal.device_id]
+                for old in previous[:-7]:
+                    self._sessions.pop(old, None)
+                    self._principals.pop(old, None)
+                if len(previous) >= 8:
+                    self._notify()
+                self._principals[token] = principal
             return token
 
     def validate(self, token: str | None) -> bool:
@@ -236,10 +253,33 @@ class SessionStore:
             expires = self._sessions.get(token)
             if expires is None:
                 return False
-            if time.time() >= expires:
+            if time.monotonic() >= expires:
                 self._sessions.pop(token, None)
+                self._principals.pop(token, None)
                 return False
-            return True
+            principal = self._principals.get(token)
+        # Never hold the session lock while entering the durable store: password
+        # rotation/revocation holds its authorization gate before notifying us.
+        if principal is not None and (
+            self.principal_validator is None or not self.principal_validator(principal)
+        ):
+            self.invalidate(token)
+            return False
+        with self._lock:
+            return token in self._sessions
+
+    def principal(self, token: str | None):
+        with self._lock:
+            return self._principals.get(token)
+
+    def invalidate_device(self, device_id: str) -> None:
+        with self._lock:
+            tokens = [token for token, actor in self._principals.items() if actor.device_id == device_id]
+            for token in tokens:
+                self._sessions.pop(token, None)
+                self._principals.pop(token, None)
+            if tokens:
+                self._notify()
 
     def _notify(self) -> None:
         for event, loop in list(self._watchers.items()):
@@ -251,11 +291,13 @@ class SessionStore:
     def invalidate(self, token: str | None) -> None:
         with self._lock:
             if token and self._sessions.pop(token, None) is not None:
+                self._principals.pop(token, None)
                 self._notify()
 
     def invalidate_all(self) -> None:
         with self._lock:
             self._sessions.clear()
+            self._principals.clear()
             self._notify()
 
     def watch_revocation(self) -> asyncio.Event:
@@ -279,7 +321,8 @@ class CredentialService:
     def __init__(self, credentials: Credentials, sessions: SessionStore) -> None:
         self.credentials = credentials
         self.sessions = sessions
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self.prepare_owner_rotation = None
 
     def login(self, password: str) -> str:
         with self._lock:
@@ -287,13 +330,21 @@ class CredentialService:
                 raise HTTPException(status_code=401, detail="Mot de passe incorrect")
             return self.sessions.create()
 
-    def change_password(self, token: str | None, current_password: str, new_password: str) -> str:
+    def change_password(self, token: str | None, current_password: str, new_password: str,
+                        actor_owner_id: str | None = None) -> str:
         with self._lock:
             if not self.sessions.validate(token):
                 raise HTTPException(status_code=401, detail="Authentification requise")
             if not self.credentials.verify(current_password):
                 raise HTTPException(status_code=403, detail="Le mot de passe actuel est incorrect")
             replacement = _new_credentials(self.credentials.path.parent, new_password)
+            if self.prepare_owner_rotation is not None:
+                try:
+                    # Prepare the caller's new epoch BEFORE the atomic password
+                    # replace. All other owners remain bound to the old epoch.
+                    self.prepare_owner_rotation(replacement, actor_owner_id)
+                except Exception:
+                    raise HTTPException(status_code=503, detail="Stockage Bluetooth indisponible. Le mot de passe actuel reste valable.") from None
             try:
                 _write_credentials(replacement)
             except CredentialStorageError as exc:
@@ -354,10 +405,34 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Local application password management")
     parser.add_argument("command", choices=["password", "reset-password"])
     args = parser.parse_args()
-    # Unlike db.data_dir(), resolve the path without creating any directories.
-    raw = os.environ.get("INKY_STUDIO_DATA_DIR")
-    directory = Path(raw).expanduser() if raw else Path(__file__).resolve().parent.parent / "data"
+    from inky_web.db import resolve_data_dir
+    from inky_web.provisioning.factory_runtime import FactoryRuntimeError, guard_legacy_command
+
+    directory = resolve_data_dir()
     try:
+        guard_legacy_command(directory)
+    except FactoryRuntimeError as exc:
+        print(f"Commande indisponible pour ce cadre : {exc.code}")
+        return exc.exit_status
+    try:
+        if args.command == "reset-password" and (
+            os.environ.get("INKY_STUDIO_BLUETOOTH") == "1"
+            or (directory / "provisioning").exists()
+            or (directory / "provisioning").is_symlink()
+        ):
+            # The service wrapper has stopped GATT, but the separate helper can
+            # still finish a previously confirmed transaction. Its acknowledgement
+            # must precede the new epoch, even if service shutdown was interrupted.
+            # Persisted state detects Bluetooth when its service env is absent in
+            # this shell. Legacy frames without provisioning need no helper.
+            from inky_web.provisioning.network import NetworkClient, NetworkUnavailable
+
+            try:
+                NetworkClient().cancel_pending_sync()
+            except NetworkUnavailable:
+                print("Annulation Wi-Fi indisponible. Reset annulé ; les identifiants restent inchangés. "
+                      "Vérifie inky-network.service ; après installation Bluetooth, ouvre une nouvelle session SSH pour actualiser les groupes.")
+                return 1
         password = (reset_credentials(directory).bootstrap_password
                     if args.command == "reset-password" else display_password(directory))
     except (OSError, CredentialFormatError):

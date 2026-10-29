@@ -59,12 +59,16 @@ CREATE TABLE IF NOT EXISTS settings (
 """
 
 
-def data_dir() -> Path:
+def resolve_data_dir() -> Path:
+    """Resolve the configured path without creating any application state."""
     raw = os.environ.get("INKY_STUDIO_DATA_DIR")
     if raw:
-        path = Path(raw).expanduser()
-    else:
-        path = Path(__file__).resolve().parent.parent / "data"
+        return Path(raw).expanduser()
+    return Path(__file__).resolve().parent.parent / "data"
+
+
+def data_dir() -> Path:
+    path = resolve_data_dir()
     path.mkdir(parents=True, exist_ok=True)
     (path / "photos").mkdir(exist_ok=True)
     return path

@@ -24,6 +24,19 @@ if [[ "${launcher_install_dir}" != /* || "${launcher_data_dir}" != /* ]]; then
   exit 2
 fi
 
+# Capture explicit installation configuration without reading a systemd unit.
+# Unconfigured standalone launchers are permitted; updates then stay disabled.
+launcher_repo_slug="${INKY_STUDIO_REPO_SLUG-}"
+validate_repo_slug() {
+  local LC_ALL=C
+  local pattern='^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}$'
+  [[ "$1" =~ ${pattern} && "${1%%/*}" != *--* && "${1#*/}" != . && "${1#*/}" != .. ]]
+}
+if [[ -n "${launcher_repo_slug}" ]] && ! validate_repo_slug "${launcher_repo_slug}"; then
+  echo "Inky Studio: INKY_STUDIO_REPO_SLUG must be a valid ASCII owner/repo." >&2
+  exit 2
+fi
+
 render_launcher() {
   cat <<'HEADER'
 #!/usr/bin/env bash
@@ -35,9 +48,11 @@ HEADER
   # Never substitute paths into executable shell text with sed or eval.
   printf 'INKY_DEFAULT_INSTALL_DIR=%q\n' "${launcher_install_dir}"
   printf 'INKY_DEFAULT_DATA_DIR=%q\n' "${launcher_data_dir}"
+  printf 'INKY_DEFAULT_REPO_SLUG=%q\n' "${launcher_repo_slug}"
   cat <<'BODY'
 export INKY_STUDIO_INSTALL_DIR="${INKY_STUDIO_INSTALL_DIR:-${INKY_DEFAULT_INSTALL_DIR}}"
 export INKY_STUDIO_DATA_DIR="${INKY_STUDIO_DATA_DIR:-${INKY_DEFAULT_DATA_DIR}}"
+export INKY_STUDIO_REPO_SLUG="${INKY_STUDIO_REPO_SLUG-${INKY_DEFAULT_REPO_SLUG}}"
 inky_cli="${INKY_STUDIO_INSTALL_DIR}/scripts/inky-studio-cli"
 if [[ ! -f "${inky_cli}" || ! -r "${inky_cli}" ]]; then
   printf 'Inky Studio: command script missing or unreadable: %s\n' "${inky_cli}" >&2

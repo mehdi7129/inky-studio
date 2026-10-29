@@ -1,0 +1,375 @@
+{
+  "passed": true,
+  "timestamp_utc": "2026-09-27T13:38:50+00:00",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "scope": "Real macOS URLSession; unmodified production InkyAPI, OriginRedirectDelegate, FrameTrustPolicy. Loopback only. No iOS runtime or Pi hardware qualification.",
+  "swift": "Apple Swift version 6.4 (swiftlang-6.4.0.34.1 clang-2100.3.34.1)\nTarget: arm64-apple-macosx27.0.0",
+  "openssl_cli": "OpenSSL 3.6.3 9 Jun 2026 (Library: OpenSSL 3.6.3 9 Jun 2026)",
+  "python_ssl": "OpenSSL 3.6.3 9 Jun 2026",
+  "source_sha256": {
+    "ios/InkyStudio/Provisioning/FrameIdentity.swift": "688c418169242975d4e379ebf5edc8a1cc29b37339aa63614ada8b5bfa536b9c",
+    "ios/InkyStudio/Provisioning/PinnedFrameTrust.swift": "665022d2eacda6f9b9cd038279757380384f0d3d796932c6e48a78b9d127596e",
+    "ios/InkyStudio/Provisioning/OwnershipVault.swift": "096edcf13fe497a3572921d114b13c8a26f85fe2229b44011377a045ed501b3a",
+    "ios/InkyStudio/Core/Models.swift": "7a48f70c59b9eb14b7d99b7f61f5858729f078adf25a2e5ba920568676600e98",
+    "ios/InkyStudio/Core/APIError.swift": "05c8460ef2a4ea237030560dfe67f5f4e351169736b8c6002009e8ec7c96e6c0",
+    "ios/InkyStudio/Core/InkyAPI.swift": "e5e9cf892343321fdc4a3fe621d4f7e365613b0d2c61291ce00bc4f2ef4bb89b",
+    "scripts/https-wire-bench/InkyHTTPSWire.swift": "eb0cfb8fabbaacf7ab2a2b297d94638e5519c1a350336e373ba44d59a982be69"
+  },
+  "certificate_sha256": {
+    "original": "5afab00db546bd9230b67db05a1134c9abcb6286b8018e5f9bdb48dd0a644b74",
+    "renewed": "f87fc25817e2ca359cfeb0b230772d1da6fbed91bac3960f52d0b0a4487b0c16",
+    "changed_key": "ffcbc939bef89d96a2362e72dd8d5646008aef5173f7e5490407d49dd069460e",
+    "wrong_name": "4ee07d491a9b44c29206e690d6c899684b8f6b143b9c7b4d4c497b8cc1d1dbe8",
+    "expired": "3eb1477438b9f69675084ab3e1bf60f152f729e8669fe7aad5c8dab1005c3dd1",
+    "future": "40a638f892fa0b85492f5e46450942126c4a0311c191499c278c7a0119b5ae89",
+    "bad_signature": "dfe07e3a7c4ba7b4a81bd0cf80bfa04608e99ef221f2eed5b9bf5f01d776756a"
+  },
+  "cases": [
+    {
+      "name": "expired_cache.fresh_ble_trust_rejected",
+      "passed": true
+    },
+    {
+      "name": "original.json_login_photo_wss",
+      "passed": true
+    },
+    {
+      "name": "original.wifi_confirm",
+      "passed": true
+    },
+    {
+      "name": "renewed.json_login_photo_wss",
+      "passed": true
+    },
+    {
+      "name": "renewed.wifi_confirm",
+      "passed": true
+    },
+    {
+      "name": "expired_cache.json_login_photo_wss",
+      "passed": true
+    },
+    {
+      "name": "expired_cache.wifi_confirm",
+      "passed": true
+    },
+    {
+      "name": "wrong_pin.login_rejected",
+      "passed": true
+    },
+    {
+      "name": "wrong_pin.photo_rejected",
+      "passed": true
+    },
+    {
+      "name": "wrong_pin.wss_rejected",
+      "passed": true
+    },
+    {
+      "name": "wrong_pin.wifi_confirm_rejected",
+      "passed": true
+    },
+    {
+      "name": "changed_key.login_rejected",
+      "passed": true
+    },
+    {
+      "name": "changed_key.photo_rejected",
+      "passed": true
+    },
+    {
+      "name": "changed_key.wss_rejected",
+      "passed": true
+    },
+    {
+      "name": "changed_key.wifi_confirm_rejected",
+      "passed": true
+    },
+    {
+      "name": "wrong_name.login_rejected",
+      "passed": true
+    },
+    {
+      "name": "wrong_name.photo_rejected",
+      "passed": true
+    },
+    {
+      "name": "wrong_name.wss_rejected",
+      "passed": true
+    },
+    {
+      "name": "wrong_name.wifi_confirm_rejected",
+      "passed": true
+    },
+    {
+      "name": "expired.login_rejected",
+      "passed": true
+    },
+    {
+      "name": "expired.photo_rejected",
+      "passed": true
+    },
+    {
+      "name": "expired.wss_rejected",
+      "passed": true
+    },
+    {
+      "name": "expired.wifi_confirm_rejected",
+      "passed": true
+    },
+    {
+      "name": "future.login_rejected",
+      "passed": true
+    },
+    {
+      "name": "future.photo_rejected",
+      "passed": true
+    },
+    {
+      "name": "future.wss_rejected",
+      "passed": true
+    },
+    {
+      "name": "future.wifi_confirm_rejected",
+      "passed": true
+    },
+    {
+      "name": "bad_signature.login_rejected",
+      "passed": true
+    },
+    {
+      "name": "bad_signature.photo_rejected",
+      "passed": true
+    },
+    {
+      "name": "bad_signature.wss_rejected",
+      "passed": true
+    },
+    {
+      "name": "bad_signature.wifi_confirm_rejected",
+      "passed": true
+    },
+    {
+      "name": "http.login_rejected",
+      "passed": true
+    },
+    {
+      "name": "redirect_http.login_rejected",
+      "passed": true
+    },
+    {
+      "name": "redirect_https.login_rejected",
+      "passed": true
+    },
+    {
+      "name": "http.wifi_confirm_rejected",
+      "passed": true
+    },
+    {
+      "name": "original.server_routes_and_credentials",
+      "passed": true
+    },
+    {
+      "name": "original.tls13",
+      "passed": true
+    },
+    {
+      "name": "renewed.server_routes_and_credentials",
+      "passed": true
+    },
+    {
+      "name": "renewed.tls13",
+      "passed": true
+    },
+    {
+      "name": "expired_cache.server_routes_and_credentials",
+      "passed": true
+    },
+    {
+      "name": "expired_cache.tls13",
+      "passed": true
+    },
+    {
+      "name": "wrong_pin.connected_but_zero_http_payload",
+      "passed": true
+    },
+    {
+      "name": "changed_key.connected_but_zero_http_payload",
+      "passed": true
+    },
+    {
+      "name": "wrong_name.connected_but_zero_http_payload",
+      "passed": true
+    },
+    {
+      "name": "expired.connected_but_zero_http_payload",
+      "passed": true
+    },
+    {
+      "name": "future.connected_but_zero_http_payload",
+      "passed": true
+    },
+    {
+      "name": "bad_signature.connected_but_zero_http_payload",
+      "passed": true
+    },
+    {
+      "name": "http.zero_connection_or_payload",
+      "passed": true
+    },
+    {
+      "name": "redirect_destination.zero_connection_or_payload",
+      "passed": true
+    },
+    {
+      "name": "redirect_http.redirect_not_replayed",
+      "passed": true
+    },
+    {
+      "name": "redirect_https.redirect_not_replayed",
+      "passed": true
+    },
+    {
+      "name": "renewal.distinct_der",
+      "passed": true
+    }
+  ],
+  "servers": {
+    "original": {
+      "requests": {
+        "GET /api/auth/status": 2,
+        "POST /api/auth/login": 1,
+        "GET /api/photos/fixture": 1,
+        "GET /api/ws": 1,
+        "POST /api/provisioning/wifi/confirm": 1
+      },
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [
+        "TLSv1.3"
+      ],
+      "tcp_connections": 3,
+      "completed_tls_handshakes": 3
+    },
+    "renewed": {
+      "requests": {
+        "GET /api/auth/status": 2,
+        "POST /api/auth/login": 1,
+        "GET /api/photos/fixture": 1,
+        "GET /api/ws": 1,
+        "POST /api/provisioning/wifi/confirm": 1
+      },
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [
+        "TLSv1.3"
+      ],
+      "tcp_connections": 3,
+      "completed_tls_handshakes": 3
+    },
+    "expired_cache": {
+      "requests": {
+        "GET /api/auth/status": 2,
+        "POST /api/auth/login": 1,
+        "GET /api/photos/fixture": 1,
+        "GET /api/ws": 1,
+        "POST /api/provisioning/wifi/confirm": 1
+      },
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [
+        "TLSv1.3"
+      ],
+      "tcp_connections": 3,
+      "completed_tls_handshakes": 3
+    },
+    "wrong_pin": {
+      "requests": {},
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [],
+      "tcp_connections": 4,
+      "completed_tls_handshakes": 0
+    },
+    "changed_key": {
+      "requests": {},
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [],
+      "tcp_connections": 4,
+      "completed_tls_handshakes": 0
+    },
+    "wrong_name": {
+      "requests": {},
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [],
+      "tcp_connections": 4,
+      "completed_tls_handshakes": 0
+    },
+    "expired": {
+      "requests": {},
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [],
+      "tcp_connections": 4,
+      "completed_tls_handshakes": 0
+    },
+    "future": {
+      "requests": {},
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [],
+      "tcp_connections": 4,
+      "completed_tls_handshakes": 0
+    },
+    "bad_signature": {
+      "requests": {},
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [],
+      "tcp_connections": 4,
+      "completed_tls_handshakes": 0
+    },
+    "redirect_http": {
+      "requests": {
+        "POST /api/auth/login": 1
+      },
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [
+        "TLSv1.3"
+      ],
+      "tcp_connections": 1,
+      "completed_tls_handshakes": 1
+    },
+    "redirect_https": {
+      "requests": {
+        "POST /api/auth/login": 1
+      },
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [
+        "TLSv1.3"
+      ],
+      "tcp_connections": 1,
+      "completed_tls_handshakes": 1
+    },
+    "redirect_destination": {
+      "requests": {},
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [],
+      "tcp_connections": 0,
+      "completed_tls_handshakes": 0
+    },
+    "http": {
+      "requests": {},
+      "invalid_owner": 0,
+      "invalid_payload": 0,
+      "tls_versions": [],
+      "tcp_connections": 0,
+      "completed_tls_handshakes": 0
+    }
+  }
+}

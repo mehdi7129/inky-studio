@@ -1,57 +1,67 @@
-# Inky Studio — photo service
+# Inky Studio — Backend
 
-The Python/FastAPI service runs on the frame. It receives photos, maintains their queue/history and schedule, and controls display operations. The React web interface is retained for the legacy installation; the current InkyOS/Imager path is used with the native iPhone app.
+FastAPI service that drives the Inky display and serves the React frontend.
 
-## Select the right source and runtime
+## Current frame service
 
-| Runtime | Source / installation | Connection and updates |
-|---|---|---|
-| Legacy web/password service | Implementation retained on `main` | Local HTTP port 8000; legacy installer and updater |
-| Imager-configured LAN frame | [InkyOS](https://github.com/mehdi7129/inkyOS) image, prepared with [inkyImager](https://github.com/mehdi7129/inkyImager) | HTTPS port 8443 and QR-bound identity; maintenance follows InkyOS |
-| LAN photo-sharing candidate | [release/backend-lan-photo-sharing-20261023](https://github.com/mehdi7129/inky-studio/tree/release/backend-lan-photo-sharing-20261023), source `716104b1` | Tested/packaged, **not yet installed on the current SD** |
+The current LAN service is0.5.0rc2 from716104. It is included in the
+[generic InkyOS prerelease](https://github.com/mehdi7129/inkyOS/releases/tag/2026.10.29-rc1),
+with inky2.5.0 and the explicit AC073 profile. The maintainer's existing frame was
+updated25/10 and photo sharing is confirmed; the new generic image's first
+physical boot is a separate pending qualification. See [IMAGER-LAN](../docs/IMAGER-LAN.md)
+and [current provenance](../docs/releases/ios-v1.0.0-build19.json). The hardware
+migration notes below retain their original diagnostic scope; old2.3 TEST images
+and other screen families are not the current reference installation.
 
-The source branches are separate from `main`. The existing physical LAN installation uses `b75bf1e7`; iPhone beta 16 was reported working with it. Beta 17 is available through internal TestFlight and remains compatible while the service update is pending.
-
-See the [ecosystem checkpoint](../docs/ECOSYSTEM.md) and the candidate's [LAN contract](https://github.com/mehdi7129/inky-studio/blob/release/backend-lan-photo-sharing-20261023/docs/IMAGER-LAN.md).
-
-## LAN photo access and sharing
-
-The explicit Imager/LAN runtime serves photo access over HTTPS on port **8443**. It does not use the legacy HTTP listener for this flow. InkyOS supplies system/hardware configuration and the frame identity; inkyImager prepares the card and network configuration.
-
-The initial QR gives a phone a `media` photo credential, not an administrator role. In the LAN sharing candidate, validated session/claim replies advertise the Boolean `can_invite`. Each authorized member can create a short-lived, single-use photo invitation and cancel its own invitation. The recipient remains `media` and receives a separate credential. The issuer is validated again at claim time.
-
-Wi-Fi configuration, software updates and device administration remain outside the photo member's authority. Outside the explicit LAN runtime, media invitation creation remains refused. The QR envelope and photo-access database schema version **1** are unchanged.
-
-The frozen candidate passed **138 focused backend tests**, including HTTPS A → B → C sharing, a photo operation by B, expiry/cancellation, administrative refusals and credential restoration after restart. A synthetic b75 → candidate → b75 → candidate check preserves the three credentials and schema. This does not claim deployment on the real card or a completed physical two-iPhone test.
-
-## Update an existing Imager/LAN card
-
-The current installation does not offer the legacy checkout/pip/sudo updater to photo members. Follow [InkyOS maintenance](https://github.com/mehdi7129/inkyOS) for its verified offline SD procedure. Source publication or a new iPhone build alone does not update the service.
-
-The prepared delta changes three Python modules and their corresponding entries in the installed package `RECORD`. Preserve all other locally installed entries, including installer metadata; do not overwrite it with the wheel's `RECORD`. Identity/TLS material, Wi-Fi configuration, device credentials, database and photos must remain intact. No database migration or re-pairing is part of this candidate.
-
-## Legacy local development
-
-These commands are for the development/legacy service in the selected checkout, not an installation recipe for an existing Imager/LAN SD:
+## Run locally (Mac/dev)
 
 ```bash
 cd server
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-inky-studio-server
+INKY_STUDIO_DISPLAY_MODE=mock inky-studio-server
 ```
 
-The local development endpoint is `http://localhost:8000/api/health`. A successful health response proves reachability, not physical display completion.
+Then open http://localhost:8000/api/health — the response includes `status: "ok"`
+and the server version. This indicates service availability, not panel health.
 
-Off-Pi development uses a mock display. On a Raspberry, the optional `.[pi]` dependencies provide the real driver, but auto-detection or a test suite does not qualify every panel/Pi combination. Use InkyOS's admitted hardware profile for the image installation.
+`INKY_STUDIO_DISPLAY_MODE=auto` (default) selects hardware on Linux and a **mock**
+elsewhere. `mock` explicitly prevents hardware imports/access on every platform.
+`hardware` never turns an initialization/refresh failure into simulated success.
+
+## Run on the Raspberry Pi
+
+```bash
+pip install -e ".[pi]"
+```
+
+This installs the pinned Pimoroni `inky` driver. The installer selects
+`INKY_STUDIO_DISPLAY_MODE=hardware`. Autodetection selects a driver; it does not
+establish physical qualification. This source candidate pins **2.5.0** and has
+separate BUSY contracts for AC073, UC8159 and the three Spectra families.
+The existing 2.3.0 TEST payload is a distinct artifact. A new native dependency
+closure and physical qualification are required before deployment; see
+[the migration contract](../docs/inkyos/DISPLAY-DRIVER-250.md).
+
+Hardware errors remain latched until an operator has checked the frame and
+restarted the service. `/api/state`, `/api/display`, uploads and display actions
+then return **503** with a French `detail` and a stable error `code`; queue and
+history are not acknowledged as successfully displayed. Authenticated operators
+can still read `/api/display/status`, including during a refresh.
+
+The reviewed 800×480 / variant 20 / raw color 4 bench additionally requires
+`INKY_STUDIO_DISPLAY_PROFILE=ac073-800x480`. Color 4 remains uninterpreted; there
+is no EEPROM write or driver override. See the [candidate contract](../docs/inkyos/HARDWARE-CANDIDATE.md)
+for scope, diagnostics and physical qualification limits.
 
 ## Tests
 
 ```bash
-cd server
-ruff check .
+pip download --no-deps --require-hashes -r tests/fixtures/inky_250_requirement.txt -d .test-wheels
 pytest
 ```
 
-Tests use temporary/synthetic state. Keep real credentials, pairing QRs, signed packages, SD images and runtime databases out of Git. Preserve dated audit reports as historical evidence rather than rewriting their original results.
+Install `.[dev]` first. The driver tests load the SHA-256/RECORD-verified official
+wheel from this cache, with real NumPy/Pillow and simulated GPIO/SPI ports.
+Pytest does not download dependencies or touch hardware.

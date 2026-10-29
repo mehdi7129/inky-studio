@@ -12,10 +12,11 @@ import pytest
 from inky_web import auth
 
 
-def _generate_launcher(tmp_path, install_dir, data_dir):
+def _generate_launcher(tmp_path, install_dir, data_dir, *, repo_slug=None):
     root = Path(__file__).resolve().parents[2]
     result = subprocess.run(
         ["bash", str(root / "scripts/inky-studio-launcher"), "--print", str(install_dir), str(data_dir)],
+        env=_launcher_environment(**({"INKY_STUDIO_REPO_SLUG": repo_slug} if repo_slug is not None else {})),
         text=True, capture_output=True, check=True,
     )
     launcher = tmp_path / "inky-studio"
@@ -26,7 +27,7 @@ def _generate_launcher(tmp_path, install_dir, data_dir):
 
 def _launcher_environment(**overrides):
     environment = {key: value for key, value in os.environ.items()
-                   if key not in {"INKY_STUDIO_INSTALL_DIR", "INKY_STUDIO_DATA_DIR"}}
+                   if key not in {"INKY_STUDIO_INSTALL_DIR", "INKY_STUDIO_DATA_DIR", "INKY_STUDIO_REPO_SLUG"}}
     return {**environment, "TEST_REAL_PYTHON": sys.executable, **overrides}
 
 
@@ -102,6 +103,54 @@ def test_stable_launcher_keeps_environment_overrides_and_reports_missing_payload
     assert not default_data.exists()
 
 
+@pytest.mark.parametrize("configured", [None, "", "release-owner/.github"])
+def test_launcher_captures_explicit_repository_and_preserves_empty_runtime_override(tmp_path, configured):
+    install_dir, data_dir = tmp_path / "app", tmp_path / "data"
+    cli = install_dir / "scripts/inky-studio-cli"
+    cli.parent.mkdir(parents=True)
+    cli.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$INKY_STUDIO_REPO_SLUG"\n')
+    launcher = _generate_launcher(tmp_path, install_dir, data_dir, repo_slug=configured)
+    malicious = 'owner/$(touch EXPANDED)`touch BACKTICKED`";touch INJECTED\n'
+    for override, expected in ((None, configured or ""), ("override/repo", "override/repo"), ("", ""), (malicious, malicious)):
+        environment = _launcher_environment(**({"INKY_STUDIO_REPO_SLUG": override} if override is not None else {}))
+        run = subprocess.run(["bash", str(launcher), "update"], env=environment, cwd=tmp_path,
+                             text=True, capture_output=True, check=True)
+        assert run.stdout == expected + "\n"
+    assert not (tmp_path / "EXPANDED").exists()
+    assert not (tmp_path / "BACKTICKED").exists()
+    assert not (tmp_path / "INJECTED").exists()
+
+
+@pytest.mark.parametrize("repo_slug", [
+    "owner/$(touch EXPANDED)", "owner/`touch BACKTICKED`", 'owner/repo";touch INJECTED',
+    "owner/repo\n", "owner/répo", "owner/../repo", "owner_name/repo",
+    "own--er/repo", "owner/.", "owner/..", "o" * 40 + "/repo", "owner/" + "r" * 101,
+])
+def test_launcher_generator_refuses_invalid_repository_before_render_or_install(tmp_path, repo_slug):
+    root = Path(__file__).resolve().parents[2]
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    command_log = tmp_path / "external-command"
+    for command in ("sudo", "mktemp", "install"):
+        script = fake_bin / command
+        script.write_text('#!/usr/bin/env bash\nprintf "unexpected\\n" > "$TEST_COMMAND_LOG"\nexit 99\n')
+        script.chmod(0o755)
+    for mode in ("--print", "--install"):
+        result = subprocess.run(
+            ["bash", str(root / "scripts/inky-studio-launcher"), mode, str(tmp_path / "app"), str(tmp_path / "data")],
+            cwd=tmp_path, text=True, capture_output=True,
+            env=_launcher_environment(INKY_STUDIO_REPO_SLUG=repo_slug,
+                                      PATH=f"{fake_bin}:{os.environ['PATH']}", TEST_COMMAND_LOG=str(command_log)),
+        )
+        assert result.returncode == 2
+        assert "INKY_STUDIO_REPO_SLUG" in result.stderr
+        assert result.stdout == ""
+    assert not command_log.exists()
+    assert not (tmp_path / "EXPANDED").exists()
+    assert not (tmp_path / "BACKTICKED").exists()
+    assert not (tmp_path / "INJECTED").exists()
+
+
 def test_launcher_install_uses_root_owned_permissions_without_running_cli_or_services(tmp_path):
     root = Path(__file__).resolve().parents[2]
     install_dir = tmp_path / "install 'quoted'"
@@ -165,14 +214,17 @@ def test_update_uses_existing_module(tmp_path):
         env={**os.environ, "INKY_STUDIO_INSTALL_DIR": str(tmp_path)},
         text=True, capture_output=True, check=True,
     )
-    assert result.stdout.splitlines() == ["-m", "inky_web.services.updater"]
+    assert result.stdout.splitlines() == [
+        "-m", "inky_web.provisioning.factory_runtime", "--check-legacy",
+        "-m", "inky_web.services.updater",
+    ]
 
 
 def test_failed_welcome_restarts_service(tmp_path):
     root = Path(__file__).resolve().parents[2]
     python = tmp_path / "server/.venv/bin/python"
     python.parent.mkdir(parents=True)
-    python.write_text("#!/bin/sh\nexit 7\n")
+    python.write_text('#!/bin/sh\nif [ "$2" = "inky_web.provisioning.factory_runtime" ]; then exit 0; fi\nexit 7\n')
     python.chmod(0o755)
     sudo = tmp_path / "sudo"
     sudo.write_text('#!/bin/sh\nprintf "%s\\n" "$*"\n')
@@ -214,7 +266,7 @@ def _password_cli(tmp_path, command, *, fail_python=False):
     python = tmp_path / "install/server/.venv/bin/python"
     python.parent.mkdir(parents=True, exist_ok=True)
     if fail_python:
-        python.write_text("#!/bin/sh\nexit 7\n")
+        python.write_text('#!/bin/sh\nif [ "$2" = "inky_web.provisioning.factory_runtime" ]; then exit 0; fi\nexit 7\n')
         python.chmod(0o755)
     else:
         python.write_text('#!/bin/sh\nexec "$TEST_REAL_PYTHON" "$@"\n')
@@ -286,3 +338,46 @@ def test_failed_reset_cli_keeps_credentials_and_restarts_service(tmp_path):
     assert (tmp_path / "service.log").read_text().splitlines() == [
         "systemctl stop inky-studio.service", "systemctl start inky-studio.service",
     ]
+
+
+@pytest.mark.parametrize("command", [
+    "welcome", "reset-password", "password", "start", "stop", "restart", "update",
+])
+def test_factory_cli_preflight_refuses_before_service_or_credential_effects(tmp_path, monkeypatch, command):
+    initial = auth.reset_credentials(tmp_path / "data")
+    before = initial.path.read_bytes()
+    # Requiring factory with no installed marker is a configuration refusal.
+    # Exercise the real module through the stable launcher, not a fake guard.
+    monkeypatch.setenv("INKY_STUDIO_FACTORY_REQUIRED", "1")
+    result = _password_cli(tmp_path, command)
+    assert result.returncode == 78
+    assert "factory_runtime_refused" in result.stdout + result.stderr
+    assert initial.bootstrap_password not in result.stdout + result.stderr
+    assert initial.path.read_bytes() == before
+    assert not (tmp_path / "service.log").exists()
+    assert not (tmp_path / "data/provisioning").exists()
+
+
+@pytest.mark.parametrize("command", ["start", "stop", "restart"])
+def test_legacy_cli_service_lifecycle_is_preserved(tmp_path, command):
+    result = _password_cli(tmp_path, command)
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "service.log").read_text().splitlines() == [
+        f"systemctl {command} inky-studio.service",
+    ]
+    assert not (tmp_path / "data").exists()
+
+
+@pytest.mark.parametrize("command", ["start", "stop", "restart", "update"])
+@pytest.mark.parametrize("writer_value", ["", "private-handoff"])
+def test_partial_writer_handoff_refuses_cli_before_service_or_update(
+    tmp_path, monkeypatch, command, writer_value,
+):
+    monkeypatch.delenv("INKY_STUDIO_FACTORY_REQUIRED", raising=False)
+    monkeypatch.setenv("INKYOS_WRITER_LEASE_FD", writer_value)
+    result = _password_cli(tmp_path, command)
+    assert result.returncode == 78
+    assert result.stderr.strip() == "factory_runtime_refused"
+    assert not result.stdout
+    assert not (tmp_path / "service.log").exists()
+    assert not (tmp_path / "data").exists()

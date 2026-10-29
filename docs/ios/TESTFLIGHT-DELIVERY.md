@@ -1,8 +1,11 @@
 # Private TestFlight delivery
 
-> **Current checkpoint — 23 October 2026:** **1.0.0 (17)** is validated and available in internal TestFlight, with French notes saved and the existing group association confirmed. Source: [iOS beta 17](https://github.com/mehdi7129/inky-studio/tree/release/ios-1.0.0-build17). Build 16 was reported working on the physical setup. The sharing service is tested/packaged but **not yet installed on the current SD**; actual multi-iPhone sharing remains to be qualified. See the [ecosystem checkpoint](../ECOSYSTEM.md).
->
-> The dated entries below are historical delivery evidence. They do not describe the current app's QR flow or imply a public App Store release. Signed archives, real pairing QRs and private deployment receipts are not repository downloads.
+> **Current checkpoint — 29 October2026:** iPhone1.0.0(19), source65e626e,
+> is available in internal TestFlight. Saved QR access and sharing work on the
+> reference frame according to the maintainer. Service716104 was installed25/10.
+> See the [ecosystem](../ECOSYSTEM.md) and [release notes](../releases/ios-v1.0.0-build19.md).
+> No public AppStore submission/release or public IPA is included. Dated sections
+> below are historical evidence, not current pairing or installation instructions.
 
 ## Historical delivery log — September 2026
 
