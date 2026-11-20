@@ -128,15 +128,14 @@ def _draw_centered(draw, text, y, font, width, fill, *, x=0):
     return y + text_height
 
 
-def _login_qr(payload: str, max_size: int) -> Image.Image | None:
+def _login_qr(payload: str, max_size: int, *, min_scale: int = 3) -> Image.Image | None:
     qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M,
                        border=4, box_size=1)
     qr.add_data(payload)
     qr.make(fit=True)
     matrix = qr.make_image(fill_color="black", back_color="white").convert("RGB")
     scale = max_size // matrix.width
-    # Small panels retain manual login rather than render an unreadable QR.
-    if scale < 3:
+    if scale < min_scale:
         return None
     return matrix.resize((matrix.width * scale, matrix.height * scale),
                          Image.Resampling.NEAREST)

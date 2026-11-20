@@ -1,4 +1,4 @@
-"""Narrow, temporary bulk DATA transport for the exact AC073 inky 2.5.0.
+"""Narrow, temporary bulk DATA transport for the exact AC073 driver.
 
 The caller owns and serializes the complete show, including while spidev 3.8
 releases the GIL. Packing, commands, GPIO acquisition and BUSY remain upstream.
@@ -42,7 +42,7 @@ def _pinned_driver(impl: Any) -> bool:
         module = sys.modules.get(_MODULE)
         if (cls.__module__ != _MODULE or not isinstance(module, ModuleType)
                 or vars(module).get("Inky") is not cls or cls.__bases__ != (object,)
-                or version("inky") != "2.5.0"
+                or version("inky") not in {"2.5.0", "2.6.0"}
                 or type(impl.width) is not int or type(impl.height) is not int
                 or (impl.width, impl.height) != (800, 480)):
             return False

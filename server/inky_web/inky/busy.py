@@ -1,4 +1,4 @@
-"""Observe the distinct BUSY contracts in the pinned Pimoroni inky 2.5.0.
+"""Observe the distinct BUSY contracts in the pinned Pimoroni inky wheels.
 
 The caller qualifies module/version/dimensions and serializes each instance.
 GPIO reads, waits, clocks and sleeps remain upstream's. A returned matching
@@ -26,7 +26,19 @@ CONTRACTS = {
     "el133uf1": (("_busy_wait", "setup", 0.3), ("_busy_wait", "power_on", 0.2),
                  ("_refresh_wait", "refresh", 65.0), ("_busy_wait", "power_off", 0.2)),
 }
+_EL133_260_CONTRACT = (
+    ("_busy_wait", "setup", 1.0), ("_busy_wait", "power_on", 1.0),
+    ("_refresh_wait", "refresh", 65.0), ("_busy_wait", "power_off", 1.0),
+)
 _TIMEOUTS = {"edge_timeout", "level_timeout", "refresh_assert_timeout", "refresh_timeout"}
+
+
+def _contract(family: str, driver_version: str):
+    if family not in CONTRACTS or driver_version not in {"2.5.0", "2.6.0"}:
+        raise ValueError("Unknown qualified BUSY contract")
+    if family == "el133uf1" and driver_version == "2.6.0":
+        return _EL133_260_CONTRACT
+    return CONTRACTS[family]
 
 
 def _restore_attribute(instance: Any, name: str, previous: Any) -> None:
@@ -68,6 +80,7 @@ def completed_ac073_waits(observations: list[dict[str, Any]]) -> bool:
 
 def validate_observations(
     observations: list[dict[str, Any]], family: str, *, allow_ac073_timed_wait: bool = False,
+    driver_version: str = "2.5.0",
 ) -> None:
     """Validate BUSY evidence, or the explicitly selected AC073 driver contract."""
     if any(item.get("outcome") in _TIMEOUTS for item in observations):
@@ -76,7 +89,7 @@ def validate_observations(
         if family != "ac073" or not completed_ac073_waits(observations):
             _raise_busy_failure(False)
         return
-    expected = CONTRACTS[family]
+    expected = _contract(family, driver_version)
     if ([(item.get("phase"), item.get("timeout")) for item in observations]
             != [(phase, timeout) for _, phase, timeout in expected]):
         _raise_busy_failure(False)
@@ -116,7 +129,7 @@ class _GPIOObservation:
             self.invalid = True
         return value
 
-    def polling_outcome(self, family: str, method: str) -> str:
+    def polling_outcome(self, family: str, method: str, driver_version: str) -> str:
         if self.invalid or self.first is _MISSING:
             return "unrecognized"
         if method == "_refresh_wait":
@@ -125,6 +138,11 @@ class _GPIOObservation:
             if self.active_after_inactive and self.last == self.active:
                 return "refresh_completed"
             return "refresh_timeout"
+        if family == "el133uf1" and driver_version == "2.6.0":
+            # The updated readiness wait uses active-low BUSY at every stage.
+            if self.last != self.active:
+                return "level_timeout"
+            return "level_released" if self.seen_inactive else "ready_already"
         if self.first == self.active:
             return "held_high_unverified"
         if family == "el133uf1":
@@ -172,17 +190,17 @@ class BusyObserver:
     waits fully, then blocks POF if LOW→HIGH refresh completion is unproved.
     """
 
-    def __init__(self, impl: Any, family: str = "ac073") -> None:
-        if family not in CONTRACTS:
-            raise ValueError("Unknown qualified BUSY contract")
+    def __init__(self, impl: Any, family: str = "ac073", *, driver_version: str = "2.5.0") -> None:
+        self._contract = _contract(family, driver_version)
         self._impl = impl
         self.family = family
+        self.driver_version = driver_version
         self.observations: list[dict[str, Any]] = []
 
     def run_show(self) -> list[dict[str, Any]]:
         self.observations = []
         impl = self._impl
-        originals = {name: getattr(impl, name) for name, _, _ in CONTRACTS[self.family]}
+        originals = {name: getattr(impl, name) for name, _, _ in self._contract}
         previous = {name: vars(impl).get(name, _MISSING) for name in originals}
         applied = []
 
@@ -195,7 +213,7 @@ class BusyObserver:
                 timeout = args[0] if args else kwargs.get("timeout", default)
                 index = len(self.observations)
                 phase = "unrecognized"
-                contract = CONTRACTS[self.family]
+                contract = self._contract
                 if index < len(contract) and (name, timeout) == (contract[index][0], contract[index][2]):
                     phase = contract[index][1]
                 observation = {"phase": phase, "sequence": index + 1, "timeout": timeout, "outcome": "unrecognized"}
@@ -221,10 +239,14 @@ class BusyObserver:
                     observation["error_type"] = type(exc).__name__
                     raise
                 else:
-                    observation["outcome"] = edge.outcome() if edge else proxy.polling_outcome(self.family, name)
+                    observation["outcome"] = (edge.outcome() if edge else
+                                              proxy.polling_outcome(self.family, name, self.driver_version))
                 finally:
                     _restore_attribute(impl, "_gpio", previous_gpio)
                 if name == "_refresh_wait" and (phase != "refresh" or observation["outcome"] != "refresh_completed"):
+                    _raise_busy_failure(observation["outcome"] in _TIMEOUTS)
+                if (name == "_busy_wait" and self.family == "el133uf1" and self.driver_version == "2.6.0"
+                        and (phase == "unrecognized" or observation["outcome"] not in {"ready_already", "level_released"})):
                     _raise_busy_failure(observation["outcome"] in _TIMEOUTS)
                 return result
 

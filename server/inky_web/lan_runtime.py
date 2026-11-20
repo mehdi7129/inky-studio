@@ -21,6 +21,7 @@ from uuid import uuid4
 from PIL import Image, ImageDraw
 
 from inky_web.db import data_dir
+from inky_web.inky.errors import DisplayUnavailableError
 from inky_web.photo_access import AccessError, token, uuid
 from inky_web.services import history
 from inky_web.welcome import _draw_centered, _fit_font, _login_qr
@@ -36,6 +37,11 @@ class LANRuntimeError(Exception):
 
     def __init__(self):
         super().__init__(self.code)
+
+
+class LANDisplayError(LANRuntimeError):
+    code = "lan_display_unavailable"
+    exit_status = 79
 
 
 def validate_lan_origin(raw: str) -> str:
@@ -79,8 +85,12 @@ def invitation_payload(identity, origin: str, invitation_id: str, invitation_tok
 
 
 def render_lan_welcome(width: int, height: int, payload: str) -> Image.Image:
-    """A light Bento welcome with a large QR, and no IP/password/SSID cards."""
-    if type(width) is not int or type(height) is not int or width < 600 or height < 400:
+    """Render the same authenticated invitation at the panel's native size."""
+    if type(width) is not int or type(height) is not int:
+        raise LANRuntimeError()
+    if (width, height) in {(212, 104), (250, 122), (400, 300)}:
+        return _render_compact_lan_welcome(width, height, payload)
+    if width < 600 or height < 400:
         raise LANRuntimeError()
     image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
@@ -115,6 +125,28 @@ def render_lan_welcome(width: int, height: int, payload: str) -> Image.Image:
             font = _fit_font(draw, text, height * (0.075 if bold else 0.049),
                              text_width - 2 * gap, bold=bold)
             _draw_centered(draw, text, y, font, text_width, "black", x=text_x)
+        y += line_height
+    return image
+
+
+def _render_compact_lan_welcome(width: int, height: int, payload: str) -> Image.Image:
+    margin = max(6, height // 30)
+    # The pHAT cannot fit two pixels per module with the current authenticated
+    # envelope. Keep every module, the quiet zone and exact integer scaling.
+    qr = _login_qr(payload, height - 2 * margin, min_scale=3 if height == 300 else 1)
+    if qr is None:
+        raise LANRuntimeError()
+    image = Image.new("RGB", (width, height), "white")
+    image.paste(qr, (margin, (height - qr.height) // 2))
+    draw = ImageDraw.Draw(image)
+    text_x = qr.width + 2 * margin
+    text_width = width - text_x - margin
+    lines = ("Inky Studio", "Scannez ce QR", "avec votre iPhone")
+    line_height = max(14, height // 11)
+    y = (height - line_height * len(lines)) // 2
+    for index, line in enumerate(lines):
+        font = _fit_font(draw, line, line_height, text_width, bold=index == 0)
+        _draw_centered(draw, line, y, font, text_width, "black", x=text_x)
         y += line_height
     return image
 
@@ -187,6 +219,10 @@ class LANPhotoRuntime:
                 self._tasks.append(asyncio.create_task(self._invitation_loop()))
             elif not self._stop.is_set():
                 self._clear_invitation()
+        except DisplayUnavailableError as error:
+            await self.stop()
+            logger.error("Initial PHOTO screen failed: %s", error.code)
+            raise LANDisplayError() from None
         except BaseException as error:
             await self.stop()
             if isinstance(error, asyncio.CancelledError):

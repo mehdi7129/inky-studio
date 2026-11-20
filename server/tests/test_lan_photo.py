@@ -10,10 +10,13 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
+import qrcode
 from PIL import Image
 
 from inky_web import lan_runtime
+from inky_web.inky.errors import DisplayUnavailableError
 from inky_web.lan_runtime import (
+    LANDisplayError,
     LANPhotoRuntime,
     LANRuntimeError,
     invitation_payload,
@@ -406,6 +409,50 @@ async def test_lan_start_renders_one_private_qr_and_stop_does_not_repaint(runtim
     assert frame.runtime._payload is None
     assert frame.runtime._invitation_token is None
     assert all(task.done() for task in frame.runtime._tasks)
+
+
+@pytest.mark.parametrize(("width", "height", "module_scale"), [
+    (212, 104, 1), (250, 122, 1), (400, 300, 3),
+])
+async def test_compact_panels_preserve_every_invitation_module_and_the_quiet_zone(
+    runtime_frame, monkeypatch, width, height, module_scale,
+):
+    frame = runtime_frame
+    monkeypatch.setattr(frame.display, "info", lambda: {"width": width, "height": height})
+    await frame.runtime.start()
+    image, = frame.display.images
+    assert image.size == (width, height)
+    raw = frame.runtime._payload
+    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, border=4, box_size=module_scale)
+    qr.add_data(raw)
+    qr.make(fit=True)
+    expected = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+    mark_x = 6 if width < 300 else 10
+    mark_y = (height - expected.height) // 2
+    actual = image.crop((mark_x, mark_y, mark_x + expected.width, mark_y + expected.height))
+    assert actual.tobytes() == expected.tobytes()
+    invite = json.loads(raw)
+    frame.store.claim(**claim({"invitation_id": invite["i"], "invitation_token": invite["t"]}))
+    assert await frame.runtime._maintenance_once() is False
+
+
+async def test_panel_failure_logs_safe_code_and_revokes_unsent_invitation(runtime_frame, monkeypatch, caplog):
+    frame = runtime_frame
+
+    def failed_panel():
+        raise DisplayUnavailableError("Private driver details", "display_busy_timeout")
+
+    monkeypatch.setattr(frame.display, "require_available", failed_panel)
+    with pytest.raises(LANDisplayError) as caught:
+        await frame.runtime.start()
+    assert caught.value.exit_status == 79
+    assert frame.runtime._payload is None
+    assert frame.display.images == []
+    assert not frame.store.lan_bootstrap_available()  # This process already minted once.
+    revoked, = rows(frame.store, "invitations")
+    assert revoked["revoked"] == 1
+    assert "display_busy_timeout" in caplog.text
+    assert "Private driver details" not in caplog.text
 
 
 async def test_renewal_keeps_printed_qr_and_stops_after_claim(runtime_frame):

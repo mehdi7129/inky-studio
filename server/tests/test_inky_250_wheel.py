@@ -32,6 +32,7 @@ from tests.fixtures import inky_busy_250
 SERVER = Path(__file__).resolve().parents[1]
 PROVENANCE = json.loads((SERVER / "tests/fixtures/inky_250_provenance.json").read_text())
 WHEEL_SHA256 = "8589ad753b094ec5da482c090f88d5e8560457f15502221517993dc01b021573"
+WHEEL_260_SHA256 = "3fd163e937f14f973e593a69e9558eba6fe666d5e46a17e7a82ff30849d7d009"
 
 # EEPROM variant, logical width/height, real driver module, palette size.
 PANELS = [
@@ -59,19 +60,23 @@ SEVEN_RGB = [(0, 0, 0), (255, 255, 255), (0, 255, 0),
              (0, 0, 255), (255, 0, 0), (255, 255, 0), (255, 140, 0)]
 
 
-def _verified_wheel() -> Path:
-    wheel = SERVER / ".test-wheels" / PROVENANCE["wheel"]
+def _verified_wheel(version="2.5.0") -> Path:
+    is_legacy = version == "2.5.0"
+    wheel_name = PROVENANCE["wheel"] if is_legacy else "inky-2.6.0-py3-none-any.whl"
+    wheel_hash = WHEEL_SHA256 if is_legacy else WHEEL_260_SHA256
+    requirement = "inky_250_requirement.txt" if is_legacy else "inky_260_requirement.txt"
+    wheel = SERVER / ".test-wheels" / wheel_name
     if not wheel.is_file():
         pytest.fail(
             "Missing Inky test wheel. Before pytest, run from server: "
             "python -m pip download --no-deps --require-hashes "
-            "-r tests/fixtures/inky_250_requirement.txt -d .test-wheels"
+            f"-r tests/fixtures/{requirement} -d .test-wheels"
         )
     assert PROVENANCE["sha256"] == WHEEL_SHA256
-    assert hashlib.sha256(wheel.read_bytes()).hexdigest() == WHEEL_SHA256
+    assert hashlib.sha256(wheel.read_bytes()).hexdigest() == wheel_hash
     with zipfile.ZipFile(wheel) as archive:
         records = list(csv.reader(io.StringIO(archive.read(
-            "inky-2.5.0.dist-info/RECORD").decode())))
+            f"inky-{version}.dist-info/RECORD").decode())))
         assert {name for name, _, _ in records} == set(archive.namelist())
         for name, digest, size in records:
             if name.endswith("/RECORD"):
@@ -81,8 +86,9 @@ def _verified_wheel() -> Path:
             expected = base64.urlsafe_b64encode(hashlib.sha256(content).digest()).rstrip(b"=").decode()
             assert digest == f"sha256={expected}", name
             assert int(size) == len(content), name
-        for name, expected in PROVENANCE["module_sha256"].items():
-            assert hashlib.sha256(archive.read(name)).hexdigest() == expected, name
+        if is_legacy:
+            for name, expected in PROVENANCE["module_sha256"].items():
+                assert hashlib.sha256(archive.read(name)).hexdigest() == expected, name
     return wheel
 
 
@@ -122,8 +128,8 @@ def _legacy_namespace_registry():
 
 
 @contextmanager
-def _load_upstream(monkeypatch):
-    wheel = _verified_wheel()
+def _load_upstream(monkeypatch, version="2.5.0"):
+    wheel = _verified_wheel(version)
     namespaces = _legacy_namespace_registry()
     namespace_snapshot = ({name: list(children) for name, children in namespaces.items()}
                           if namespaces is not None else None)
@@ -170,7 +176,7 @@ def _load_upstream(monkeypatch):
         package = importlib.import_module("inky")
         auto = importlib.import_module("inky.auto")
         eeprom = importlib.import_module("inky.eeprom")
-        assert package.__version__ == "2.5.0"
+        assert package.__version__ == version
         for name, module in sys.modules.items():
             if name == "inky" or name.startswith("inky."):
                 assert str(module.__file__).startswith(f"{wheel}/"), name
