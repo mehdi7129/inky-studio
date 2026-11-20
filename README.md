@@ -12,8 +12,8 @@ interval display schedules. Photo transfer and access sharing use your local net
 
 | Component | Current delivery | Purpose |
 |---|---|---|
-| [inkyImager 0.1.2](https://github.com/mehdi7129/inkyImager/releases/tag/v0.1.2) | Signed/notarized Mac app, macOS14+ on Apple Silicon | Prepare a new SD card and its Wi-Fi configuration. |
-| [InkyOS 2026.10.29-rc1](https://github.com/mehdi7129/inkyOS/releases/tag/2026.10.29-rc1) | Clean generic image, **prerelease** | Frame system and compatible PHOTO service. |
+| [inkyImager 0.1.4](https://github.com/mehdi7129/inkyImager/releases/tag/v0.1.4) | Notarized Universal DMG, macOS 14+ on Intel and Apple Silicon | Prepare a new SD card and its Wi-Fi configuration. |
+| [InkyOS 2026.11.20-rc2](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.20-rc2) | Clean generic image, **prerelease** | Frame system with automatic Pimoroni panel detection and the compatible PHOTO service. |
 | [Inky Studio iOS1.0.0 (19)](https://github.com/mehdi7129/inky-studio/releases/tag/ios-v1.0.0-build19) | Source checkpoint and existing **internal TestFlight** beta | iPhone photo app. Public App Store review is still being prepared. |
 
 The GitHub release does **not** provide an installable iPhone IPA or public
@@ -27,6 +27,9 @@ panel SKU is not certified; do not assume every similarly named revision works.
 The maintainer reports successful photo use and QR sharing over several days.
 The **new generic image's first physical boot is not yet observed**; existing
 frame acceptance and this new artifact's software checks are separate evidence.
+The new image covers Impression, Spectra 6, pHAT and wHAT variants in software
+and keeps the existing PHOTO invitation format. See the [display compatibility
+matrix](https://github.com/mehdi7129/inkyOS/blob/main/docs/DISPLAY-COMPATIBILITY.md).
 See each project's release notes before preparing a new card. A fresh flash erases
 that card; do not reflash an already-working frame just to update the iPhone app.
 
@@ -63,6 +66,7 @@ frozen source branch before building the delivered candidate. The iPhone and ser
 |---|---|
 | iPhone build19 | [`65e626e8760bc956e17a118f2a18175b184a6f3c`](https://github.com/mehdi7129/inky-studio/tree/release/ios-1.0.0-build19) |
 | PHOTO service0.5.0rc2 | [`716104b130d34d1973001e78f15e25989d4c2e76`](https://github.com/mehdi7129/inky-studio/tree/release/backend-lan-photo-sharing-20261023) |
+| PHOTO service 0.5.0rc3 for InkyOS | [`imager-backend-0.5.0rc3`](https://github.com/mehdi7129/inky-studio/releases/tag/imager-backend-0.5.0rc3) |
 
 See [release provenance](docs/releases/ios-v1.0.0-build19.json), the
 [ecosystem guide](docs/ECOSYSTEM.md), and the [release notes](docs/releases/ios-v1.0.0-build19.md).
