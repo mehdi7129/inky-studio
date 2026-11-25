@@ -1,49 +1,29 @@
-# Inky ecosystem — 29 October 2026
+# Inky ecosystem
 
-| Project | Delivery and ownership |
+| Project | What to use |
 |---|---|
-| [inkyImager0.1.2](https://github.com/mehdi7129/inkyImager/releases/tag/v0.1.2) | Mac SD writer, DeveloperID signed/notarized; macOS14+, AppleSilicon. |
-| [InkyOS2026.10.29-rc1](https://github.com/mehdi7129/inkyOS/releases/tag/2026.10.29-rc1) | Prerelease clean system image, Wi-Fi import, display profile and SD operations. |
-| [Inky Studio1.0.0(19)](https://github.com/mehdi7129/inky-studio/releases/tag/ios-v1.0.0-build19) | iPhone sources and existing internal TestFlight beta; PHOTO service0.5.0rc2. No public AppStore release. |
+| [Inky Studio](https://github.com/mehdi7129/inky-studio) | SwiftUI iPhone app and local PHOTO service. [iOS build and fork guide](ios/CURRENT-RELEASE.md) |
+| [InkyOS](https://github.com/mehdi7129/inkyOS) | Raspberry Pi image builder, first boot, Wi-Fi and e-paper integration. [Generic image 2026.11.20-rc2](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.20-rc2) |
+| [inkyImager](https://github.com/mehdi7129/inkyImager) | macOS 14+ SD writer. [Universal DMG 0.1.4](https://github.com/mehdi7129/inkyImager/releases/download/v0.1.4/inkyImager-0.1.4-Universal.dmg) |
 
-The reference frame's service716104 was installed on25 October with its identity,
-photos, access and Wi-Fi preserved. QR sharing then succeeded on two iPhones;
-the maintainer accepted functional behavior on29 October after several days.
-The clean generic image is a separate new artifact. Its first physical boot is
-not observed, even though software/image checks and notarized Mac packaging pass.
-Keep it labeled as a prerelease and preserve the working frame.
+inkyImager 0.1.4 contains InkyOS 2026.11.20-rc2 with PHOTO service 0.5.0rc3.
+Prepare a new card with inkyImager, boot the frame and scan its QR on an iPhone
+on the same network. Review the [display compatibility matrix](https://github.com/mehdi7129/inkyOS/blob/main/docs/DISPLAY-COMPATIBILITY.md)
+before installing on a new screen. The generic image is a prerelease.
 
-## Frozen sources
+## Source versions
 
-- iPhone: `65e626e8760bc956e17a118f2a18175b184a6f3c`, branch
-  [release/ios-1.0.0-build19](https://github.com/mehdi7129/inky-studio/tree/release/ios-1.0.0-build19).
-- PHOTO service: `716104b130d34d1973001e78f15e25989d4c2e76`, branch
-  [release/backend-lan-photo-sharing-20261023](https://github.com/mehdi7129/inky-studio/tree/release/backend-lan-photo-sharing-20261023).
-- Image OS code: `a70197adcc9168bf826d9c6ac7376d23056b23fe`.
-- Mac compiled code: `d434d5fa3ed67cb21350aca44cf56a1d7225b129`.
+| Component | Released source | License for project code |
+|---|---|---|
+| SwiftUI app 1.0.0 (19) | [iOS source snapshot](https://github.com/mehdi7129/inky-studio/tree/ios-v1.0.0-build19/ios) with [build provenance](releases/ios-v1.0.0-build19.json) | [MIT](../LICENSE) |
+| PHOTO service 0.5.0rc3 | [Backend source snapshot](https://github.com/mehdi7129/inky-studio/tree/imager-backend-0.5.0rc3/server) | [MIT](../LICENSE) |
+| InkyOS 2026.11.20-rc2 | [Image assembly sources](https://github.com/mehdi7129/inkyOS/tree/2026.11.20-rc2) | [MIT](https://github.com/mehdi7129/inkyOS/blob/main/LICENSE) |
+| inkyImager 0.1.4 | [Mac app sources](https://github.com/mehdi7129/inkyImager/tree/v0.1.4) | [MIT](https://github.com/mehdi7129/inkyImager/blob/main/LICENSE) |
 
-The source release tag integrates the frozen iPhone and backend runtime
-subtrees. Main retains its earlier implementation and current entry-point documentation. Documentation updates do not imply that a new iOS binary was uploaded.
-Build19 remains the previously signed/delivered binary from65e626e. Read
-[the machine-readable provenance](releases/ios-v1.0.0-build19.json) for tree hashes.
+The projects use separate repositories and release tags. The iPhone app and
+the frame communicate over the PHOTO API. The Mac app embeds a pinned InkyOS
+image. You can replace the iPhone app or build your own client against a
+compatible frame without changing the Mac installer or rebuilding the OS.
 
-## Contracts and installation
-
-Use the Mac release guide for a new card. The qualified reference is PiZero2W,
-InkyImpression7.3-inch800×480 with an explicit AC073 profile, France/WPA2/2.4GHz.
-No exact panel SKU or support for every revision is claimed. The app and frame
-must communicate on the same LAN; an Internet connection does not replace it.
-
-The LAN frame advertises a pinned HTTPS PHOTO endpoint and `can_invite` capability.
-Its initial QR grants photo access; it does not manufacture owner/admin authority.
-Every authorized photo member may invite a further member on this runtime.
-Invitations are5-minute, single-use; device authorizations outlive consumed QR codes.
-See [IMAGER-LAN](https://github.com/mehdi7129/inky-studio/blob/release/backend-lan-photo-sharing-20261023/docs/IMAGER-LAN.md), [release notes](releases/ios-v1.0.0-build19.md)
-and the respective OS/Mac release pages. Legacy browser/installer paths and inactive
-factory/SoftAP/Bluetooth prototypes are distinct. Paused work is not resumed.
-
-GitHub sources, internal TestFlight availability, public AppReview, generic image
-software checks and physical qualification are separate states. No IPA, signed
-mobile archive, personalized SD image, live QR or private support receipt belongs
-in these public releases. AppReview still needs the external hardware video and
-final dossier; the production website is handled separately.
+Third-party components keep their own licenses. Follow the iOS guide for the
+pinned Mbed TLS build, and keep the upstream notices when distributing a fork.

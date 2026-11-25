@@ -3,7 +3,7 @@
 Three static French pages with local CSS and images. No JavaScript, external font,
 analytics integration, forms, or build dependencies are included.
 
-- `index.html`: product overview and private TestFlight beta status.
+- `index.html`: product overview and App Store availability.
 - `support.html`: setup, troubleshooting, and the authorized public contact.
 - `confidentialite.html`: app, Raspberry, website, and support data practices.
 

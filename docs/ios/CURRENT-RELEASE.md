@@ -5,9 +5,9 @@ Native SwiftUI companion for Inky Studio, iOS 18+. Photo transfer requires a Ras
 ## Candidate and delivery
 
 Current: **1.0.0 (19)**, source `65e626e8760bc956e17a118f2a18175b184a6f3c`,
-available in the existing internal TestFlight group. The maintainer confirms
-working photo use and QR sharing with the compatible LAN service716104.
-This source release is not an AppStore publication or public TestFlight invitation.
+selected for the public App Store submission. The maintainer confirms
+working photo use and QR sharing with the compatible LAN service.
+The public App Store version is being prepared.
 See [current release notes](../releases/ios-v1.0.0-build19.md).
 
 There is no product demo or manual frame-address/password form. Saved access
@@ -18,7 +18,7 @@ on foreground activation after local authentication without a second retry tap.
 
 ## Run the delivered source candidate
 
-Start from the candidate tag, not the older executable implementation retained on main:
+Start from the tag that matches the delivered native app.
 
 ```sh
 git clone --branch ios-v1.0.0-build19 https://github.com/mehdi7129/inky-studio.git
@@ -29,20 +29,33 @@ The frozen iPhone-only branch is also available at release/ios-1.0.0-build19.
 Use the current notes here rather than its historical delivery paragraph.
 
 
-Open `InkyStudio.xcodeproj`, choose InkyStudio and an iPhone Simulator or device. A fresh checkout needs the local TLS binary artifact:
+Open `ios/InkyStudio.xcodeproj`, choose the InkyStudio scheme and an iPhone Simulator or device. A fresh checkout needs the local TLS binary artifact.
 
 ```bash
 # Requires Xcode, CMake and Python 3.12+; downloads hash-verified upstream source.
 scripts/build-mbedtls-apple.sh
 
-# Regenerate after adding/removing source files.
-xcodegen generate --spec ios/project.yml
-
 xcodebuild build -project ios/InkyStudio.xcodeproj -scheme InkyStudio \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
 ```
 
-Scan the frame's supported LAN login QR or an owner's PHOTO invitation from another iPhone. Keep iPhone and frame on the same Wi-Fi and accept the iOS local-network prompt. The current LAN QR assumes that the frame already has a working network. Invitation endpoints require the matching backend implementation and a previously trusted HTTPS identity on the owner's iPhone; they do not upgrade an unpinned HTTP cookie. Offline first-boot association remains a separate InkyOS contract being integrated. Unsupported QRs must be rejected without replacing an existing frame or secret.
+With the iPhone and frame on the same Wi-Fi, scan the initial PHOTO QR on the frame or an invitation from an authorized iPhone. Accept the iOS local-network prompt. The current QR establishes the frame’s pinned HTTPS identity and requires the matching PHOTO backend. It assumes the frame already has a working network.
+
+## Fork the app or write a different client
+
+- For a fork on an iPhone, select your own Apple development team and use a
+  unique bundle identifier in the app target. If you regenerate the project,
+  make those edits in `ios/project.yml` as well and set your own version and
+  build numbers. Install through Xcode using your signing identity. For
+  App Store distribution, create an app record under your developer account.
+  Keep the [MIT license](../../LICENSE) and the included third-party notices.
+- For a separate app, start with the [LAN and PHOTO access contract](https://github.com/mehdi7129/inky-studio/blob/imager-backend-0.5.0rc3/docs/IMAGER-LAN.md).
+  Use the QR to establish the frame’s HTTPS identity and PHOTO access.
+  Read the [Swift network client](https://github.com/mehdi7129/inky-studio/tree/ios-v1.0.0-build19/ios/InkyStudio/Core)
+  and the [service routes](https://github.com/mehdi7129/inky-studio/tree/imager-backend-0.5.0rc3/server/inky_web/api)
+  for the device session, photo queue, history and display controls.
+  The [LAN integration tests](https://github.com/mehdi7129/inky-studio/blob/imager-backend-0.5.0rc3/server/tests/test_lan_photo.py)
+  show the same flow against a fixture with a synthetic frame identity.
 
 ## Features
 
@@ -65,7 +78,7 @@ Cookies remain private and in memory, isolated per origin/client and shared by J
 
 Individual device credentials are generated and saved under protected Keychain access before enrollment or invitation claim. Requests retain their exact identifiers for an idempotent retry; the recipient keeps the invitation token in RAM, while an issuer's pending invitation operation may retain its token briefly in protected Keychain storage. Invitation payloads must never enter logs, UserDefaults or navigation URLs. A canonical invitation address may differ from the owner's current address only after the pinned frame's response confirms the exact same UUID and SPKI. It is encoded in the QR; owner credentials and cookies are never forwarded to that address. Expiration and single-use enforcement are authoritative on the backend. An expired or revoked device session must not fall back to a legacy password or Bluetooth owner credential.
 
-The existing LAN QR uses private-IPv4 HTTP:8000 and carries a frame password. It has no frame-ID/SPKI trust anchor and must not be treated as a pinned identity or copied as an invitation. Adopted frames retain the separate HTTPS pin/owner path with no silent fallback to HTTP. TLS checks are never bypassed and cross-origin redirects must not forward cookies/credentials. See [Bluetooth integration](https://github.com/mehdi7129/inky-studio/blob/release/ios-1.0.0-build19/docs/ios/BLUETOOTH-INTEGRATION.md).
+On older installations, the legacy QR uses private-IPv4 HTTP:8000 and carries a frame password. It has no frame-ID/SPKI trust anchor and must not be treated as a pinned identity or copied as an invitation. Adopted frames retain the separate HTTPS pin/owner path with no silent fallback to HTTP. TLS checks are never bypassed and cross-origin redirects must not forward cookies/credentials. See [Bluetooth integration](https://github.com/mehdi7129/inky-studio/blob/release/ios-1.0.0-build19/docs/ios/BLUETOOTH-INTEGRATION.md).
 
 ## Tests and visual checks
 

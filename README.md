@@ -14,10 +14,10 @@ interval display schedules. Photo transfer and access sharing use your local net
 |---|---|---|
 | [inkyImager 0.1.4](https://github.com/mehdi7129/inkyImager/releases/tag/v0.1.4) | Notarized Universal DMG, macOS 14+ on Intel and Apple Silicon | Prepare a new SD card and its Wi-Fi configuration. |
 | [InkyOS 2026.11.20-rc2](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.20-rc2) | Clean generic image, **prerelease** | Frame system with automatic Pimoroni panel detection and the compatible PHOTO service. |
-| [Inky Studio iOS1.0.0 (19)](https://github.com/mehdi7129/inky-studio/releases/tag/ios-v1.0.0-build19) | Source checkpoint and existing **internal TestFlight** beta | iPhone photo app. Public App Store review is still being prepared. |
+| [Inky Studio iOS1.0.0 (19)](https://github.com/mehdi7129/inky-studio/releases/tag/ios-v1.0.0-build19) | Source of the iPhone build selected for the public App Store submission | Native iPhone photo app. The App Store listing is pending review and release. |
 
-The GitHub release does **not** provide an installable iPhone IPA or public
-TestFlight invitation. The app is not yet publicly available on the App Store.
+The iPhone source is available under MIT and can be built in Xcode. The public
+App Store version is being prepared.
 Hardware is bought separately; this independent community project does not sell it
 and is not an official Pimoroni, Raspberry Pi or Apple product.
 
@@ -83,8 +83,8 @@ These are not physical-frame proof or live pairing credentials.
 
 ## Build and contribute
 
-- [iPhone delivery and source instructions](docs/ios/CURRENT-RELEASE.md), iOS18 minimum.
-- [Backend development](server/README.md) and [explicit LAN runtime](https://github.com/mehdi7129/inky-studio/blob/release/backend-lan-photo-sharing-20261023/docs/IMAGER-LAN.md).
+- [Build the iPhone app or create your own client](docs/ios/CURRENT-RELEASE.md), iOS 18 minimum.
+- [PHOTO API and runtime used by the latest image](https://github.com/mehdi7129/inky-studio/blob/imager-backend-0.5.0rc3/docs/IMAGER-LAN.md) and [local backend development](server/README.md).
 - `client/` retains the earlier React interface; its legacy installer is distinct
   from the InkyOS/inkyImager image. New frame users should follow the links above.
 
@@ -107,8 +107,7 @@ paused work or enable optional factory/Bluetooth/SoftAP/OTA paths.
 [Support](https://inky-studio.netlify.app/support.html) ·
 [Privacy](https://inky-studio.netlify.app/confidentialite.html) ·
 [Issues](https://github.com/mehdi7129/inky-studio/issues).
-The public website is being updated separately; the repository's `website/`
-contains the prepared current pages. Do not post active frame QRs, Wi-Fi passwords,
+The public website sources are in `website/`. Do not post active frame QRs, Wi-Fi passwords,
 private keys or personal photos in public issues. Existing installations can keep
 legacy credentials; HTTPS QR photo access is the current supported LAN path.
 
