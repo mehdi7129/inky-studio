@@ -6,13 +6,13 @@ enum SecureBluetoothError: Error, LocalizedError, Equatable {
     case busy, notConnected, invalidIdentity, invalidRecord, invalidMessage, timeout, cancelled, randomUnavailable
     var errorDescription: String? {
         switch self {
-        case .busy: "Une demande au cadre est déjà en cours."
-        case .notConnected: "Reconnectez-vous au cadre en Bluetooth."
-        case .invalidIdentity: "L’identité du cadre ne correspond pas au QR code."
-        case .invalidRecord, .invalidMessage: "Le cadre a envoyé une réponse invalide."
-        case .timeout: "Le cadre n’a pas répondu à temps."
-        case .cancelled: "La demande a été annulée."
-        case .randomUnavailable: "Impossible de créer une connexion sécurisée."
+        case .busy: String(localized: "Une demande au cadre est déjà en cours.")
+        case .notConnected: String(localized: "Reconnectez-vous au cadre en Bluetooth.")
+        case .invalidIdentity: String(localized: "L’identité du cadre ne correspond pas au QR code.")
+        case .invalidRecord, .invalidMessage: String(localized: "Le cadre a envoyé une réponse invalide.")
+        case .timeout: String(localized: "Le cadre n’a pas répondu à temps.")
+        case .cancelled: String(localized: "La demande a été annulée.")
+        case .randomUnavailable: String(localized: "Impossible de créer une connexion sécurisée.")
         }
     }
 }

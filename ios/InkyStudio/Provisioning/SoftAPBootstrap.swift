@@ -54,13 +54,13 @@ enum SoftAPError: Error, LocalizedError, Equatable {
     case normalProfileAvailable, bootstrapProfileAvailable, alreadyOwned
     var errorDescription: String? {
         switch self {
-        case .unavailable: return "Le Wi-Fi temporaire du cadre n’a pas pu être rejoint. Restez près du cadre puis réessayez."
-        case .timeout: return "Le cadre n’a pas répondu sur son Wi-Fi temporaire. Réessayez ou scannez son QR actuel."
-        case .busy: return "Une demande au cadre est déjà en cours."
-        case .invalidManifest: return "L’identité reçue sur le Wi-Fi temporaire est invalide. Aucun secret n’a été envoyé."
-        case .disconnected, .cancelled: return "La connexion Wi-Fi au cadre a été interrompue. Reprenez la configuration."
-        case .normalProfileAvailable, .bootstrapProfileAvailable: return "Le cadre a changé d’étape. Reprenez sa connexion sécurisée."
-        case .alreadyOwned: return "Ce cadre est déjà associé. Reprenez depuis l’iPhone propriétaire ou réinitialisez explicitement son association."
+        case .unavailable: return String(localized: "Le Wi-Fi temporaire du cadre n’a pas pu être rejoint. Restez près du cadre puis réessayez.")
+        case .timeout: return String(localized: "Le cadre n’a pas répondu sur son Wi-Fi temporaire. Réessayez ou scannez son QR actuel.")
+        case .busy: return String(localized: "Une demande au cadre est déjà en cours.")
+        case .invalidManifest: return String(localized: "L’identité reçue sur le Wi-Fi temporaire est invalide. Aucun secret n’a été envoyé.")
+        case .disconnected, .cancelled: return String(localized: "La connexion Wi-Fi au cadre a été interrompue. Reprenez la configuration.")
+        case .normalProfileAvailable, .bootstrapProfileAvailable: return String(localized: "Le cadre a changé d’étape. Reprenez sa connexion sécurisée.")
+        case .alreadyOwned: return String(localized: "Ce cadre est déjà associé. Reprenez depuis l’iPhone propriétaire ou réinitialisez explicitement son association.")
         }
     }
 }

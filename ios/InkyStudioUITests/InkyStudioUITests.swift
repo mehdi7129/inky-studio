@@ -7,13 +7,15 @@ final class InkyStudioUITests: XCTestCase {
     private var app: XCUIApplication!
     private let fixtureURL = URL(string: "http://127.0.0.1:8765")!
 
-    private func launchFixtureApp(resetCamera: Bool = false) {
+    private func launchFixtureApp(resetCamera: Bool = false, languageArguments: [String] = [],
+                                  fixturePassword: String? = nil) {
         continueAfterFailure = false
         resetFixture()
         app = XCUIApplication()
         // Resetting a protected resource terminates an already-running app.
         if resetCamera { app.resetAuthorizationStatus(for: .camera) }
-        app.launchArguments = ["--uitesting", "--legacy-login-fixture", "--local-auth-fixture", "success", "--frame-address", fixtureURL.absoluteString]
+        app.launchArguments = ["--uitesting", "--legacy-login-fixture", "--local-auth-fixture", "success", "--frame-address", fixtureURL.absoluteString] + languageArguments
+        app.launchEnvironment["INKY_UI_FIXTURE_PASSWORD"] = fixturePassword
         app.launch()
         let teardown: @MainActor @Sendable () -> Void = { [weak self] in
             self?.finish()
@@ -283,11 +285,13 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(app.buttons["connection.submit"].isEnabled, "The user must be able to retry.")
     }
 
-    private func login() {
+    private func login(enterPassword: Bool = true) {
         let password = app.secureTextFields["connection.password"]
         XCTAssertTrue(password.waitForExistence(timeout: 10))
-        password.tap()
-        password.typeText("test-password")
+        if enterPassword {
+            password.tap()
+            password.typeText("test-password")
+        }
         app.buttons["connection.submit"].tap()
         XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10), "Login must reveal the frame dashboard.")
     }
@@ -375,7 +379,7 @@ final class InkyStudioUITests: XCTestCase {
         return identified.exists ? identified : app.tabBars.buttons[fallback]
     }
 
-    private func selectTab(_ identifier: String, fallback: String) {
+    private func selectTab(_ identifier: String, fallback: String, navigationTitle: String? = nil) {
         let target = tab(identifier, fallback: fallback)
         XCTAssertTrue(target.waitForExistence(timeout: 5))
         if #available(iOS 27, *) {
@@ -399,7 +403,7 @@ final class InkyStudioUITests: XCTestCase {
             case "settings": title = "Réglages"
             default: XCTFail("Unknown tab: \(identifier)"); return
             }
-            let bars = app.navigationBars.matching(identifier: title)
+            let bars = app.navigationBars.matching(identifier: navigationTitle ?? title)
             XCTAssertTrue(bars.firstMatch.waitForExistence(timeout: 5))
             XCTAssertEqual(bars.count, 1, "The selected tab must have one destination title.")
             // A static navigation title need not accept taps. Verify geometry
@@ -495,6 +499,91 @@ private final class FixtureRequestResult: @unchecked Sendable {
         lock.withLock {
             pending = false
             return outcome
+        }
+    }
+}
+
+extension InkyStudioUITests {
+    func testLocalizedWelcomeAndGuide() {
+        let languages = [
+            ("fr", "fr_FR", "Scanner un QR code", "Aide", "Vos photos, simplement."),
+            ("en", "en_GB", "Scan a QR code", "Help", "Your photos, made simple."),
+            ("es", "es_ES", "Escanear un código QR", "Ayuda", "Tus fotos, sin complicaciones."),
+            ("pt", "pt_PT", "Ler um código QR", "Ajuda", "As suas fotografias, sem complicações."),
+            ("de", "de_DE", "QR-Code scannen", "Hilfe", "Ihre Fotos, ganz einfach."),
+            ("it", "it_IT", "Scansiona un codice QR", "Aiuto", "Le tue foto, in tutta semplicità."),
+            ("zh-Hans", "zh_CN", "扫描二维码", "帮助", "轻松展示你的照片。"),
+            ("zh-Hant", "zh_TW", "掃描 QR Code", "說明", "輕鬆展示你的照片。"),
+            ("ja", "ja_JP", "QRコードを読み取る", "ヘルプ", "写真をもっと手軽に。"),
+            ("ko", "ko_KR", "QR 코드 스캔", "도움말", "사진을 더 간편하게."),
+            ("ar", "ar_SA", "مسح رمز QR", "المساعدة", "صورك بكل بساطة."),
+        ]
+        for (language, locale, scanTitle, helpTitle, guideHeading) in languages {
+            XCTContext.runActivity(named: language) { activity in
+                let localizedApp = XCUIApplication()
+                localizedApp.launchArguments = ["-AppleLanguages", "(\(language))", "-AppleLocale", locale]
+                localizedApp.launch()
+                defer { localizedApp.terminate() }
+
+                let scan = localizedApp.buttons["connection.scanLANQR"]
+                XCTAssertTrue(scan.waitForExistence(timeout: 5), language)
+                XCTAssertEqual(scan.label, scanTitle, language)
+                let help = localizedApp.buttons["connection.guide"]
+                XCTAssertTrue(help.exists, language)
+                XCTAssertEqual(help.label, helpTitle, language)
+                if !help.isHittable {
+                    localizedApp.scrollViews["connection.scroll"].swipeUp()
+                }
+                XCTAssertTrue(help.isHittable, language)
+                let privacy = localizedApp.descendants(matching: .any)["connection.privacy"].firstMatch
+                XCTAssertTrue(privacy.exists, language)
+                if language == "ar" {
+                    XCTAssertGreaterThan(help.frame.midX, privacy.frame.midX)
+                } else {
+                    XCTAssertLessThan(help.frame.midX, privacy.frame.midX, language)
+                }
+                let welcome = XCTAttachment(screenshot: localizedApp.screenshot())
+                welcome.name = "Welcome-\(language)"
+                welcome.lifetime = .keepAlways
+                activity.add(welcome)
+                help.tap()
+                XCTAssertTrue(localizedApp.staticTexts[guideHeading].waitForExistence(timeout: 5), language)
+
+                let attachment = XCTAttachment(screenshot: localizedApp.screenshot())
+                attachment.name = "Guide-\(language)"
+                attachment.lifetime = .keepAlways
+                activity.add(attachment)
+            }
+        }
+    }
+
+    func testLocalizedQueuePlurals() {
+        let languages = [
+            ("en", "en_GB", "Queue", "Up next", "2 photos in the queue", "1 photo in the queue"),
+            ("ar", "ar_SA", "قائمة الانتظار", "التالي", "صورتان في قائمة الانتظار", "صورة واحدة في قائمة الانتظار"),
+        ]
+        for (language, locale, queueTab, queueTitle, twoPhotos, onePhoto) in languages {
+            XCTContext.runActivity(named: language) { activity in
+                launchFixtureApp(languageArguments: ["-AppleLanguages", "(\(language))", "-AppleLocale", locale],
+                                 fixturePassword: "test-password")
+                login(enterPassword: false)
+                selectTab("queue", fallback: queueTab, navigationTitle: queueTitle)
+                XCTAssertTrue(app.staticTexts[twoPhotos].waitForExistence(timeout: 5), language)
+
+                selectTab("frame", fallback: language == "ar" ? "الإطار" : "Frame")
+                let next = app.buttons["frame.next"]
+                scrollTo(next)
+                XCTAssertTrue(next.isHittable, language)
+                next.tap()
+
+                selectTab("queue", fallback: queueTab, navigationTitle: queueTitle)
+                XCTAssertTrue(app.staticTexts[onePhoto].waitForExistence(timeout: 10), language)
+                let attachment = XCTAttachment(screenshot: app.screenshot())
+                attachment.name = "Queue-\(language)"
+                attachment.lifetime = .keepAlways
+                activity.add(attachment)
+                app.terminate()
+            }
         }
     }
 }

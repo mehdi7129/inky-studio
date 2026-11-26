@@ -14,17 +14,17 @@ enum PhotoPipelineError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unreadable:
-            return "Cette photo n’a pas pu être ouverte. Essayez une autre photo au format HEIC, JPEG ou PNG."
+            return String(localized: "Cette photo n’a pas pu être ouverte. Essayez une autre photo au format HEIC, JPEG ou PNG.")
         case .sourceTooLarge:
-            return "Cette photo est trop volumineuse. Choisissez une version de moins de 128 Mo."
+            return String(localized: "Cette photo est trop volumineuse. Choisissez une version de moins de 128 Mo.")
         case .invalidPanel:
-            return "Le format du cadre est indisponible. Reconnectez le cadre, puis réessayez."
+            return String(localized: "Le format du cadre est indisponible. Reconnectez le cadre, puis réessayez.")
         case .invalidCrop:
-            return "Le cadrage n’est pas encore prêt. Réessayez dans un instant."
+            return String(localized: "Le cadrage n’est pas encore prêt. Réessayez dans un instant.")
         case .encodingFailed:
-            return "Impossible de préparer cette photo pour le cadre. Essayez une autre photo."
+            return String(localized: "Impossible de préparer cette photo pour le cadre. Essayez une autre photo.")
         case .uploadTooLarge:
-            return "La photo préparée dépasse la limite de 10 Mo du cadre. Choisissez une autre photo."
+            return String(localized: "La photo préparée dépasse la limite de 10 Mo du cadre. Choisissez une autre photo.")
         }
     }
 }

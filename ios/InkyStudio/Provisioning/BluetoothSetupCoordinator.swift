@@ -243,7 +243,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
                     guard let code = adoptionCode else {
                         channel.disconnect()
                         stage = .scanQR
-                        errorMessage = "Ce téléphone n’est plus autorisé. Affichez puis scannez un nouveau QR sur le cadre."
+                        errorMessage = String(localized: "Ce téléphone n’est plus autorisé. Affichez puis scannez un nouveau QR sur le cadre.")
                         return
                     }
                     // A new physical QR authorizes a fresh owner after revocation;
@@ -261,7 +261,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
                     guard let code = adoptionCode else {
                         channel.disconnect()
                         stage = .scanQR
-                        errorMessage = "Scannez le QR affiché sur le cadre pour terminer son association."
+                        errorMessage = String(localized: "Scannez le QR affiché sur le cadre pour terminer son association.")
                         return
                     }
                     do {
@@ -347,7 +347,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
         #endif
         guard stage == .credentials, let owner, !hasTransaction else { return }
         guard Self.validWiFiInput(ssid: ssid, password: password) else {
-            errorMessage = "Vérifiez le nom du réseau et son mot de passe WPA2."
+            errorMessage = String(localized: "Vérifiez le nom du réseau et son mot de passe WPA2.")
             return
         }
         let epoch = generation
@@ -432,7 +432,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
                 stage = .suspended
                 return
             }
-            errorMessage = "Le départ de l’essai n’a pas pu être confirmé. Vérifiez le cadre sur le réseau domestique ou reprenez sur son Wi-Fi temporaire."
+            errorMessage = String(localized: "Le départ de l’essai n’a pas pu être confirmé. Vérifiez le cadre sur le réseau domestique ou reprenez sur son Wi-Fi temporaire.")
         }
         guard epoch == generation else { return }
         beginSoftAPHandoff(origin: origin)
@@ -500,7 +500,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
         if needsBootstrapRescan {
             // The physical QR secret was purged. Do not resume as a normal
             // connection when no durable bootstrap owner exists yet.
-            errorMessage = "Scannez à nouveau le QR du cadre pour reprendre la configuration."
+            errorMessage = String(localized: "Scannez à nouveau le QR du cadre pour reprendre la configuration.")
             stage = .scanQR
             return
         }
@@ -592,7 +592,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
                 guard epoch == generation else { return }
                 do { self.owner = try vault.finishWiFiTransaction(id: owner.id, transactionID: transactionID) }
                 catch { show(error); stage = .suspended; return }
-                errorMessage = "Cet essai Wi-Fi n’est plus actif. Vous pouvez choisir un réseau et recommencer."
+                errorMessage = String(localized: "Cet essai Wi-Fi n’est plus actif. Vous pouvez choisir un réseau et recommencer.")
                 stage = .rolledBack
                 return
             } catch {
@@ -675,7 +675,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
             do { try await Task.sleep(for: .seconds(2)) } catch { return }
         }
         guard epoch == generation, !Task.isCancelled else { return }
-        errorMessage = "Le cadre n’a pas été confirmé sur le réseau domestique. Rejoignez son Wi-Fi temporaire pour retrouver le résultat de cet essai."
+        errorMessage = String(localized: "Le cadre n’a pas été confirmé sur le réseau domestique. Rejoignez son Wi-Fi temporaire pour retrouver le résultat de cet essai.")
         stage = .suspended
     }
 
@@ -731,7 +731,7 @@ final class BluetoothSetupCoordinator: ObservableObject {
         guard !(error is CancellationError) else { return }
         if error is FrameIdentityError || error is OwnershipVaultError || error is ProvisioningFailure || error is QRScannerFailure || error is FactorySetupError || error is SoftAPError {
             errorMessage = error.localizedDescription
-        } else { errorMessage = "La connexion au cadre a été interrompue. Rapprochez l’iPhone du cadre puis réessayez." }
+        } else { errorMessage = String(localized: "La connexion au cadre a été interrompue. Rapprochez l’iPhone du cadre puis réessayez.") }
     }
 }
 
@@ -855,20 +855,20 @@ extension BluetoothSetupCoordinator {
         stage = .factoryApplying
         guard await authorizeFactory?() == true, epoch == generation else { if epoch == generation { stage = .factoryPhotoAccess }; return }
         guard let didFinishFactory else {
-            errorMessage = "La configuration du cadre est conservée. Rouvrez-la pour terminer l’accès aux photos."
+            errorMessage = String(localized: "La configuration du cadre est conservée. Rouvrez-la pour terminer l’accès aux photos.")
             stage = .factoryPhotoAccess
             return
         }
         let completed = await didFinishFactory(origin, owner, status)
         guard epoch == generation else { return }
         guard completed else {
-            errorMessage = "L’accès photo n’a pas pu être finalisé. Vos accès précédents sont conservés ; vous pouvez réessayer."
+            errorMessage = String(localized: "L’accès photo n’a pas pu être finalisé. Vos accès précédents sont conservés ; vous pouvez réessayer.")
             stage = .factoryPhotoAccess
             return
         }
         do { self.owner = try vault.markFactoryPhotoCompleted(id: owner.id) }
         catch {
-            errorMessage = "L’accès photo est prêt. Sa dernière étape locale n’a pas pu être enregistrée ; elle pourra être vérifiée à la reprise."
+            errorMessage = String(localized: "L’accès photo est prêt. Sa dernière étape locale n’a pas pu être enregistrée ; elle pourra être vérifiée à la reprise.")
         }
         completedEndpoint = origin
         stage = .completed
@@ -1115,17 +1115,17 @@ private enum ProvisioningFailure: Error, LocalizedError {
     case invalidResponse, server(String)
     var errorDescription: String? {
         switch self {
-        case .invalidResponse: return "Le cadre a envoyé une réponse inattendue. Reconnectez-vous pour vérifier son état."
+        case .invalidResponse: return String(localized: "Le cadre a envoyé une réponse inattendue. Reconnectez-vous pour vérifier son état.")
         case .server(let code):
             switch code {
-            case "unauthorized", "epoch_changed": return "Ce téléphone n’est plus autorisé. Scannez un nouveau QR affiché sur le cadre."
-            case "qr_unavailable": return "Ce QR a expiré ou a déjà été utilisé. Affichez un nouveau QR sur le cadre."
-            case "busy": return "Le cadre termine une autre configuration. Patientez puis réessayez."
-            case "rate_limited": return "Trop de tentatives. Patientez une minute avant de réessayer."
-            case "network_failed": return "Le cadre n’a pas pu rejoindre ce réseau. Vérifiez le mot de passe et réessayez."
-            case "network_unavailable", "bluetooth_unavailable", "permission_denied": return "La configuration Wi-Fi n’est pas disponible sur ce cadre. Vérifiez sa version."
-            case "conflict", "request_conflict": return "Une autre configuration est déjà associée à cet essai. Reprenez sa vérification."
-            default: return "Le cadre n’a pas accepté cette opération. Reconnectez-vous pour vérifier son état."
+            case "unauthorized", "epoch_changed": return String(localized: "Ce téléphone n’est plus autorisé. Scannez un nouveau QR affiché sur le cadre.")
+            case "qr_unavailable": return String(localized: "Ce QR a expiré ou a déjà été utilisé. Affichez un nouveau QR sur le cadre.")
+            case "busy": return String(localized: "Le cadre termine une autre configuration. Patientez puis réessayez.")
+            case "rate_limited": return String(localized: "Trop de tentatives. Patientez une minute avant de réessayer.")
+            case "network_failed": return String(localized: "Le cadre n’a pas pu rejoindre ce réseau. Vérifiez le mot de passe et réessayez.")
+            case "network_unavailable", "bluetooth_unavailable", "permission_denied": return String(localized: "La configuration Wi-Fi n’est pas disponible sur ce cadre. Vérifiez sa version.")
+            case "conflict", "request_conflict": return String(localized: "Une autre configuration est déjà associée à cet essai. Reprenez sa vérification.")
+            default: return String(localized: "Le cadre n’a pas accepté cette opération. Reconnectez-vous pour vérifier son état.")
             }
         }
     }

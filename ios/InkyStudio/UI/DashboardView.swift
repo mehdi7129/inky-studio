@@ -34,7 +34,7 @@ struct DashboardView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Image(systemName: "square.stack").font(.title2).foregroundStyle(Bento.blue).accessibilityHidden(true)
                             Text("À suivre").font(.caption).foregroundStyle(Bento.secondaryInk)
-                            Text("\(store.queue.count) photo\(store.queue.count == 1 ? "" : "s")").font(.headline)
+                            Text("\(store.queue.count) photos").font(.headline)
                         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).bentoCard()
                     }
                     Button { importing = true } label: { Label("Ajouter une photo", systemImage: "plus") }
@@ -49,8 +49,8 @@ struct DashboardView: View {
     }
     private var displayControls: some View {
         controlsLayout {
-            Button { Task { await store.display(previous: true) } } label: { Label("Précédente", systemImage: "chevron.left") }.accessibilityIdentifier("frame.previous")
-            Button { Task { await store.display(previous: false) } } label: { Label("Suivante", systemImage: "chevron.right") }.accessibilityIdentifier("frame.next")
+            Button { Task { await store.display(previous: true) } } label: { Label("Précédente", systemImage: "chevron.backward") }.accessibilityIdentifier("frame.previous")
+            Button { Task { await store.display(previous: false) } } label: { Label("Suivante", systemImage: "chevron.forward") }.accessibilityIdentifier("frame.next")
         }.buttonStyle(OutlineButtonStyle()).disabled(!store.canDisplay || store.displayBusy)
     }
     private var summaryLayout: AnyLayout {
@@ -60,7 +60,7 @@ struct DashboardView: View {
         dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
     }
     private var nextChange: String {
-        guard let timestamp = store.state?.nextChangeAt else { return "Manuel" }
+        guard let timestamp = store.state?.nextChangeAt else { return String(localized: "Manuel") }
         return Date(timeIntervalSince1970: timestamp).formatted(.dateTime.day().month(.abbreviated).hour().minute())
     }
 }

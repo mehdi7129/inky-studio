@@ -58,8 +58,8 @@ struct HistoryView: View {
         dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(spacing: 14))
     }
     private func dayLabel(_ date: Date) -> String {
-        if Calendar.current.isDateInToday(date) { return "Aujourd’hui" }
-        if Calendar.current.isDateInYesterday(date) { return "Hier" }
+        if Calendar.current.isDateInToday(date) { return String(localized: "Aujourd’hui") }
+        if Calendar.current.isDateInYesterday(date) { return String(localized: "Hier") }
         return date.formatted(date: .abbreviated, time: .omitted)
     }
 }

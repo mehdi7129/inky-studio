@@ -137,13 +137,13 @@ enum FrameIdentityError: Error, LocalizedError, Equatable, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidQRCode: return "Ce QR de cadre n’est pas valide. Scannez le code affiché sur le cadre."
-        case .unsupportedVersion: return "Ce QR nécessite une autre version d’Inky Studio."
-        case .invalidCertificate, .unsupportedKey: return "L’identité reçue du cadre n’est pas compatible."
-        case .pinMismatch: return "L’identité du cadre ne correspond pas au QR. Aucun secret n’a été envoyé."
-        case .certificateRejected: return "Le certificat du cadre n’est pas valide. Vérifiez la date de l’iPhone puis scannez à nouveau le QR du cadre."
-        case .insecureEndpoint: return "Ce cadre adopté nécessite une connexion HTTPS."
-        case .invalidEndpoint: return "L’adresse sécurisée du cadre n’est pas valide."
+        case .invalidQRCode: return String(localized: "Ce QR de cadre n’est pas valide. Scannez le code affiché sur le cadre.")
+        case .unsupportedVersion: return String(localized: "Ce QR nécessite une autre version d’Inky Studio.")
+        case .invalidCertificate, .unsupportedKey: return String(localized: "L’identité reçue du cadre n’est pas compatible.")
+        case .pinMismatch: return String(localized: "L’identité du cadre ne correspond pas au QR. Aucun secret n’a été envoyé.")
+        case .certificateRejected: return String(localized: "Le certificat du cadre n’est pas valide. Vérifiez la date de l’iPhone puis scannez à nouveau le QR du cadre.")
+        case .insecureEndpoint: return String(localized: "Ce cadre adopté nécessite une connexion HTTPS.")
+        case .invalidEndpoint: return String(localized: "L’adresse sécurisée du cadre n’est pas valide.")
         }
     }
 }

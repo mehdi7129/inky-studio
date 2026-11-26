@@ -26,7 +26,7 @@ struct QueueView: View {
                             if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
                         }.padding(.vertical, 8).accessibilityIdentifier("queue.row.\(entry.photo.id)")
                             .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("Photo \(index + 1) dans la file\(index == 0 ? ", prochaine photo" : "")")
+                            .accessibilityLabel(index == 0 ? "Photo suivante dans la file" : "Photo \(index + 1) dans la file")
                             .listRowBackground(Bento.surface)
                             .swipeActions { Button("Retirer", role: .destructive) { deleting = entry }.accessibilityIdentifier("queue.remove.\(entry.photo.id)").disabled(!store.canMutate) }
                             .contextMenu {
@@ -45,7 +45,7 @@ struct QueueView: View {
                     }
                     .onDelete { indices in if let index = indices.first { deleting = store.queue[index] } }
                 } header: {
-                    Text("\(store.queue.count) photo\(store.queue.count == 1 ? "" : "s") dans la file")
+                    Text("\(store.queue.count) photos dans la file")
                         .font(.subheadline).foregroundStyle(Bento.secondaryInk).textCase(nil)
                 }
                 if !store.queue.isEmpty {

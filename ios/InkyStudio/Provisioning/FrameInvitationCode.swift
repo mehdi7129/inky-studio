@@ -86,7 +86,7 @@ struct FrameInvitationCode: Equatable, Sendable {
 enum InvitationCodeError: Error, LocalizedError, Equatable, Sendable {
     case invalidCode
     var errorDescription: String? {
-        "Ce QR d’invitation n’est pas valide. Demandez au propriétaire de générer une nouvelle invitation."
+        String(localized: "Ce QR d’invitation n’est pas valide. Demandez au propriétaire de générer une nouvelle invitation.")
     }
 }
 

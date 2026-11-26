@@ -152,12 +152,12 @@ enum PhotoAccessError: Error, LocalizedError, Equatable, Sendable {
     case trustedHTTPSRequired, invalidData, identityMismatch, unavailable, accessRemoved, storageFailed
     var errorDescription: String? {
         switch self {
-        case .trustedHTTPSRequired: return "Associez d’abord ce cadre par sa connexion sécurisée pour activer le partage."
-        case .invalidData: return "La réponse d’accès du cadre n’est pas valide."
-        case .identityMismatch: return "L’identité du cadre ne correspond pas à l’accès attendu. Aucun nouvel accès n’a été conservé."
-        case .unavailable: return "Le partage n’est pas disponible sur ce cadre. Vérifiez sa configuration et sa version."
-        case .accessRemoved: return "Cet accès au cadre a été retiré ou n’est plus valide. Demandez une nouvelle invitation au propriétaire."
-        case .storageFailed: return "L’accès sécurisé n’a pas pu être enregistré sur cet iPhone. Aucune association n’a été finalisée."
+        case .trustedHTTPSRequired: return String(localized: "Associez d’abord ce cadre par sa connexion sécurisée pour activer le partage.")
+        case .invalidData: return String(localized: "La réponse d’accès du cadre n’est pas valide.")
+        case .identityMismatch: return String(localized: "L’identité du cadre ne correspond pas à l’accès attendu. Aucun nouvel accès n’a été conservé.")
+        case .unavailable: return String(localized: "Le partage n’est pas disponible sur ce cadre. Vérifiez sa configuration et sa version.")
+        case .accessRemoved: return String(localized: "Cet accès au cadre a été retiré ou n’est plus valide. Demandez une nouvelle invitation au propriétaire.")
+        case .storageFailed: return String(localized: "L’accès sécurisé n’a pas pu être enregistré sur cet iPhone. Aucune association n’a été finalisée.")
         }
     }
 }

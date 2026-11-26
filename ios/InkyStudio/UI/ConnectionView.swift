@@ -126,7 +126,7 @@ struct ConnectionView: View {
                 .textContentType(.none).textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("connection.password")
             Button("Connexion de test") {
-                let password = fixturePassword
+                let password = ProcessInfo.processInfo.environment["INKY_UI_FIXTURE_PASSWORD"] ?? fixturePassword
                 fixturePassword = ""
                 Task { await store.login(password: password, rememberBiometric: false) }
             }.accessibilityIdentifier("connection.submit").disabled(store.connecting)
@@ -191,7 +191,7 @@ struct LANLoginScannerView: View {
         } else if (try? FrameLANLoginCode.parse(text)) != nil {
             store.queueLANLoginCode(text)
         } else {
-            store.errorMessage = "Ce QR n’est pas valide. Scannez le QR du cadre ou demandez une nouvelle invitation au propriétaire."
+            store.errorMessage = String(localized: "Ce QR n’est pas valide. Scannez le QR du cadre ou demandez une nouvelle invitation au propriétaire.")
         }
     }
 
@@ -323,7 +323,7 @@ struct SupportPrivacyLinks: View {
         }.buttonStyle(.plain).bentoCard()
     }
 
-    private func linkLabel(_ title: String, systemImage: String) -> some View {
+    private func linkLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
         HStack(spacing: 12) {
             Label(title, systemImage: systemImage).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)

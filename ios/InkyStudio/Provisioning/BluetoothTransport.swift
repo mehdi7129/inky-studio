@@ -27,15 +27,15 @@ enum BluetoothTransportError: Error, LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unavailable: "Le Bluetooth n’est pas disponible."
-        case .unauthorized: "Autorisez le Bluetooth dans les réglages de l’app."
-        case .poweredOff: "Activez le Bluetooth pour chercher le cadre."
-        case .busy: "Une opération Bluetooth est déjà en cours."
-        case .disconnected: "La connexion Bluetooth a été interrompue."
-        case .timeout: "Le cadre n’a pas répondu à temps."
-        case .invalidFrame, .unsupportedFrame: "Ce cadre utilise un protocole incompatible."
-        case .operationFailed: "La communication Bluetooth a échoué."
-        case .cancelled: "La connexion Bluetooth a été annulée."
+        case .unavailable: String(localized: "Le Bluetooth n’est pas disponible.")
+        case .unauthorized: String(localized: "Autorisez le Bluetooth dans les réglages de l’app.")
+        case .poweredOff: String(localized: "Activez le Bluetooth pour chercher le cadre.")
+        case .busy: String(localized: "Une opération Bluetooth est déjà en cours.")
+        case .disconnected: String(localized: "La connexion Bluetooth a été interrompue.")
+        case .timeout: String(localized: "Le cadre n’a pas répondu à temps.")
+        case .invalidFrame, .unsupportedFrame: String(localized: "Ce cadre utilise un protocole incompatible.")
+        case .operationFailed: String(localized: "La communication Bluetooth a échoué.")
+        case .cancelled: String(localized: "La connexion Bluetooth a été annulée.")
         }
     }
 }
@@ -256,9 +256,9 @@ extension BluetoothExchanging {
         guard central === manager, isScanning else { return }
         guard peripherals[peripheral.identifier] != nil || peripherals.count < 32 else { return }
         peripherals[peripheral.identifier] = peripheral
-        let rawName = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name ?? "Cadre Inky"
+        let rawName = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name ?? String(localized: "Cadre Inky")
         let name = String(rawName.filter { !$0.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) }.prefix(40))
-        let item = BluetoothFrame(id: peripheral.identifier, name: name.isEmpty ? "Cadre Inky" : name,
+        let item = BluetoothFrame(id: peripheral.identifier, name: name.isEmpty ? String(localized: "Cadre Inky") : name,
                                   rssi: RSSI.intValue == 127 ? nil : RSSI.intValue)
         if let index = discoveredFrames.firstIndex(where: { $0.id == item.id }) { discoveredFrames[index] = item }
         else { discoveredFrames.append(item) }

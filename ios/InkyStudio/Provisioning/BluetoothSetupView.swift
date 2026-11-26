@@ -147,50 +147,50 @@ struct BluetoothSetupView: View {
 
     private var title: String {
         switch coordinator.stage {
-        case .introduction, .preparingQR, .scanQR: return "Connecter votre cadre"
-        case .nearby: return coordinator.isSoftAP ? "Rejoindre votre cadre" : "Choisir le cadre à proximité"
-        case .connecting, .claiming: return "Connexion au cadre"
-        case .networks: return "Choisir un réseau Wi-Fi"
-        case .credentials: return "Rejoindre ce réseau"
-        case .applying: return "Configuration en cours"
-        case .confirming: return "Vérifier la connexion"
-        case .suspended: return "Reprendre la configuration"
-        case .completed: return "Votre cadre est connecté"
-        case .rolledBack: return "L’essai Wi-Fi est terminé"
-        case .factoryCountry: return "Dans quel pays est le cadre ?"
-        case .factoryApplying: return "Préparation du cadre"
-        case .factoryContinue: return "Continuer la configuration"
-        case .factoryHandoff: return "Vérification de la connexion sécurisée"
-        case .factoryWaitingOrigin: return "Retrouver le cadre sur le réseau"
-        case .factoryRecovery: return "Reprendre cette étape"
-        case .factoryPhotoAccess: return "Votre cadre est prêt"
-        case .softAPPrepared: return "L’essai Wi-Fi est prêt"
-        case .softAPClaimRetry: return "Association non confirmée"
+        case .introduction, .preparingQR, .scanQR: return String(localized: "Connecter votre cadre")
+        case .nearby: return coordinator.isSoftAP ? String(localized: "Rejoindre votre cadre") : String(localized: "Choisir le cadre à proximité")
+        case .connecting, .claiming: return String(localized: "Connexion au cadre")
+        case .networks: return String(localized: "Choisir un réseau Wi-Fi")
+        case .credentials: return String(localized: "Rejoindre ce réseau")
+        case .applying: return String(localized: "Configuration en cours")
+        case .confirming: return String(localized: "Vérifier la connexion")
+        case .suspended: return String(localized: "Reprendre la configuration")
+        case .completed: return String(localized: "Votre cadre est connecté")
+        case .rolledBack: return String(localized: "L’essai Wi-Fi est terminé")
+        case .factoryCountry: return String(localized: "Dans quel pays est le cadre ?")
+        case .factoryApplying: return String(localized: "Préparation du cadre")
+        case .factoryContinue: return String(localized: "Continuer la configuration")
+        case .factoryHandoff: return String(localized: "Vérification de la connexion sécurisée")
+        case .factoryWaitingOrigin: return String(localized: "Retrouver le cadre sur le réseau")
+        case .factoryRecovery: return String(localized: "Reprendre cette étape")
+        case .factoryPhotoAccess: return String(localized: "Votre cadre est prêt")
+        case .softAPPrepared: return String(localized: "L’essai Wi-Fi est prêt")
+        case .softAPClaimRetry: return String(localized: "Association non confirmée")
         }
     }
     private var message: String {
         switch coordinator.stage {
         case .introduction, .preparingQR, .scanQR:
-            return "Scannez le QR affiché sur le cadre pour associer cet iPhone et configurer son Wi-Fi."
-        case .nearby: return "Restez près du cadre. Son identité sera vérifiée avant de transmettre votre mot de passe Wi-Fi."
-        case .connecting: return "Vérification de l’identité affichée sur votre cadre…"
-        case .claiming: return "Enregistrement de l’autorisation de cet iPhone. L’écran du cadre peut prendre quelques instants à se rafraîchir."
-        case .networks: return "Choisissez un réseau personnel WPA2. Les réseaux ouverts, d’entreprise ou avec portail de connexion ne sont pas pris en charge."
-        case .credentials: return "Le mot de passe sera transmis au cadre par une connexion chiffrée."
-        case .applying: return coordinator.isSoftAP ? "Le cadre enregistre cet essai avant de quitter son Wi-Fi temporaire." : "Le cadre essaie le nouveau réseau. L’ancien réseau reste disponible en cas d’échec."
-        case .confirming: return "Sur cet iPhone, ouvrez Réglages → Wi-Fi et rejoignez « \(coordinator.selectedSSID) ». Revenez ensuite dans Inky Studio pour terminer la vérification."
-        case .suspended: return coordinator.isSoftAP ? "Vos accès et l’identifiant de cet essai sont conservés. Si le cadre est revenu à son Wi-Fi temporaire, rejoignez-le pour retrouver son état." : "Restez près du cadre pour retrouver l’état de la configuration par Bluetooth."
-        case .completed: return "L’accès au cadre a été vérifié sur le nouveau réseau. Vous pouvez retrouver vos photos."
-        case .rolledBack: return "Le nouveau réseau n’a pas été confirmé. Le cadre conserve ses anciens réglages Wi-Fi."
-        case .factoryCountry: return "Choisissez le pays où le cadre sera utilisé. L’heure sera fournie automatiquement par cet iPhone."
-        case .factoryApplying: return "Le cadre vérifie ses réglages. Une étape déjà envoyée ne sera pas relancée automatiquement."
-        case .factoryContinue: return "Poursuivez pour vérifier les étapes enregistrées sur le cadre."
-        case .factoryHandoff: return "L’identité du même cadre est vérifiée sur sa connexion normale."
-        case .factoryWaitingOrigin: return "Le cadre doit confirmer son adresse réseau avant d’ouvrir l’accès aux photos. Vous pouvez maintenant configurer son Wi-Fi."
-        case .factoryRecovery: return "Le résultat précédent est conservé. Pour une nouvelle tentative, confirmez le pays puis relancez explicitement cette étape."
-        case .factoryPhotoAccess: return "Terminez l’association pour accéder aux photos depuis cet iPhone."
-        case .softAPPrepared: return "Les paramètres de cet essai sont enregistrés sur le cadre. Lancez-le explicitement pour passer au réseau domestique. Une tentative dont la réponse a été perdue n’est jamais relancée automatiquement."
-        case .softAPClaimRetry: return "Cet iPhone a conservé sa demande d’association, mais le cadre ne l’a pas confirmée. Vous pouvez la renvoyer explicitement avec le QR que vous venez de scanner."
+            return String(localized: "Scannez le QR affiché sur le cadre pour associer cet iPhone et configurer son Wi-Fi.")
+        case .nearby: return String(localized: "Restez près du cadre. Son identité sera vérifiée avant de transmettre votre mot de passe Wi-Fi.")
+        case .connecting: return String(localized: "Vérification de l’identité affichée sur votre cadre…")
+        case .claiming: return String(localized: "Enregistrement de l’autorisation de cet iPhone. L’écran du cadre peut prendre quelques instants à se rafraîchir.")
+        case .networks: return String(localized: "Choisissez un réseau personnel WPA2. Les réseaux ouverts, d’entreprise ou avec portail de connexion ne sont pas pris en charge.")
+        case .credentials: return String(localized: "Le mot de passe sera transmis au cadre par une connexion chiffrée.")
+        case .applying: return coordinator.isSoftAP ? String(localized: "Le cadre enregistre cet essai avant de quitter son Wi-Fi temporaire.") : String(localized: "Le cadre essaie le nouveau réseau. L’ancien réseau reste disponible en cas d’échec.")
+        case .confirming: return String(localized: "Sur cet iPhone, ouvrez Réglages → Wi-Fi et rejoignez « \(coordinator.selectedSSID) ». Revenez ensuite dans Inky Studio pour terminer la vérification.")
+        case .suspended: return coordinator.isSoftAP ? String(localized: "Vos accès et l’identifiant de cet essai sont conservés. Si le cadre est revenu à son Wi-Fi temporaire, rejoignez-le pour retrouver son état.") : String(localized: "Restez près du cadre pour retrouver l’état de la configuration par Bluetooth.")
+        case .completed: return String(localized: "L’accès au cadre a été vérifié sur le nouveau réseau. Vous pouvez retrouver vos photos.")
+        case .rolledBack: return String(localized: "Le nouveau réseau n’a pas été confirmé. Le cadre conserve ses anciens réglages Wi-Fi.")
+        case .factoryCountry: return String(localized: "Choisissez le pays où le cadre sera utilisé. L’heure sera fournie automatiquement par cet iPhone.")
+        case .factoryApplying: return String(localized: "Le cadre vérifie ses réglages. Une étape déjà envoyée ne sera pas relancée automatiquement.")
+        case .factoryContinue: return String(localized: "Poursuivez pour vérifier les étapes enregistrées sur le cadre.")
+        case .factoryHandoff: return String(localized: "L’identité du même cadre est vérifiée sur sa connexion normale.")
+        case .factoryWaitingOrigin: return String(localized: "Le cadre doit confirmer son adresse réseau avant d’ouvrir l’accès aux photos. Vous pouvez maintenant configurer son Wi-Fi.")
+        case .factoryRecovery: return String(localized: "Le résultat précédent est conservé. Pour une nouvelle tentative, confirmez le pays puis relancez explicitement cette étape.")
+        case .factoryPhotoAccess: return String(localized: "Terminez l’association pour accéder aux photos depuis cet iPhone.")
+        case .softAPPrepared: return String(localized: "Les paramètres de cet essai sont enregistrés sur le cadre. Lancez-le explicitement pour passer au réseau domestique. Une tentative dont la réponse a été perdue n’est jamais relancée automatiquement.")
+        case .softAPClaimRetry: return String(localized: "Cet iPhone a conservé sa demande d’association, mais le cadre ne l’a pas confirmée. Vous pouvez la renvoyer explicitement avec le QR que vous venez de scanner.")
         }
     }
 

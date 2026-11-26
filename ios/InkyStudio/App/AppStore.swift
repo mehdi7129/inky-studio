@@ -160,7 +160,7 @@ final class AppStore: ObservableObject {
         if defaults.string(forKey: "credentialStorageFailedAccount") == credentialAccount {
             credentialStored = false
             pairingNeedsCompletion = true
-            credentialStorageError = "L’association n’est pas finalisée : aucun identifiant de cette connexion n’a été confirmé. Scannez à nouveau le QR du cadre pour terminer l’association."
+            credentialStorageError = String(localized: "L’association n’est pas finalisée : aucun identifiant de cette connexion n’a été confirmé. Scannez à nouveau le QR du cadre pour terminer l’association.")
         }
         if let data = defaults.data(forKey: "photoAccessSelection"),
            let selection = try? JSONDecoder().decode(PhotoAccessSelection.self, from: data),
@@ -291,7 +291,7 @@ final class AppStore: ObservableObject {
         credentialTaskID = UUID()
         pendingPairingCredential = nil
         if pairingNeedsCompletion {
-            credentialStorageError = "L’association n’est pas finalisée et son identifiant temporaire n’est plus disponible. Scannez à nouveau le QR pour terminer l’association."
+            credentialStorageError = String(localized: "L’association n’est pas finalisée et son identifiant temporaire n’est plus disponible. Scannez à nouveau le QR pour terminer l’association.")
         }
         localUnlocked = false
         unlocking = false
@@ -329,7 +329,7 @@ final class AppStore: ObservableObject {
             credentialStored = selectedPhotoAccess.map { photoAccessVault.contains(account: $0.account) } ??
                 (containsCredential(credentialAccount) && defaults.string(forKey: "credentialStorageFailedAccount") != credentialAccount)
             if !credentialStored && credentialStorageError == nil {
-                credentialStorageError = "La connexion actuelle est conservée. Cet iPhone n’a pas encore d’identifiant enregistré pour les prochaines connexions."
+                credentialStorageError = String(localized: "La connexion actuelle est conservée. Cet iPhone n’a pas encore d’identifiant enregistré pour les prochaines connexions.")
             }
             startMonitoring()
             await refresh()
@@ -464,7 +464,7 @@ final class AppStore: ObservableObject {
             do { password = try await readCredential(oldAccount) }
             catch {
                 guard epoch == generation, localUnlocked else { return }
-                notice = "Le Wi-Fi est configuré. L’accès actuel à vos photos est conservé ; son transfert sécurisé n’a pas été effectué."
+                notice = String(localized: "Le Wi-Fi est configuré. L’accès actuel à vos photos est conservé ; son transfert sécurisé n’a pas été effectué.")
                 return
             }
             guard epoch == generation, localUnlocked, !Task.isCancelled else { return }
@@ -481,7 +481,7 @@ final class AppStore: ObservableObject {
             do { try saveCredential(password, newAccount) }
             catch {
                 candidate.clearSession()
-                credentialStorageError = "Le Wi-Fi est configuré, mais l’identifiant sécurisé n’a pas pu être transféré. L’accès actuel à vos photos est conservé."
+                credentialStorageError = String(localized: "Le Wi-Fi est configuré, mais l’identifiant sécurisé n’a pas pu être transféré. L’accès actuel à vos photos est conservé.")
                 return
             }
             _ = try ownershipVault.markClaimed(id: owner.id, endpoint: endpoint)
@@ -503,7 +503,7 @@ final class AppStore: ObservableObject {
         } catch {
             guard epoch == generation, localUnlocked else { return }
             // A failed candidate must never sign the established photo session out.
-            errorMessage = "Le Wi-Fi est configuré. La nouvelle connexion photo n’a pas pu être vérifiée ; la connexion précédente est conservée."
+            errorMessage = String(localized: "Le Wi-Fi est configuré. La nouvelle connexion photo n’a pas pu être vérifiée ; la connexion précédente est conservée.")
         }
     }
 
@@ -690,7 +690,7 @@ final class AppStore: ObservableObject {
             return true
         } catch {
             guard current(), !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return false }
-            photoAccessError = "La configuration du cadre est conservée. L’accès photo n’a pas pu être confirmé ; votre accès précédent est conservé."
+            photoAccessError = String(localized: "La configuration du cadre est conservée. L’accès photo n’a pas pu être confirmé ; votre accès précédent est conservé.")
             return false
         }
     }
@@ -710,7 +710,7 @@ final class AppStore: ObservableObject {
         do { code = try FrameLANLoginCode.parse(text) }
         catch { errorMessage = LANLoginCodeError.invalidCode.localizedDescription; return }
         if authenticated && pairingNeedsCompletion && code.endpoint.absoluteString != address {
-            errorMessage = "Scannez le QR du cadre dont l’association est en cours."
+            errorMessage = String(localized: "Scannez le QR du cadre dont l’association est en cours.")
             return
         }
         let attempt = localAuthenticationGeneration
@@ -784,7 +784,7 @@ final class AppStore: ObservableObject {
                     pairingNeedsCompletion = true
                     pendingPairingCredential = (password, credentialAddress, epoch)
                     defaults.set(credentialAddress, forKey: "credentialStorageFailedAccount")
-                    credentialStorageError = "L’association reste à finaliser : l’identifiant n’a pas pu être enregistré. Réessayez pour pouvoir envoyer vos photos."
+                    credentialStorageError = String(localized: "L’association reste à finaliser : l’identifiant n’a pas pu être enregistré. Réessayez pour pouvoir envoyer vos photos.")
                 }
             } else {
                 credentialStored = containsCredential(credentialAddress) && defaults.string(forKey: "credentialStorageFailedAccount") != credentialAddress
@@ -857,7 +857,7 @@ final class AppStore: ObservableObject {
         } catch {
             guard epoch == generation, recoveringConnection, localUnlocked else { return }
             // Never route candidate errors through handle(), which could sign the old session out.
-            errorMessage = "La nouvelle connexion n’a pas pu être finalisée. L’ancien accès est conservé. " + error.localizedDescription
+            errorMessage = String(localized: "La nouvelle connexion n’a pas pu être finalisée. L’ancien accès est conservé. ") + error.localizedDescription
         }
     }
 
@@ -881,7 +881,7 @@ final class AppStore: ObservableObject {
             defaults.removeObject(forKey: "credentialStorageFailedAccount")
         } catch {
             credentialStored = false
-            credentialStorageError = "L’enregistrement sécurisé n’a pas abouti. L’association reste à finaliser ; vous pouvez réessayer."
+            credentialStorageError = String(localized: "L’enregistrement sécurisé n’a pas abouti. L’association reste à finaliser ; vous pouvez réessayer.")
         }
     }
 
@@ -889,7 +889,7 @@ final class AppStore: ObservableObject {
     /// silently restore an old Keychain password after the frame has changed it.
     func changePassword(current: String, new: String) async -> PasswordChangeResult {
         guard canMutate, !displayBusy, passwordChangeSupported, let api else {
-            return .failure("Reconnectez-vous au cadre avant de modifier son mot de passe.")
+            return .failure(String(localized: "Reconnectez-vous au cadre avant de modifier son mot de passe."))
         }
         stopMonitoring()
         // Retire in-flight refreshes and thumbnails using the previous session.
@@ -914,23 +914,23 @@ final class AppStore: ObservableObject {
         }
         do {
             let result = try await api.changePassword(current: current, new: new)
-            guard epoch == generation else { return .failure("La connexion au cadre a changé.") }
+            guard epoch == generation else { return .failure(String(localized: "La connexion au cadre a changé.")) }
             guard result.authenticated else { throw APIError.invalidResponse }
-            var message = "Le mot de passe du cadre a été modifié. Les autres connexions ont été fermées."
+            var message = String(localized: "Le mot de passe du cadre a été modifié. Les autres connexions ont été fermées.")
             if remember {
                 do { try saveCredential(new, credentialAddress) }
                 catch {
                     credentialStored = false
-                    message += " L’identifiant sécurisé n’a pas pu être mis à jour sur cet iPhone."
+                    message += String(localized: " L’identifiant sécurisé n’a pas pu être mis à jour sur cet iPhone.")
                 }
             }
             connected = true
             return .success(message)
         } catch {
-            guard epoch == generation else { return .failure("La connexion au cadre a changé.") }
+            guard epoch == generation else { return .failure(String(localized: "La connexion au cadre a changé.")) }
             if (error as? APIError)?.isUnauthorized == true {
                 handle(error)
-                return .failure("Votre session a expiré. Reconnectez-vous au cadre.")
+                return .failure(String(localized: "Votre session a expiré. Reconnectez-vous au cadre."))
             }
             if let apiError = error as? APIError, case .http(let status, _) = apiError, status < 500 {
                 return .failure(apiError.localizedDescription)
@@ -942,7 +942,7 @@ final class AppStore: ObservableObject {
                 credentialStored = false
             }
             resetSession()
-            let message = "Le résultat n’a pas pu être confirmé. Essayez de vous reconnecter avec le nouveau mot de passe ; s’il est refusé, utilisez l’ancien."
+            let message = String(localized: "Le résultat n’a pas pu être confirmé. Essayez de vous reconnecter avec le nouveau mot de passe ; s’il est refusé, utilisez l’ancien.")
             errorMessage = message
             return .failure(message)
         }
@@ -988,7 +988,7 @@ final class AppStore: ObservableObject {
                 credentialStorageError = nil
                 address = ""
             } catch {
-                errorMessage = "Les identifiants de ce cadre n’ont pas tous pu être effacés. Déverrouillez l’iPhone puis réessayez Oublier ce cadre."
+                errorMessage = String(localized: "Les identifiants de ce cadre n’ont pas tous pu être effacés. Déverrouillez l’iPhone puis réessayez Oublier ce cadre.")
             }
         }
         lock()
@@ -1129,7 +1129,7 @@ final class AppStore: ObservableObject {
             connected = reachable
             if updating, let expected = availableUpdate?.latest, version == expected {
                 updating = false
-                updateMessage = "Mise à jour terminée."
+                updateMessage = String(localized: "Mise à jour terminée.")
             }
         } while requestedRefresh && authenticated && epoch == generation
     }
@@ -1271,12 +1271,12 @@ final class AppStore: ObservableObject {
             if previous { try await api.previous() } else { try await api.next() }
             guard epoch == generation else { return }
             errorMessage = nil
-            notice = "Le cadre est à jour."
+            notice = String(localized: "Le cadre est à jour.")
         } catch {
             guard epoch == generation else { return }
             handle(error)
             if (error as? URLError)?.code == .timedOut {
-                errorMessage = "Le cadre prend plus de temps que prévu. Son état va être actualisé ; la commande n’a pas été renvoyée."
+                errorMessage = String(localized: "Le cadre prend plus de temps que prévu. Son état va être actualisé ; la commande n’a pas été renvoyée.")
             }
         }
         if epoch == generation { await refresh() }
@@ -1290,7 +1290,7 @@ final class AppStore: ObservableObject {
         do {
             let response = try await api.upload(png: data, filename: filename)
             guard epoch == generation else { throw CancellationError() }
-            notice = response.alreadyExisted ? "Cette photo est dans la file." : "Photo ajoutée à la file."
+            notice = response.alreadyExisted ? String(localized: "Cette photo est dans la file.") : String(localized: "Photo ajoutée à la file.")
             await refresh()
         } catch {
             if epoch == generation { handle(error) }
@@ -1329,7 +1329,7 @@ final class AppStore: ObservableObject {
             if self.photoAccessRole == .media { _ = try await api.updateSchedule(value) }
             else { _ = try await api.updateSettings(value) }
         }) {
-            notice = "Réglages enregistrés."
+            notice = String(localized: "Réglages enregistrés.")
         }
     }
     @discardableResult
@@ -1366,7 +1366,7 @@ final class AppStore: ObservableObject {
         guard canAdminister, canMutate, let api else { return }
         let epoch = generation
         updating = true
-        updateMessage = "Préparation de la mise à jour…"
+        updateMessage = String(localized: "Préparation de la mise à jour…")
         do { _ = try await api.startUpdate() }
         catch { if epoch == generation { updating = false; handle(error) } }
     }
@@ -1376,7 +1376,7 @@ final class AppStore: ObservableObject {
             let individualAccess = selectedPhotoAccess != nil
             resetSession()
             errorMessage = individualAccess ? PhotoAccessError.accessRemoved.localizedDescription :
-                "Votre session a expiré ou le mot de passe est incorrect. Reconnectez-vous à votre cadre."
+                String(localized: "Votre session a expiré ou le mot de passe est incorrect. Reconnectez-vous à votre cadre.")
             if individualAccess { photoAccessError = PhotoAccessError.accessRemoved.localizedDescription }
         } else if let error = error as? URLError {
             switch error.code {
@@ -1384,10 +1384,10 @@ final class AppStore: ObservableObject {
             case .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .timedOut:
                 connectionError = true
                 connected = false
-                errorMessage = "Le Raspberry est injoignable. Vérifiez son adresse, le Wi-Fi et l’autorisation Réseau local dans Réglages iOS."
+                errorMessage = String(localized: "Le Raspberry est injoignable. Vérifiez son adresse, le Wi-Fi et l’autorisation Réseau local dans Réglages iOS.")
             default:
                 connectionError = false
-                errorMessage = "La connexion a échoué. \(error.localizedDescription)"
+                errorMessage = String(localized: "La connexion a échoué. \(error.localizedDescription)")
             }
         } else {
             connectionError = false
@@ -1506,7 +1506,7 @@ private extension AppStore {
             if error is VaultError {
                 photoAccessError = error.localizedDescription
             } else {
-                photoAccessError = "Le partage nécessite une mise à jour du cadre."
+                photoAccessError = String(localized: "Le partage nécessite une mise à jour du cadre.")
             }
             return false
         }
@@ -1547,7 +1547,7 @@ private extension AppStore {
             startMonitoring()
         } catch {
             guard photoOperationValid(epoch, operation) else { return }
-            photoAccessError = "Le Wi-Fi est configuré. L’accès photo précédent est conservé ; sa nouvelle adresse sécurisée n’a pas pu être confirmée."
+            photoAccessError = String(localized: "Le Wi-Fi est configuré. L’accès photo précédent est conservé ; sa nouvelle adresse sécurisée n’a pas pu être confirmée.")
         }
     }
     func invitationDraftAccount(_ selection: PhotoAccessSelection) -> String { "invitation:" + selection.account }
@@ -1883,7 +1883,7 @@ extension AppStore {
         } catch {
             reportPhotoAccessError(error, epoch: epoch, operation: operation)
             if photoOperationValid(epoch, operation), (error as? APIError)?.isUnauthorized != true {
-                photoAccessError = "L’annulation n’a pas pu être confirmée. L’invitation peut rester valable jusqu’à son expiration. Réessayez avant de créer un nouveau QR."
+                photoAccessError = String(localized: "L’annulation n’a pas pu être confirmée. L’invitation peut rester valable jusqu’à son expiration. Réessayez avant de créer un nouveau QR.")
             }
         }
     }

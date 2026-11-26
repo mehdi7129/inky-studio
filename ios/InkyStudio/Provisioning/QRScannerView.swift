@@ -5,8 +5,8 @@ enum QRScannerFailure: Error, LocalizedError, Sendable {
     case permissionDenied, unavailable
     var errorDescription: String? {
         switch self {
-        case .permissionDenied: return "Autorisez la caméra dans les réglages iOS pour scanner le QR du cadre."
-        case .unavailable: return "La caméra n’est pas disponible. Réessayez sur votre iPhone."
+        case .permissionDenied: return String(localized: "Autorisez la caméra dans les réglages iOS pour scanner le QR du cadre.")
+        case .unavailable: return String(localized: "La caméra n’est pas disponible. Réessayez sur votre iPhone.")
         }
     }
 }

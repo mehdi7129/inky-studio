@@ -31,6 +31,7 @@
 		39374A0640F3E0777B82E833 /* BootstrapFrameTrustTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84DF1524B9BAE576893CEE5 /* BootstrapFrameTrustTests.swift */; };
 		3B2FA8B8345A13890D0C1722 /* LegacyTLSProofClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F462EF641F8A3166DE01E969 /* LegacyTLSProofClient.swift */; };
 		3B667FB641D8A1000CF17505 /* FactorySetupWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04EA53A1A916DDFC4DA995D5 /* FactorySetupWire.swift */; };
+		3C122432042026970372A60E /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = DF02C14466EA49438B239FA4 /* InfoPlist.xcstrings */; };
 		41311E7054405394CB82199E /* FrameBootstrapCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 513BB9A8F8C1BE7D7A9A6FF6 /* FrameBootstrapCode.swift */; };
 		42766EFA47788DD300F4CC2C /* LegacyTLSProofModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F2042323A90DDDC684EBA4 /* LegacyTLSProofModels.swift */; };
 		46AE316874B933FFBC1976C9 /* FactorySetupPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D55B0CD2F2C07BEFD75AA4E /* FactorySetupPresentation.swift */; };
@@ -43,6 +44,7 @@
 		673060D0141C55284669ABD2 /* PinnedFrameTrust.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1DDCCB56C35BA702C6413F /* PinnedFrameTrust.swift */; };
 		7195E1B6323DD7180FDDFC37 /* InkyTLS in Frameworks */ = {isa = PBXBuildFile; productRef = 6AB361F21F483CAD11FC312F /* InkyTLS */; };
 		725B1939E1974F3FADB6440E /* ShareAccessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0834373954BB5835FADEA86 /* ShareAccessView.swift */; };
+		72F8FB0DF30710C9BD077F1D /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 35558F7CEA1F9CE82A7B2957 /* Localizable.xcstrings */; };
 		79FEA0CF36DD2B420BA306F4 /* PinnedFrameTrustTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6000FA45E4E44E5673B2505 /* PinnedFrameTrustTests.swift */; };
 		800831B4D34FD5DFF3206C01 /* PhotoPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 317510685DBCBA4B459AD2F4 /* PhotoPipeline.swift */; };
 		830D01584B435478285A585A /* BluetoothSetupCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5ADFD190C12461AC95A6AB3 /* BluetoothSetupCoordinatorTests.swift */; };
@@ -127,6 +129,7 @@
 		30A9004EA7755E4BA2D27456 /* FactoryPhotoEnrollment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactoryPhotoEnrollment.swift; sourceTree = "<group>"; };
 		317510685DBCBA4B459AD2F4 /* PhotoPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPipeline.swift; sourceTree = "<group>"; };
 		349A1501C7C3147D64A647BE /* InkyStudioUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InkyStudioUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		35558F7CEA1F9CE82A7B2957 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		36D190F2D1CFE1681D659D98 /* BluetoothChannelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothChannelTests.swift; sourceTree = "<group>"; };
 		37A488B0A50ACCFE14807962 /* InkyStudio.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = InkyStudio.entitlements; sourceTree = "<group>"; };
 		38533D2848E2229ACC99D7D2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -182,6 +185,7 @@
 		CF609B8AA1F8E3DFDC9893A4 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
 		D096779D681CB37721D1B984 /* PhotoAccessUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAccessUITests.swift; sourceTree = "<group>"; };
 		D0DC51E21879E71A219578D6 /* BluetoothTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothTransport.swift; sourceTree = "<group>"; };
+		DF02C14466EA49438B239FA4 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		E067CB018DA2DC645FB50101 /* SoftAPTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftAPTransportTests.swift; sourceTree = "<group>"; };
 		E0834373954BB5835FADEA86 /* ShareAccessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareAccessView.swift; sourceTree = "<group>"; };
 		E4732A6ED3EE7207FA946E68 /* TCPProvisioningConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCPProvisioningConnection.swift; sourceTree = "<group>"; };
@@ -350,7 +354,9 @@
 			children = (
 				9EE38F9C4815EE8B81A82971 /* Assets.xcassets */,
 				8DCEA26471F9019C266D0935 /* Info.plist */,
+				DF02C14466EA49438B239FA4 /* InfoPlist.xcstrings */,
 				37A488B0A50ACCFE14807962 /* InkyStudio.entitlements */,
+				35558F7CEA1F9CE82A7B2957 /* Localizable.xcstrings */,
 				38533D2848E2229ACC99D7D2 /* PrivacyInfo.xcprivacy */,
 				2A2F4D0111059422485B70B8 /* ThirdPartyNotices.txt */,
 			);
@@ -481,7 +487,17 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
+				ar,
+				de,
+				en,
+				es,
 				fr,
+				it,
+				ja,
+				ko,
+				pt,
+				"zh-Hans",
+				"zh-Hant",
 			);
 			mainGroup = 25F1B53B567B11547A2C3211;
 			minimizedProjectReferenceProxies = 1;
@@ -506,6 +522,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				BDA9790D16F044E74CD03A26 /* Assets.xcassets in Resources */,
+				3C122432042026970372A60E /* InfoPlist.xcstrings in Resources */,
+				72F8FB0DF30710C9BD077F1D /* Localizable.xcstrings in Resources */,
 				6315C6AAC9CCE221CDBB7C3E /* PrivacyInfo.xcprivacy in Resources */,
 				25B80AA3199AE33F4DC01392 /* ThirdPartyNotices.txt in Resources */,
 			);
@@ -761,6 +779,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 5.0;
@@ -843,6 +862,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 5.0;

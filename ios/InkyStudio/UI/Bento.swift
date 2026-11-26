@@ -151,7 +151,7 @@ final class ScenePrivacyAnchorView: UIView {
         cover.backgroundColor = UIColor(Bento.background)
         cover.layer.zPosition = 10_000
         cover.isAccessibilityElement = true
-        cover.accessibilityLabel = "Inky Studio verrouillé"
+        cover.accessibilityLabel = String(localized: "Inky Studio verrouillé")
         cover.accessibilityViewIsModal = true
         let symbol = UIImageView(image: UIImage(systemName: "lock.iphone"))
         symbol.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 52, weight: .ultraLight)
@@ -216,7 +216,7 @@ struct OutlineButtonStyle: ButtonStyle {
 struct FramePhoto: View {
     @EnvironmentObject private var store: AppStore
     let photo: Photo
-    var accessibilityDescription = "Photo"
+    var accessibilityDescription: LocalizedStringKey = "Photo"
     @State private var image: UIImage?
     @State private var loading = true
     var body: some View {
@@ -246,8 +246,8 @@ struct FramePhoto: View {
 
 struct EmptyCard: View {
     let symbol: String
-    let title: String
-    let message: String
+    let title: LocalizedStringKey
+    let message: LocalizedStringKey
     var body: some View {
         VStack(spacing: 14) {
             Image(systemName: symbol).font(.system(size: 38, weight: .light)).foregroundStyle(Bento.secondaryInk)

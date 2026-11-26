@@ -1,0 +1,290 @@
+{
+  "sourceLanguage": "fr",
+  "strings": {
+    "NSBluetoothAlwaysUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "تستخدم Inky Studio Bluetooth للتعرف على إطار الصور وتثبيت اتصال Wi-Fi الخاص بها، بما في ذلك عندما تكون بعيدا عن شبكتك المعتادة."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Inky Studio nutzt Bluetooth, um Ihren Bildrahmen zu erkennen und seine Wi-Fi-Verbindung einzurichten, auch wenn Sie sich von Ihrem üblichen Netzwerk fernhalten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inky Studio uses Bluetooth to recognise your frame and set up its Wi-Fi, even when you are away from your usual network."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Inky Studio utiliza Bluetooth para reconocer su fotograma y configurar su conexión Wi-Fi, incluso cuando está lejos de su red habitual."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inky Studio utilise le Bluetooth pour reconnaître votre cadre et configurer son réseau Wi-Fi, même hors de votre réseau habituel."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Inky Studio utilizza il Bluetooth per riconoscere il tuo fotogramma e configurare la sua connessione Wi-Fi, anche quando sei lontano dalla tua normale rete."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Inky Studioは,あなたの通常のネットワークから離れるときも,あなたの写真フレームを認識し,Wi-Fi接続を設定するためにBluetoothを使用します."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "인키 스튜디오는 블루투스를 사용하여 일반적인 네트워크에서 떨어져있을 때에도 불구하고 사진 프레임을 인식하고 Wi-Fi 연결을 설정합니다."
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "O Inky Studio usa o Bluetooth para reconhecer o quadro da foto e configurar a sua conexão Wi-Fi, inclusive quando você está longe da sua rede habitual."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "印基工作室使用蓝牙识别您的相框,并设置 Wi-Fi连接,包括在您离您的常规网络远离时."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Inky Studio使用Bluetooth識別您的相框,並設定 Wi-Fi連接,"
+          }
+        }
+      }
+    },
+    "NSCameraUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "استخدم الكاميرا لتصوير صورة لبرنامج الصور الخاص بك أو لنسخ رمز QR المزدوج. الصور التي تأخذها هنا لن يتم حفظها تلقائياً في مكتبة الصور الخاصة بك"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Verwenden Sie die Kamera, um ein Foto für Ihren Bildrahmen zu machen oder um den QR-Code zu scannen, der sich mit Ihnen verbindet. Fotos, die Sie hier machen, werden nie automatisch in Ihre Fotobibliothek gespeichert."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Take a photo for your frame or scan its pairing QR code. Photos you take here are never automatically saved to your library."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Utilice la cámara para tomar una foto para su fotograma o para escanear su código QR. Las fotos que tomas aquí nunca se guardan automáticamente en tu biblioteca de fotos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prenez une photo pour votre cadre ou scannez son QR de connexion. Les images ne sont pas enregistrées automatiquement dans votre photothèque."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Utilizzare la fotocamera per scattare una foto per il tuo frame fotografico o per scanner il codice QR che si abbinano. Le foto che scatti qui non vengono mai salvate automaticamente nella tua libreria fotografica."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "カメラを使って写真のフレームを撮ったり QRコードをスキャンしたりします撮影した写真は 自動的に写真ライブラリに保存されません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "카메라를 사용하여 사진 프레임에 사진을 찍거나 QR 코드를 스캔하십시오. 여기 찍은 사진은 절대 자동으로 사진 라이브러리에 저장되지 않습니다."
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Use a câmera para tirar uma foto para o seu quadro de foto ou para escanear o código QR. As fotos que tiras aqui nunca são automaticamente guardadas na tua biblioteca de fotos."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "使用相机拍摄相片或扫描相对 QR 代码.你在这里拍摄的照片永远不会被自动保存到你的照片库中."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "使用相機拍攝相片或掃描相機配合的QR圖碼.這裡的照片從來沒有被自動儲存於您的圖書館."
+          }
+        }
+      }
+    },
+    "NSFaceIDUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Face ID يفتح Inky Studio ويحمي الوصول إلى صورك على إطار الصور على هذا iPhone."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Face ID öffnet Inky Studio und schützt den Zugriff auf Ihre Fotos im Fotorahmen auf diesem iPhone."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Face ID unlocks Inky Studio and protects access to your frame’s photos on this iPhone."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Face ID desbloquea Inky Studio y protege el acceso a sus fotos en el fotograma de este iPhone."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Face ID déverrouille Inky Studio et protège l’accès aux photos de votre cadre sur cet iPhone."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Face ID sblocca Inky Studio e protegge l'accesso alle tue foto nel fotogramma di questo iPhone."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Face IDは Inky Studioをロックして iPhoneの写真フレームにある写真へのアクセスを保護します"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "페이스 아이디는 인키 스튜디오를 열고 이 아이폰의 사진 프레임에 있는 사진에 대한 접근을 보호합니다."
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "O Face ID desbloqueia o Inky Studio e protege o acesso às suas fotos no quadro fotográfico deste iPhone."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "面部识别器解锁了Inky Studio,并保护了您在iPhone上的相框架上的照片的访问."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "臉部ID會解鎖Inky Studio,"
+          }
+        }
+      }
+    },
+    "NSLocalNetworkUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "إنكي ستوديو تتواصل مع إطار الصور الخاص بك عبر Wi-Fi المحلي لإعداد إطار الصور وإدارة صورها."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Inky Studio verbindet sich über das lokale Wi-Fi mit Ihrem Bildrahmen, um den Bildrahmen einzurichten und Fotos zu verwalten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inky Studio connects to your frame to set it up and manage the photos on your local Wi-Fi network."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Inky Studio se conecta a su fotograma a través de Wi-Fi local para configurar el fotograma y administrar sus fotos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inky Studio vérifie votre cadre sur son Wi-Fi temporaire pour le configurer, puis sur votre réseau Wi-Fi pour gérer ses photos."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Inky Studio si connette al tuo fotogramma tramite Wi-Fi locale per impostare il fotogramma e gestire le sue foto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "インキ・スタジオは地元のWi-Fiで写真フレームに接続して フレームを設定し 写真を管理します"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "인키 스튜디오는 로컬 와이파이를 통해 사진 프레임을 연결하여 사진 프레임을 설정하고 사진을 관리합니다."
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "O Inky Studio conecta-se ao seu quadro de fotos através da Wi-Fi local para configurar o quadro de fotos e gerenciar as suas fotos."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "通过本地Wi-Fi连接到您的相框架,设置相框架并管理照片."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "透過本地Wi-Fi連接到您的相機架,"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

@@ -54,9 +54,9 @@ enum LANLoginCodeError: Error, LocalizedError, Equatable, Sendable {
     var errorDescription: String? {
         switch self {
         case .invalidCode:
-            return "Ce QR de connexion n’est pas valide. Scannez le QR de l’écran d’accueil du cadre."
+            return String(localized: "Ce QR de connexion n’est pas valide. Scannez le QR de l’écran d’accueil du cadre.")
         case .adoptedFrame:
-            return "Ce cadre est déjà associé à cet iPhone. Utilisez sa connexion sécurisée habituelle."
+            return String(localized: "Ce cadre est déjà associé à cet iPhone. Utilisez sa connexion sécurisée habituelle.")
         }
     }
 }

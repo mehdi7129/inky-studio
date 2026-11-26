@@ -7,10 +7,10 @@ enum FactorySetupError: Error, Equatable, LocalizedError, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .storageUnavailable: return "L’étape de configuration n’a pas pu être enregistrée. Déverrouillez l’iPhone puis réessayez."
-        case .checkpointConflict: return "Cette tentative est déjà enregistrée avec d’autres paramètres. Reprenez-la ou lancez explicitement une nouvelle tentative."
-        case .missingCheckpoint: return "La tentative doit être retrouvée sur le cadre avant de poursuivre."
-        default: return "La configuration du cadre n’a pas pu être confirmée. Reconnectez-vous pour vérifier son état."
+        case .storageUnavailable: return String(localized: "L’étape de configuration n’a pas pu être enregistrée. Déverrouillez l’iPhone puis réessayez.")
+        case .checkpointConflict: return String(localized: "Cette tentative est déjà enregistrée avec d’autres paramètres. Reprenez-la ou lancez explicitement une nouvelle tentative.")
+        case .missingCheckpoint: return String(localized: "La tentative doit être retrouvée sur le cadre avant de poursuivre.")
+        default: return String(localized: "La configuration du cadre n’a pas pu être confirmée. Reconnectez-vous pour vérifier son état.")
         }
     }
 }

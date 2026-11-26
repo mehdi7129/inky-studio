@@ -293,13 +293,13 @@ enum OwnershipVaultError: Error, LocalizedError, Equatable, Sendable {
     case unavailable, missing, invalidRecord, identityChanged, alreadyClaimed, capacityReached, transactionPending
     var errorDescription: String? {
         switch self {
-        case .unavailable: return "Le trousseau sécurisé est indisponible. Déverrouillez l’iPhone puis réessayez."
-        case .missing: return "L’autorisation de ce cadre n’est plus présente sur cet iPhone."
-        case .invalidRecord: return "L’autorisation enregistrée de ce cadre est illisible."
-        case .identityChanged: return "L’identité de ce cadre a changé. Une nouvelle adoption physique est nécessaire."
-        case .alreadyClaimed: return "Ce cadre est déjà adopté sur cet iPhone."
-        case .capacityReached: return "Huit cadres sont déjà enregistrés. Oubliez un cadre avant d’en adopter un autre."
-        case .transactionPending: return "Une configuration Wi-Fi attend encore une vérification. Reprenez-la avant de changer de réseau."
+        case .unavailable: return String(localized: "Le trousseau sécurisé est indisponible. Déverrouillez l’iPhone puis réessayez.")
+        case .missing: return String(localized: "L’autorisation de ce cadre n’est plus présente sur cet iPhone.")
+        case .invalidRecord: return String(localized: "L’autorisation enregistrée de ce cadre est illisible.")
+        case .identityChanged: return String(localized: "L’identité de ce cadre a changé. Une nouvelle adoption physique est nécessaire.")
+        case .alreadyClaimed: return String(localized: "Ce cadre est déjà adopté sur cet iPhone.")
+        case .capacityReached: return String(localized: "Huit cadres sont déjà enregistrés. Oubliez un cadre avant d’en adopter un autre.")
+        case .transactionPending: return String(localized: "Une configuration Wi-Fi attend encore une vérification. Reprenez-la avant de changer de réseau.")
         }
     }
 }

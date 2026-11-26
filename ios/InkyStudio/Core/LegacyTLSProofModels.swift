@@ -16,7 +16,7 @@ struct VerifiedLegacyTLSEndpoint: Equatable, Sendable {
 enum LegacyTLSProofError: Error, LocalizedError, Equatable, Sendable {
     case unavailable
     var errorDescription: String? {
-        "La connexion sécurisée n’est pas disponible pour ce cadre. Votre accès actuel est conservé."
+        String(localized: "La connexion sécurisée n’est pas disponible pour ce cadre. Votre accès actuel est conservé.")
     }
 }
 

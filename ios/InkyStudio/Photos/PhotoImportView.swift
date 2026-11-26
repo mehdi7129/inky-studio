@@ -17,7 +17,7 @@ private final class PhotoImportModel: ObservableObject {
         isLoading = true
         photo = nil
         errorMessage = nil
-        progressText = "Chargement depuis Photos…"
+        progressText = String(localized: "Chargement depuis Photos…")
         defer { if loadID == identifier { isLoading = false } }
         do {
             guard let file = try await item.loadTransferable(type: ImportedPhotoFile.self) else {
@@ -26,7 +26,7 @@ private final class PhotoImportModel: ObservableObject {
             defer { try? FileManager.default.removeItem(at: file.url) }
             try Task.checkCancellation()
             guard loadID == identifier else { return }
-            progressText = "Préparation de la photo…"
+            progressText = String(localized: "Préparation de la photo…")
             let worker = Task.detached(priority: .userInitiated) {
                 try autoreleasepool { try PhotoPipeline.decode(url: file.url) }
             }
@@ -43,7 +43,7 @@ private final class PhotoImportModel: ObservableObject {
         } catch {
             guard !Task.isCancelled, loadID == identifier else { return }
             errorMessage = (error as? PhotoPipelineError)?.errorDescription
-                ?? "La photo n’a pas pu être chargée. Si elle est sur iCloud, vérifiez la connexion puis réessayez."
+                ?? String(localized: "La photo n’a pas pu être chargée. Si elle est sur iCloud, vérifiez la connexion puis réessayez.")
         }
     }
 
@@ -53,7 +53,7 @@ private final class PhotoImportModel: ObservableObject {
         isLoading = true
         photo = nil
         errorMessage = nil
-        progressText = "Préparation de la photo…"
+        progressText = String(localized: "Préparation de la photo…")
         defer { if loadID == identifier { isLoading = false } }
         do {
             let worker = Task.detached(priority: .userInitiated) {
@@ -72,7 +72,7 @@ private final class PhotoImportModel: ObservableObject {
         } catch {
             guard !Task.isCancelled, loadID == identifier else { return }
             errorMessage = (error as? PhotoPipelineError)?.errorDescription
-                ?? "La photo n’a pas pu être préparée. Prenez une autre photo, puis réessayez."
+                ?? String(localized: "La photo n’a pas pu être préparée. Prenez une autre photo, puis réessayez.")
         }
     }
 
@@ -81,7 +81,7 @@ private final class PhotoImportModel: ObservableObject {
         guard let photo, !isUploading else { return false }
         isUploading = true
         errorMessage = nil
-        progressText = "Préparation pour le cadre…"
+        progressText = String(localized: "Préparation pour le cadre…")
         defer { isUploading = false }
         do {
             let worker = Task.detached(priority: .userInitiated) {
@@ -95,7 +95,7 @@ private final class PhotoImportModel: ObservableObject {
                 worker.cancel()
             }
             try Task.checkCancellation()
-            progressText = "Envoi vers le cadre…"
+            progressText = String(localized: "Envoi vers le cadre…")
             try await onUpload(png, "photo-\(UUID().uuidString.prefix(8).lowercased()).png")
             try Task.checkCancellation()
             return true
@@ -106,10 +106,10 @@ private final class PhotoImportModel: ObservableObject {
             if let pipelineError = error as? PhotoPipelineError {
                 errorMessage = pipelineError.errorDescription
             } else if error is URLError {
-                errorMessage = "L’envoi n’a pas pu être confirmé. Vérifiez le Wi-Fi et la file du cadre avant de réessayer."
+                errorMessage = String(localized: "L’envoi n’a pas pu être confirmé. Vérifiez le Wi-Fi et la file du cadre avant de réessayer.")
             } else {
                 errorMessage = (error as? LocalizedError)?.errorDescription
-                    ?? "L’envoi a échoué. Vérifiez la connexion au cadre, puis réessayez."
+                    ?? String(localized: "L’envoi a échoué. Vérifiez la connexion au cadre, puis réessayez.")
             }
             return false
         }
@@ -237,7 +237,7 @@ struct PhotoImportView: View {
                 switch result {
                 case let .success(photo): pendingCapture = photo
                 case .failure:
-                    model.errorMessage = "La photo n’a pas pu être récupérée. Prenez une autre photo, puis réessayez."
+                    model.errorMessage = String(localized: "La photo n’a pas pu être récupérée. Prenez une autre photo, puis réessayez.")
                 case nil: break
                 }
                 showCamera = false
@@ -390,12 +390,12 @@ struct PhotoImportView: View {
             Text("Déplacez et pincez pour cadrer.")
                 .font(.body).foregroundStyle(secondary)
             HStack(spacing: 16) {
-                zoomButton(symbol: "minus", label: "Réduire le zoom") { zoom = max(1, zoom - 0.25) }
+                zoomButton(symbol: "minus", label: String(localized: "Réduire le zoom")) { zoom = max(1, zoom - 0.25) }
                 Slider(value: $zoom, in: 1...CropGeometry.maximumZoom)
                     .tint(Bento.ink)
                     .accessibilityLabel("Zoom de la photo")
-                    .accessibilityValue(String(format: "%.1f fois", Double(zoom)))
-                zoomButton(symbol: "plus", label: "Augmenter le zoom") {
+                    .accessibilityValue("\(Double(zoom), format: .number.precision(.fractionLength(1))) fois")
+                zoomButton(symbol: "plus", label: String(localized: "Augmenter le zoom")) {
                     zoom = min(CropGeometry.maximumZoom, zoom + 0.25)
                 }
             }
@@ -542,19 +542,19 @@ private enum CameraIssue: String, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .denied: "Autoriser l’appareil photo"
-        case .restricted: "Appareil photo restreint"
-        case .unavailable: "Appareil photo indisponible"
+        case .denied: String(localized: "Autoriser l’appareil photo")
+        case .restricted: String(localized: "Appareil photo restreint")
+        case .unavailable: String(localized: "Appareil photo indisponible")
         }
     }
     var message: String {
         switch self {
         case .denied:
-            "Autorisez l’accès à l’appareil photo dans Réglages pour prendre une photo. Vous pouvez aussi revenir et choisir une image dans Photos."
+            String(localized: "Autorisez l’accès à l’appareil photo dans Réglages pour prendre une photo. Vous pouvez aussi revenir et choisir une image dans Photos.")
         case .restricted:
-            "Une restriction de cet appareil empêche l’accès à la caméra. Vous pouvez choisir une image dans Photos."
+            String(localized: "Une restriction de cet appareil empêche l’accès à la caméra. Vous pouvez choisir une image dans Photos.")
         case .unavailable:
-            "Cet appareil ne permet pas de prendre une photo ici. Vous pouvez choisir une image dans Photos."
+            String(localized: "Cet appareil ne permet pas de prendre une photo ici. Vous pouvez choisir une image dans Photos.")
         }
     }
 }

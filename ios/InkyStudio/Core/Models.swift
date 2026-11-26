@@ -67,10 +67,10 @@ struct DisplayDiagnostics: Decodable, Equatable, Sendable {
         if let error { return error.detail }
         switch state {
         case "ready", "mock": return nil
-        case "busy": return "L’écran est en cours d’actualisation. Les commandes d’affichage sont temporairement indisponibles."
-        case "stopping": return "L’écran est en cours d’arrêt. Les commandes d’affichage sont indisponibles."
-        case "uninitialized": return "L’écran n’est pas encore initialisé. Les commandes d’affichage sont indisponibles."
-        default: return "L’état de l’écran ne permet pas de confirmer sa disponibilité."
+        case "busy": return String(localized: "L’écran est en cours d’actualisation. Les commandes d’affichage sont temporairement indisponibles.")
+        case "stopping": return String(localized: "L’écran est en cours d’arrêt. Les commandes d’affichage sont indisponibles.")
+        case "uninitialized": return String(localized: "L’écran n’est pas encore initialisé. Les commandes d’affichage sont indisponibles.")
+        default: return String(localized: "L’état de l’écran ne permet pas de confirmer sa disponibilité.")
         }
     }
 }

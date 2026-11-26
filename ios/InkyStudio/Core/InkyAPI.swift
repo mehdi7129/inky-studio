@@ -515,5 +515,5 @@ final class OriginRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked
 
 enum ProvisioningAPIError: LocalizedError {
     case unavailable
-    var errorDescription: String? { "Le Bluetooth n’est pas encore activé sur ce cadre. Mets son logiciel à jour avant de continuer." }
+    var errorDescription: String? { String(localized: "Le Bluetooth n’est pas encore activé sur ce cadre. Mets son logiciel à jour avant de continuer.") }
 }

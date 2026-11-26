@@ -13,15 +13,15 @@ final class LocalDeviceAuthentication {
         switch probe.biometryType {
         case .faceID: return "Face ID"
         case .touchID: return "Touch ID"
-        default: return "code iPhone"
+        default: return String(localized: "code iPhone")
         }
     }
 
     func authenticate() async throws {
         context.invalidate()
         let candidate = LAContext()
-        candidate.localizedCancelTitle = "Annuler"
-        candidate.localizedFallbackTitle = "Utiliser le code de l’iPhone"
+        candidate.localizedCancelTitle = String(localized: "Annuler")
+        candidate.localizedFallbackTitle = String(localized: "Utiliser le code de l’iPhone")
         var error: NSError?
         guard candidate.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             throw VaultError.passcodeRequired
@@ -29,7 +29,7 @@ final class LocalDeviceAuthentication {
         context = candidate
         do {
             guard try await candidate.evaluatePolicy(.deviceOwnerAuthentication,
-                localizedReason: "Déverrouiller Inky Studio") else { throw VaultError.cancelled }
+                localizedReason: String(localized: "Déverrouiller Inky Studio")) else { throw VaultError.cancelled }
         } catch {
             if (error as? LAError)?.code == .passcodeNotSet { throw VaultError.passcodeRequired }
             throw VaultError.cancelled
@@ -139,8 +139,8 @@ struct BiometricVault: Sendable {
     }
 
     private static func read(service: String, address: String, context: LAContext) throws -> String {
-        context.localizedCancelTitle = "Annuler"
-        context.localizedReason = "Déverrouiller Inky Studio"
+        context.localizedCancelTitle = String(localized: "Annuler")
+        context.localizedReason = String(localized: "Déverrouiller Inky Studio")
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service, kSecAttrAccount as String: address,
             kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
@@ -165,10 +165,10 @@ enum VaultError: LocalizedError {
     case unavailable, cancelled, missing, passcodeRequired
     var errorDescription: String? {
         switch self {
-        case .unavailable: return "L’enregistrement sécurisé est indisponible. Votre connexion actuelle est conservée."
-        case .cancelled: return "Déverrouillage annulé. Réessayez avec Face ID ou le code de l’iPhone."
-        case .missing: return "Cet iPhone n’a pas d’identifiant enregistré pour ce cadre."
-        case .passcodeRequired: return "Configurez un code de verrouillage dans les réglages de l’iPhone pour utiliser Inky Studio."
+        case .unavailable: return String(localized: "L’enregistrement sécurisé est indisponible. Votre connexion actuelle est conservée.")
+        case .cancelled: return String(localized: "Déverrouillage annulé. Réessayez avec Face ID ou le code de l’iPhone.")
+        case .missing: return String(localized: "Cet iPhone n’a pas d’identifiant enregistré pour ce cadre.")
+        case .passcodeRequired: return String(localized: "Configurez un code de verrouillage dans les réglages de l’iPhone pour utiliser Inky Studio.")
         }
     }
 }
