@@ -411,6 +411,16 @@ async def test_lan_start_renders_one_private_qr_and_stop_does_not_repaint(runtim
     assert all(task.done() for task in frame.runtime._tasks)
 
 
+async def test_lan_start_reads_the_systemd_welcome_language(runtime_frame, monkeypatch):
+    frame = runtime_frame
+    monkeypatch.setenv("INKY_STUDIO_WELCOME_LANGUAGE", "ja")
+    await frame.runtime.start()
+    image, = frame.display.images
+    raw = frame.runtime._payload
+    assert image == render_lan_welcome(800, 480, raw, language="ja")
+    assert image != render_lan_welcome(800, 480, raw)
+
+
 @pytest.mark.parametrize(("width", "height", "module_scale"), [
     (212, 104, 1), (250, 122, 1), (400, 300, 3),
 ])

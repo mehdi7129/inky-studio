@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import configparser
+import hashlib
 import json
 import os
 import shutil
@@ -51,6 +52,14 @@ def test_installed_wheel_keeps_frontend_outside_site_packages(tmp_path):
         } <= names
         assert not any(name.endswith((".pth", ".egg-link", ".pyc"))
                        or "__editable__" in name or name.endswith("direct_url.json") for name in names)
+        font_path = "inky_web/fonts/"
+        fonts = json.loads(archive.read(font_path + "WELCOME-FONT-PROVENANCE.json"))
+        for source_font in fonts["sources"].values():
+            license_bytes = archive.read(font_path + source_font["license_file"])
+            assert hashlib.sha256(license_bytes).hexdigest() == source_font["license_sha256"]
+            for subset in source_font["subsets"]:
+                font = archive.read(font_path + subset["file"])
+                assert hashlib.sha256(font).hexdigest() == subset["sha256"]
         metadata_path, = (name for name in names if name.endswith(".dist-info/METADATA"))
         metadata = Parser().parsestr(archive.read(metadata_path).decode())
         assert metadata["Name"] == project["name"]

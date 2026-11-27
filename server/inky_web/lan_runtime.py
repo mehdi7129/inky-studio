@@ -25,6 +25,13 @@ from inky_web.inky.errors import DisplayUnavailableError
 from inky_web.photo_access import AccessError, token, uuid
 from inky_web.services import history
 from inky_web.welcome import _draw_centered, _fit_font, _login_qr
+from inky_web.welcome_locale import (
+    DEFAULT_WELCOME_LANGUAGE,
+    WELCOME_COPY,
+    WELCOME_LANGUAGE_ENV,
+    resolve_welcome_language,
+    welcome_font,
+)
 
 INVITATION_RENEW_SECONDS = 60
 CERTIFICATE_RENEW_SECONDS = 86400
@@ -84,12 +91,13 @@ def invitation_payload(identity, origin: str, invitation_id: str, invitation_tok
         raise LANRuntimeError() from None
 
 
-def render_lan_welcome(width: int, height: int, payload: str) -> Image.Image:
-    """Render the same authenticated invitation at the panel's native size."""
+def render_lan_welcome(width: int, height: int, payload: str, *, language: str | None = None) -> Image.Image:
+    """Localize only the text around the unchanged invitation QR."""
     if type(width) is not int or type(height) is not int:
         raise LANRuntimeError()
+    language = resolve_welcome_language(language)
     if (width, height) in {(212, 104), (250, 122), (400, 300)}:
-        return _render_compact_lan_welcome(width, height, payload)
+        return _render_compact_lan_welcome(width, height, payload, language)
     if width < 600 or height < 400:
         raise LANRuntimeError()
     image = Image.new("RGB", (width, height), "white")
@@ -115,21 +123,24 @@ def render_lan_welcome(width: int, height: int, payload: str) -> Image.Image:
     text_x, text_width = margin + qr_width + gap, width - 2 * margin - qr_width - gap
     draw.rounded_rectangle((text_x, top, text_x + text_width, bottom),
                            radius=radius, outline="black", width=stroke)
-    lines = [("Prêt pour", True), ("vos photos", True), ("", False),
-             ("Ouvrez Inky Studio", False), ("sur votre iPhone", False),
-             ("et scannez ce QR.", False)]
+    copy = WELCOME_COPY[language]
+    lines = [*((line, True) for line in copy.headline), ("", False),
+             *((line, False) for line in copy.instructions)]
     line_height = max(22, int(height * 0.075))
+    if language != DEFAULT_WELCOME_LANGUAGE:
+        line_height += 2
     y = top + max(gap, (card_height - len(lines) * line_height) // 2)
     for text, bold in lines:
         if text:
             font = _fit_font(draw, text, height * (0.075 if bold else 0.049),
-                             text_width - 2 * gap, bold=bold)
-            _draw_centered(draw, text, y, font, text_width, "black", x=text_x)
+                             text_width - 2 * gap, bold=bold,
+                             font_path=welcome_font(language, bold=bold), direction=copy.direction)
+            _draw_centered(draw, text, y, font, text_width, "black", x=text_x, direction=copy.direction)
         y += line_height
     return image
 
 
-def _render_compact_lan_welcome(width: int, height: int, payload: str) -> Image.Image:
+def _render_compact_lan_welcome(width: int, height: int, payload: str, language: str) -> Image.Image:
     margin = max(6, height // 30)
     # The pHAT cannot fit two pixels per module with the current authenticated
     # envelope. Keep every module, the quiet zone and exact integer scaling.
@@ -141,12 +152,21 @@ def _render_compact_lan_welcome(width: int, height: int, payload: str) -> Image.
     draw = ImageDraw.Draw(image)
     text_x = qr.width + 2 * margin
     text_width = width - text_x - margin
-    lines = ("Inky Studio", "Scannez ce QR", "avec votre iPhone")
-    line_height = max(14, height // 11)
+    copy = WELCOME_COPY[language]
+    lines = ("Inky Studio", *copy.compact)
+    font_size = max(14, height // 11)
+    line_height = font_size
+    if language != DEFAULT_WELCOME_LANGUAGE:
+        # Leave room for tall glyphs and Arabic descenders without reducing
+        # the text size or taking any space from the QR.
+        line_height += max(6, height // 40)
     y = (height - line_height * len(lines)) // 2
     for index, line in enumerate(lines):
-        font = _fit_font(draw, line, line_height, text_width, bold=index == 0)
-        _draw_centered(draw, line, y, font, text_width, "black", x=text_x)
+        # Keep the same brand face independently of script.
+        direction = None if index == 0 else copy.direction
+        font = _fit_font(draw, line, font_size, text_width, bold=index == 0,
+                         font_path=None if index == 0 else welcome_font(language, bold=False), direction=direction)
+        _draw_centered(draw, line, y, font, text_width, "black", x=text_x, direction=direction)
         y += line_height
     return image
 
@@ -243,7 +263,9 @@ class LANPhotoRuntime:
                     self._invitation_id, self._invitation_token):
                 return False
             info = display.info()
-            image = render_lan_welcome(info["width"], info["height"], self._payload)
+            image = render_lan_welcome(
+                info["width"], info["height"], self._payload, language=os.environ.get(WELCOME_LANGUAGE_ENV),
+            )
             path = None
             try:
                 with tempfile.NamedTemporaryFile(dir=data_dir(), prefix=".lan-welcome-",

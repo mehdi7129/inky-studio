@@ -1,6 +1,6 @@
 [project]
 name = "inky-studio-server"
-version = "0.5.0rc3"
+version = "0.5.0rc4"
 description = "FastAPI backend for Inky Studio — web UI for Inky e-ink photo frame"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -36,6 +36,8 @@ dev = [
     "pytest-asyncio>=0.24",
     "httpx>=0.27",
     "ruff>=0.7",
+    # Audit packaged welcome glyph coverage. Font generation is a development step.
+    "fonttools>=4.60,<5",
 ]
 
 [project.scripts]
