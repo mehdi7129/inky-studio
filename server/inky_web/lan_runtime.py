@@ -27,6 +27,7 @@ from inky_web.services import history
 from inky_web.welcome import _draw_centered, _fit_font, _login_qr
 from inky_web.welcome_locale import (
     DEFAULT_WELCOME_LANGUAGE,
+    EXPIRED_COPY,
     WELCOME_COPY,
     WELCOME_LANGUAGE_ENV,
     resolve_welcome_language,
@@ -171,6 +172,22 @@ def _render_compact_lan_welcome(width: int, height: int, payload: str, language:
     return image
 
 
+def render_lan_expired(width: int, height: int, *, language: str | None = None) -> Image.Image:
+    language = resolve_welcome_language(language)
+    copy = WELCOME_COPY[language]
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+    margin = max(6, height // 30)
+    title = "Inky Studio"
+    title_font = _fit_font(draw, title, height * 0.12, width - 2 * margin, bold=True)
+    _draw_centered(draw, title, height // 4, title_font, width, "black")
+    text = EXPIRED_COPY[language]
+    font = _fit_font(draw, text, height * 0.13, width - 2 * margin, bold=True,
+                     font_path=welcome_font(language, bold=True), direction=copy.direction)
+    _draw_centered(draw, text, height // 2, font, width, "black", direction=copy.direction)
+    return image
+
+
 async def _owned_work(function, *args):
     """Do not abandon an admitted display/store operation on task cancellation."""
     task = asyncio.create_task(asyncio.to_thread(function, *args))
@@ -195,6 +212,7 @@ class LANPhotoRuntime:
         self.tls_context = tls_context
         self._stop = asyncio.Event()
         self._started = False
+        self._maintenance_lock = asyncio.Lock()
         self._tasks = []
         self._work_tasks = set()
         self._invitation_id = self._invitation_token = self._payload = None
@@ -234,7 +252,11 @@ class LANPhotoRuntime:
                 raise
             self._payload = invitation_payload(self.app.state.frame_identity, self.origin,
                                                self._invitation_id, self._invitation_token)
-            shown = await self._work(self._show_welcome)
+            try:
+                shown = await self._work(self._show_welcome)
+            except AccessError:
+                await self._expire_invitation()
+                return
             if shown and not self._stop.is_set():
                 self._tasks.append(asyncio.create_task(self._invitation_loop()))
             elif not self._stop.is_set():
@@ -266,34 +288,69 @@ class LANPhotoRuntime:
             image = render_lan_welcome(
                 info["width"], info["height"], self._payload, language=os.environ.get(WELCOME_LANGUAGE_ENV),
             )
-            path = None
-            try:
-                with tempfile.NamedTemporaryFile(dir=data_dir(), prefix=".lan-welcome-",
-                                                  suffix=".png", delete=False) as stream:
-                    path = Path(stream.name)
-                    os.fchmod(stream.fileno(), 0o600)
-                    image.save(stream, format="PNG")
-                display.display_image(path, saturation=0)
-            finally:
-                if path is not None:
-                    path.unlink(missing_ok=True)
+            self._push_screen(display, image)
             return True
 
+    @staticmethod
+    def _push_screen(display, image):
+        path = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=data_dir(), prefix=".lan-welcome-",
+                                              suffix=".png", delete=False) as stream:
+                path = Path(stream.name)
+                os.fchmod(stream.fileno(), 0o600)
+                image.save(stream, format="PNG")
+            display.display_image(path, saturation=0)
+        finally:
+            if path is not None:
+                path.unlink(missing_ok=True)
+
+    def _show_expired(self):
+        display = self.app.state.display
+        with display.operation():
+            if (self._stop.is_set() or history.count() != 0
+                    or self.app.state.photo_access.lan_bootstrap_completed()):
+                return
+            display.require_available()
+            info = display.info()
+            self._push_screen(display, render_lan_expired(
+                info["width"], info["height"], language=os.environ.get(WELCOME_LANGUAGE_ENV),
+            ))
+
+    async def _expire_invitation(self):
+        store = self.app.state.photo_access
+        try:
+            await self._work(store.close_unclaimed_lan_bootstrap, self._invitation_id, self._invitation_token)
+        except Exception:
+            logger.warning("Could not persist the closure of the initial PHOTO invitation")
+        finally:
+            self._clear_invitation()
+        try:
+            await self._work(self._show_expired)
+        except Exception:
+            logger.warning("Could not replace the expired PHOTO welcome screen")
+
     async def _maintenance_once(self) -> bool:
-        if self._invitation_id is None or await self._work(history.count) != 0:
-            self._clear_invitation()
-            return False
-        renewed = await self._work(self.app.state.photo_access.renew_lan_bootstrap,
-                                    self._invitation_id, self._invitation_token)
-        if not renewed:
-            self._clear_invitation()
-        return renewed
+        async with self._maintenance_lock:
+            if self._invitation_id is None or await self._work(history.count) != 0:
+                self._clear_invitation()
+                return False
+            try:
+                renewed = await self._work(self.app.state.photo_access.renew_lan_bootstrap,
+                                           self._invitation_id, self._invitation_token)
+            except Exception:
+                await self._expire_invitation()
+                return False
+            if not renewed:
+                self._clear_invitation()
+            return renewed
 
     async def _invitation_loop(self):
         try:
             while not self._stop.is_set():
                 try:
-                    await asyncio.wait_for(self._stop.wait(), INVITATION_RENEW_SECONDS)
+                    delay = min(INVITATION_RENEW_SECONDS, self.app.state.photo_access.remaining_lan_bootstrap_seconds())
+                    await asyncio.wait_for(self._stop.wait(), delay)
                     return
                 except TimeoutError:
                     if not await self._maintenance_once():

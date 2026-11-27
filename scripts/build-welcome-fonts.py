@@ -20,7 +20,7 @@ from fontTools.varLib.instancer import instantiateVariableFont
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "server"))
 
-from inky_web.welcome_locale import FONT_DIR, WELCOME_COPY, welcome_font  # noqa: E402
+from inky_web.welcome_locale import EXPIRED_COPY, FONT_DIR, WELCOME_COPY, welcome_font  # noqa: E402
 
 COMMIT = "5026800714d07231937d92eb4cceabf06e05d74e"
 SOURCE = f"https://raw.githubusercontent.com/google/fonts/{COMMIT}/ofl/"
@@ -62,7 +62,7 @@ def check_source(path: Path, expected: str) -> None:
 
 def build_font(source: Path, language: str, bold: bool) -> dict:
     copy = WELCOME_COPY[language]
-    lines = copy.headline if bold else copy.instructions + copy.compact
+    lines = copy.headline + (EXPIRED_COPY[language],) if bold else copy.instructions + copy.compact
     destination = welcome_font(language, bold=bold)
     assert destination is not None
 

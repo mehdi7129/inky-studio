@@ -9,9 +9,9 @@ from fontTools.ttLib import TTFont
 from PIL import Image, ImageChops, ImageDraw, features
 
 from inky_web.inky.display import _PIMORONI_DISPLAYS
-from inky_web.lan_runtime import invitation_payload, render_lan_welcome
+from inky_web.lan_runtime import invitation_payload, render_lan_expired, render_lan_welcome
 from inky_web.provisioning.identity import load_or_create_identity
-from inky_web.welcome_locale import FONT_DIR, WELCOME_COPY, resolve_welcome_language, welcome_font
+from inky_web.welcome_locale import EXPIRED_COPY, FONT_DIR, WELCOME_COPY, resolve_welcome_language, welcome_font
 from tests.test_lan_photo import bootstrap_invitation
 
 LANGUAGES = ("ar", "de", "en", "es", "fr", "it", "ja", "ko", "pt", "zh-Hans", "zh-Hant")
@@ -97,7 +97,7 @@ def test_all_panel_sizes_preserve_the_invitation_qr_and_localize_copy(monkeypatc
 @pytest.mark.parametrize("bold", [False, True])
 def test_packaged_fonts_have_all_welcome_glyphs(language, bold):
     localized = WELCOME_COPY[language]
-    lines = localized.headline if bold else localized.instructions + localized.compact
+    lines = localized.headline + (EXPIRED_COPY[language],) if bold else localized.instructions + localized.compact
     font = welcome_font(language, bold=bold)
     if font is None:
         font = FONT_DIR / ("DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf")
@@ -125,3 +125,27 @@ def test_subset_font_sources_and_licenses_are_attested():
             with TTFont(font) as data:
                 assert data["name"].getBestFamilyName() == f"Inky Welcome {language}"
                 assert data["name"].getDebugName(0)
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+@pytest.mark.parametrize(("width", "height"), PANEL_SIZES)
+def test_expired_screen_has_localized_text_inside_the_panel(monkeypatch, language, width, height):
+    if language == "ar" and not all(features.check_feature(name) for name in ("raqm", "fribidi")):
+        pytest.skip("Arabic screen shaping requires Pillow RAQM and FriBidi")
+    lines = []
+    draw_text = ImageDraw.ImageDraw.text
+
+    def record_text(draw, position, text, **kwargs):
+        bounds = draw.textbbox(position, text, font=kwargs["font"], direction=kwargs["direction"])
+        lines.append((text, bounds, kwargs["direction"]))
+        return draw_text(draw, position, text, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record_text)
+    image = render_lan_expired(width, height, language=language)
+    assert image.size == (width, height)
+    brand, localized = lines
+    assert brand[0] == "Inky Studio"
+    assert localized[0] == EXPIRED_COPY[language]
+    left, top, right, bottom = localized[1]
+    assert 0 < left < right < width and brand[1][3] < top < bottom < height
+    assert localized[2] == WELCOME_COPY[language].direction

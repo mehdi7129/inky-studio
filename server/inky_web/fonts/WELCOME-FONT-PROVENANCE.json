@@ -16,8 +16,8 @@
         },
         {
           "file": "InkyWelcome-ar-Bold.ttf",
-          "sha256": "63843176d946c84803af70d7ed50fb58fdb01ae171b41d418043a38073e94f79",
-          "bytes": 9424
+          "sha256": "37a3fc264c0aef6420260e97f7618d75a6062f6c104d9dce22093ac49b38a283",
+          "bytes": 12884
         }
       ]
     },
@@ -35,8 +35,8 @@
         },
         {
           "file": "InkyWelcome-ja-Bold.ttf",
-          "sha256": "d835f112de675c48a1cfaff6c47d5208616b07ad31cd8a8fb3265ce8fb33e265",
-          "bytes": 7036
+          "sha256": "9663336b68743d06c986ace6fe18badb20264e78060839821367c5d385f4e789",
+          "bytes": 11400
         }
       ]
     },
@@ -54,8 +54,8 @@
         },
         {
           "file": "InkyWelcome-ko-Bold.ttf",
-          "sha256": "d7688acb0284c4edb2f5d93d4dab2e6ec06d979e2b100161eae367676e9036b4",
-          "bytes": 5084
+          "sha256": "0fa83d13333ced6c76b7269c0f6f373b30a52d8d9c116440e3a2eb41abcb43b1",
+          "bytes": 6588
         }
       ]
     },
@@ -73,8 +73,8 @@
         },
         {
           "file": "InkyWelcome-zh-Hans-Bold.ttf",
-          "sha256": "8f7b3c84dd9ed9e5f741416514fce32171c04991c783227ad9ee1a669f596514",
-          "bytes": 5436
+          "sha256": "926d4f925929e60070249a822a600cfe4c0ec7d709806211c11160642da45279",
+          "bytes": 6916
         }
       ]
     },
@@ -92,8 +92,8 @@
         },
         {
           "file": "InkyWelcome-zh-Hant-Bold.ttf",
-          "sha256": "2782655836ddaca012eadf05a038e538adbd90b608d7fa42c5f803f6c24a00a4",
-          "bytes": 5544
+          "sha256": "c4279f945e6aa3e74f81b9e310e7589c1b64ab0243e77e255bbf15f4886b2350",
+          "bytes": 7860
         }
       ]
     }

@@ -70,6 +70,21 @@ WELCOME_COPY = {
 }
 
 
+EXPIRED_COPY = {
+    "ar": "انتهت صلاحية رمز QR",
+    "de": "QR-Code abgelaufen",
+    "en": "QR code expired",
+    "es": "Código QR caducado",
+    "fr": "QR expiré",
+    "it": "Codice QR scaduto",
+    "ja": "QRコードの有効期限切れ",
+    "ko": "QR 코드 만료",
+    "pt": "Código QR expirado",
+    "zh-Hans": "二维码已过期",
+    "zh-Hant": "QR 碼已過期",
+}
+
+
 def welcome_font(language: str, *, bold: bool) -> Path | None:
     if not WELCOME_COPY[language].subset:
         return None

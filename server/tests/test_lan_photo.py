@@ -161,19 +161,23 @@ def test_renewal_keeps_one_qr_and_one_antireplay_receipt(lan_store):
     value.begin_lan_bootstrap(**invite)
     before, = rows(value, "invitations")
     issued = rows(value, "issued_invitations")
-    clock.wall += 240
-    clock.mono += 240
-    assert renew(value, invite) is True
+    for _ in range(4):
+        clock.wall += 60
+        clock.mono += 60
+        assert renew(value, invite) is True
     after, = rows(value, "invitations")
-    assert after["expires_at"] == clock.wall + 300
-    assert after["expires_mono"] == clock.mono + 300
-    assert after["invitation_id"] == before["invitation_id"]
-    assert after["token_hash"] == before["token_hash"]
+    assert after == before
     assert rows(value, "issued_invitations") == issued
-    # The same physically rendered QR remains usable after its original expiry.
-    clock.wall += 61
-    clock.mono += 61
-    assert value.claim(**claim(invite)).role == "media"
+    assert value.remaining_lan_bootstrap_seconds() == 60
+    clock.wall += 60
+    clock.mono += 60
+    with pytest.raises(AccessError, match="expired"):
+        renew(value, invite)
+    assert rows(value, "invitations")[0]["revoked"]
+    with pytest.raises(AccessError):
+        value.claim(**claim(invite))
+    with pytest.raises(AccessError):
+        value.begin_lan_bootstrap(**bootstrap_invitation())
 
 
 def test_renewal_stops_without_extending_the_claim_receipt(lan_store):
@@ -480,11 +484,31 @@ async def test_renewal_keeps_printed_qr_and_stops_after_claim(runtime_frame):
     invite = json.loads(raw)
     frame.store.claim(**claim({"invitation_id": invite["i"], "invitation_token": invite["t"]}))
     claimed, = rows(frame.store, "invitations")
-    assert claimed["expires_at"] > before["expires_at"]
+    assert claimed["expires_at"] == before["expires_at"]
     assert await frame.runtime._maintenance_once() is False
     assert frame.runtime._payload is None
     assert rows(frame.store, "invitations")[0]["expires_at"] == claimed["expires_at"]
     assert len(frame.display.images) == 1
+
+
+@pytest.mark.parametrize("uncertain", [False, True])
+async def test_bootstrap_closure_replaces_qr_without_remint(runtime_frame, monkeypatch, uncertain):
+    frame = runtime_frame
+    monkeypatch.setenv("INKY_STUDIO_WELCOME_LANGUAGE", "en")
+    await frame.runtime.start()
+    raw = json.loads(frame.runtime._payload)
+    if uncertain:
+        frame.clock.wall -= 1
+    else:
+        frame.clock.mono += 300
+    assert await frame.runtime._maintenance_once() is False
+    assert frame.runtime._payload is None
+    assert len(frame.display.images) == 2
+    assert frame.display.images[-1] == lan_runtime.render_lan_expired(800, 480, language="en")
+    assert len(rows(frame.store, "issued_invitations")) == 1
+    assert rows(frame.store, "invitations")[0]["revoked"]
+    with pytest.raises(AccessError):
+        frame.store.claim(**claim({"invitation_id": raw["i"], "invitation_token": raw["t"]}))
 
 
 @pytest.mark.parametrize("reason", ["existing_photo", "associated"])

@@ -112,6 +112,8 @@ class PhotoAccessStore:
         self._lan_bootstrap_enabled = lan_bootstrap
         self._lan_bootstrap_started = False
         self._lan_bootstrap_id = None
+        self._lan_bootstrap_deadline = None
+        self._lan_bootstrap_closed = False
         with self._connection() as conn:
             if conn.execute("PRAGMA user_version").fetchone()[0] not in (0, 1):
                 raise OSError("Unsupported access database")
@@ -274,8 +276,8 @@ class PhotoAccessStore:
         """One local, media-only pairing lease; never create a synthetic owner.
 
         The explicit LAN entrypoint enables this policy only after rejecting
-        factory traces. No HTTP route exposes this method. Its same printed QR
-        may be renewed while live and unclaimed; expiry cannot mint a new one.
+        factory traces. No HTTP route exposes this method. Both deadlines are
+        fixed when the QR is created, including during maintenance.
         """
         invitation_id, request_id = uuid(invitation_id), uuid(request_id)
         hashed = digest(invitation_token)
@@ -292,10 +294,11 @@ class PhotoAccessStore:
             self._insert_invitation(conn, LAN_BOOTSTRAP_ISSUER, epoch,
                                     invitation_id, hashed, request_id, now, mono, MAX_TTL)
             self._lan_bootstrap_id = invitation_id
+            self._lan_bootstrap_deadline = mono + MAX_TTL
             return {"invitation_id": invitation_id, "expires_at": now + MAX_TTL}
 
     def renew_lan_bootstrap(self, invitation_id: str, invitation_token: str) -> bool:
-        """Renew the already-visible initial QR only before either clock expiry."""
+        """Check the current QR without extending its initial deadlines."""
         invitation_id, hashed = uuid(invitation_id), digest(invitation_token)
         with self._transaction() as conn:
             row = conn.execute("SELECT * FROM invitations WHERE invitation_id=?",
@@ -305,19 +308,41 @@ class PhotoAccessStore:
                     or row is None or row["issuer_id"] != LAN_BOOTSTRAP_ISSUER
                     or row["boot"] != self._boot or row["revoked"]
                     or row["epoch"] != self._epoch()
-                    or not row["created_at"] <= now < row["expires_at"]
-                    or not row["created_mono"] <= mono < row["expires_mono"]
                     or not secrets.compare_digest(row["token_hash"], hashed)):
                 raise AccessError()
+            if not (row["created_at"] <= now < row["expires_at"]
+                    and row["created_mono"] <= mono < row["expires_mono"]):
+                conn.execute("UPDATE invitations SET revoked=1 WHERE invitation_id=?", (invitation_id,))
+                conn.commit()
+                raise AccessError("expired")
             if row["claim_request_id"] is not None:
                 return False
             if conn.execute("SELECT 1 FROM devices WHERE epoch=? LIMIT 1",
                             (row["epoch"],)).fetchone():
                 conn.execute("UPDATE invitations SET revoked=1 WHERE invitation_id=?", (invitation_id,))
                 return False
-            conn.execute("UPDATE invitations SET expires_at=?,expires_mono=? WHERE invitation_id=?",
-                         (now + MAX_TTL, mono + MAX_TTL, invitation_id))
+            if self._lan_bootstrap_closed:
+                raise AccessError()
             return True
+
+    def remaining_lan_bootstrap_seconds(self) -> float:
+        mono = self._monotonic()
+        if self._lan_bootstrap_deadline is None or not math.isfinite(mono):
+            return 0
+        return max(0, self._lan_bootstrap_deadline - mono)
+
+    def close_unclaimed_lan_bootstrap(self, invitation_id: str, invitation_token: str) -> None:
+        invitation_id, hashed = uuid(invitation_id), digest(invitation_token)
+        with self._gate:
+            if invitation_id != self._lan_bootstrap_id:
+                raise AccessError()
+            # Close admission in memory even if the database write fails.
+            self._lan_bootstrap_closed = True
+            with self._connection() as conn:
+                conn.execute(
+                    "UPDATE invitations SET revoked=1 WHERE invitation_id=? AND token_hash=? AND claim_request_id IS NULL",
+                    (invitation_id, hashed),
+                )
 
     def end_lan_bootstrap(self, invitation_id: str, invitation_token: str) -> None:
         """Close this local lease before the HTTPS listener finishes draining."""
@@ -381,8 +406,8 @@ class PhotoAccessStore:
                 if (not self._lan_bootstrap_enabled
                         or row["invitation_id"] != self._lan_bootstrap_id):
                     raise AccessError()
-                if (row["claim_request_id"] is None and conn.execute(
-                        "SELECT 1 FROM devices WHERE epoch=? LIMIT 1", (row["epoch"],)).fetchone()):
+                if (row["claim_request_id"] is None and (self._lan_bootstrap_closed or conn.execute(
+                        "SELECT 1 FROM devices WHERE epoch=? LIMIT 1", (row["epoch"],)).fetchone())):
                     raise AccessError("forbidden")
             else:
                 issuer = conn.execute("SELECT role FROM devices WHERE device_id=?",
