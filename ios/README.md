@@ -9,6 +9,7 @@ In a fresh checkout, use the release tag to reproduce that source.
 
 ## Run
 
+Use Xcode 26.3 or newer. The app still targets iOS 18 and later.
 Open `ios/InkyStudio.xcodeproj` and choose the InkyStudio scheme. Run these commands from the repository root to prepare the pinned TLS dependency and build for Simulator:
 
 ```bash
