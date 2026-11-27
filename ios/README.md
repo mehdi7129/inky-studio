@@ -60,7 +60,7 @@ Existing PHOTO invitation QRs already carry the frame identity and TLS pin.
 
 After an interrupted upload, reopen the import sheet to resume or discard its
 protected draft. Resume is an explicit action and stays bound to the selected
-frame and device. Full receipt lookup needs PHOTO service 0.5.0rc4.
+frame and device. Full receipt lookup needs PHOTO service 0.5.0rc5.
 
 ## Tests and visual checks
 

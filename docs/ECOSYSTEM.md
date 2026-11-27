@@ -15,13 +15,13 @@ before installing on a new screen. The generic image is a prerelease.
 
 | Component | Released source | License for project code |
 |---|---|---|
-| SwiftUI app 1.0.1 (20) and PHOTO service 0.5.0rc4 | [Public source prerelease](releases/ios-v1.0.1-build20.md) | [MIT](../LICENSE) |
+| SwiftUI app 1.0.1 (20) and PHOTO service 0.5.0rc5 | [Public source prerelease](releases/ios-v1.0.1-build20.md) | [MIT](../LICENSE) |
 | SwiftUI app 1.0.0 (19) | [iOS source snapshot](https://github.com/mehdi7129/inky-studio/tree/ios-v1.0.0-build19/ios) with [build provenance](releases/ios-v1.0.0-build19.json) | [MIT](../LICENSE) |
 | PHOTO service 0.5.0rc3 | [Backend source snapshot](https://github.com/mehdi7129/inky-studio/tree/imager-backend-0.5.0rc3/server) | [MIT](../LICENSE) |
 | InkyOS 2026.11.20-rc2 | [Image assembly sources](https://github.com/mehdi7129/inkyOS/tree/2026.11.20-rc2) | [MIT](https://github.com/mehdi7129/inkyOS/blob/main/LICENSE) |
 | inkyImager 0.1.4 | [Mac app sources](https://github.com/mehdi7129/inkyImager/tree/v0.1.4) | [MIT](https://github.com/mehdi7129/inkyImager/blob/main/LICENSE) |
 
-The released SD image and Mac app still bundle PHOTO service 0.5.0rc3. The full recovery workflow in build 20 uses PHOTO 0.5.0rc4 from the Studio source release.
+The released SD image and Mac app still bundle PHOTO service 0.5.0rc3. The full recovery workflow in build 20 uses PHOTO 0.5.0rc5 from the Studio source release.
 
 The projects use separate repositories and release tags. The iPhone app and
 the frame communicate over the PHOTO API. The Mac app embeds a pinned InkyOS

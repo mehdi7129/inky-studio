@@ -4,7 +4,7 @@ FastAPI service that drives the Inky display and serves the React frontend.
 
 ## Current frame service
 
-This repository publishes the **0.5.0rc4** PHOTO service source and a Python wheel
+This repository publishes the **0.5.0rc5** PHOTO service source and a Python wheel
 for local qualification with iOS 1.0.1 (20). The distributed
 [InkyOS image](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.20-rc2)
 contains **0.5.0rc3** and the Pimoroni auto-detection profile.

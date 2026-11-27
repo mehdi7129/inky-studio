@@ -23,7 +23,7 @@ This is a free, independent project for compatible hardware. You buy the screen 
 
 Build 20 is the open-source release for people building with Xcode. The GitHub download contains source and a Python wheel for developers. For the separate iOS 1.0.0 distribution checkpoint, see [build 19 and its provenance](docs/releases/ios-v1.0.0-build19.md).
 
-Build 20 follows the system language in 11 localizations. It moves password-based QR pairing to pinned HTTPS after an anonymous identity check, restores saved frame access and lets you explicitly resume an interrupted upload. The complete recovery workflow uses the companion PHOTO service **0.5.0rc4**. The links above still deliver the existing inkyImager and InkyOS packages with service **0.5.0rc3**. A frame that cannot prove its HTTPS identity prompts for a frame software update.
+Build 20 follows the system language in 11 localizations. It moves password-based QR pairing to pinned HTTPS after an anonymous identity check, restores saved frame access and lets you explicitly resume an interrupted upload. The complete recovery workflow uses the companion PHOTO service **0.5.0rc5**. The links above still deliver the existing inkyImager and InkyOS packages with service **0.5.0rc3**. A frame that cannot prove its HTTPS identity prompts for a frame software update.
 
 See the [build 20 release notes](docs/releases/ios-v1.0.1-build20.md) for compatibility, test results and physical checks still to run.
 

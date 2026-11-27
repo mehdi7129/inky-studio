@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
-## [iOS 1.0.1 (20) / PHOTO 0.5.0rc4]
+## [iOS 1.0.1 (20) / PHOTO 0.5.0rc5]
 
 - Follow the iPhone system language in 11 localizations.
 - Verify the frame before sending a password over pinned HTTPS for QR pairing.

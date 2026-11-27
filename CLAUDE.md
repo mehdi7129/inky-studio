@@ -5,7 +5,7 @@ Guidance for Claude Code (and human contributors) working in this repository.
 ## Current source delivery
 
 Start with [README.md](README.md) and the [ecosystem guide](docs/ECOSYSTEM.md).
-The public release combines iOS 1.0.1 (20) and PHOTO service 0.5.0rc4.
+The public release combines iOS 1.0.1 (20) and PHOTO service 0.5.0rc5.
 Keep historical distribution tags pinned to their original source.
 The legacy updater uses a separate `v*` release workflow.
 
