@@ -209,15 +209,20 @@ async def test_apply_ack_fast_owned_exact_intent_and_handoff(adopted):
     v = adopted
     args = await challenge(v)
     v.native.release.clear()
-    reply = await asyncio.wait_for(command(v, "apply", **args), 0.5)
-    assert reply["result"]["submission"] == "registered"
-    await v.native.apply_entered.wait()
-    assert not (v.directory / "identity.json").exists()
-    intent = json.loads((v.directory / "system-setup-intents.json").read_text())["intents"][args["op_id"]]
-    assert intent["utc_seconds"] == args["utc_seconds"] and "owner_token" not in intent
-    assert (await command(v, "status", op_id=args["op_id"]))["result"]["state"] == "applying"
-    assert (await command(v, "apply", **{**args, "utc_seconds": args["utc_seconds"] + 1}))["error"] == "request_conflict"
-    v.native.release.set()
+    try:
+        # The held native operation proves that the acknowledgement is
+        # independent of completion. The timeout only guards against a hang.
+        async with asyncio.timeout(5):
+            reply = await command(v, "apply", **args)
+            assert reply["result"]["submission"] == "registered"
+            await v.native.apply_entered.wait()
+            assert not (v.directory / "identity.json").exists()
+            intent = json.loads((v.directory / "system-setup-intents.json").read_text())["intents"][args["op_id"]]
+            assert intent["utc_seconds"] == args["utc_seconds"] and "owner_token" not in intent
+            assert (await command(v, "status", op_id=args["op_id"]))["result"]["state"] == "applying"
+            assert (await command(v, "apply", **{**args, "utc_seconds": args["utc_seconds"] + 1}))["error"] == "request_conflict"
+    finally:
+        v.native.release.set()
     await v.runtime.operations.drain()
     assert v.runtime.identity.frame_id == v.result.prepared_identity.frame_id
     assert v.runtime.provisioning.owners is v.result.ownership
