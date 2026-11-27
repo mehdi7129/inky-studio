@@ -15,7 +15,7 @@ fi
 WORK=$(mktemp -d /tmp/inky-bluetooth-channel.XXXXXX)
 trap 'rm -rf -- "${WORK}"' EXIT
 mkdir -p "${WORK}/Sources/InkyStudio" "${WORK}/Tests/InkyStudioTests"
-for source in FrameIdentity PinnedFrameTrust BootstrapWire BluetoothTransport SecureBluetoothChannel; do
+for source in FrameIdentity PinnedFrameTrust BootstrapFrameTrust FrameBootstrapCode SoftAPBootstrap BluetoothTransport SecureBluetoothChannel; do
   cp "${ROOT}/ios/InkyStudio/Provisioning/${source}.swift" "${WORK}/Sources/InkyStudio/"
 done
 cp "${ROOT}/ios/InkyStudioTests/BluetoothChannelTests.swift" \
@@ -25,7 +25,7 @@ import json, pathlib, sys
 package, work = map(pathlib.Path, sys.argv[1:])
 (work/'Package.swift').write_text('''// swift-tools-version: 6.0
 import PackageDescription
-let package = Package(name: "InkyChannelQualification", platforms: [.macOS(.v13)],
+let package = Package(name: "InkyChannelQualification", platforms: [.macOS(.v15)],
  dependencies: [.package(path: %s)],
  targets: [.target(name: "InkyStudio", dependencies: [.product(name: "InkyTLS", package: "InkyTLS")]),
            .testTarget(name: "InkyStudioTests", dependencies: ["InkyStudio"])])

@@ -36,9 +36,13 @@ PNG = base64.b64decode(
 )
 SWIFT_SOURCES = [
     "ios/InkyStudio/Provisioning/FrameIdentity.swift",
+    "ios/InkyStudio/Provisioning/FrameInvitationCode.swift",
     "ios/InkyStudio/Provisioning/PinnedFrameTrust.swift",
+    "ios/InkyStudio/Provisioning/BootstrapFrameTrust.swift",
     "ios/InkyStudio/Provisioning/OwnershipVault.swift",
     "ios/InkyStudio/Core/Models.swift",
+    "ios/InkyStudio/Core/FrameAddress.swift",
+    "ios/InkyStudio/Core/PhotoAccessModels.swift",
     "ios/InkyStudio/Core/APIError.swift",
     "ios/InkyStudio/Core/FramePhotoClient.swift",
     "ios/InkyStudio/Core/InkyAPI.swift",

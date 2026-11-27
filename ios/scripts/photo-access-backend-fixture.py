@@ -29,7 +29,6 @@ import threading
 import time
 
 sys.dont_write_bytecode = True
-EXPECTED_BACKEND = "79050e25cb749d03b65592e81f1dd89bffa44472"
 FIXTURE_PASSWORD = "Abcdef0123456789"  # Public synthetic fixture only; never a real frame credential.
 PROOF_PATH = "/api/auth/legacy-tls-proof"
 
@@ -155,6 +154,7 @@ class Audit:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", type=Path, required=True)
+    parser.add_argument("--expected-backend-commit", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--maximum-seconds", type=int, default=1800)
     args = parser.parse_args()
@@ -166,8 +166,8 @@ def main() -> int:
         parser.error("Choose a fresh output directory; existing fixture receipts are preserved.")
     commit = subprocess.run(["git", "-C", str(backend), "rev-parse", "HEAD"], check=True,
                             capture_output=True, text=True).stdout.strip()
-    if commit != EXPECTED_BACKEND:
-        parser.error("The backend checkout is not the pinned legacy-proof candidate.")
+    if commit != args.expected_backend_commit:
+        parser.error("The backend checkout does not match --expected-backend-commit.")
     if not 30 <= args.maximum_seconds <= 7200:
         parser.error("--maximum-seconds must be between30 and7200.")
     assert len(FIXTURE_PASSWORD) == 16 and re.fullmatch(r"[A-Za-z0-9]{16}", FIXTURE_PASSWORD)

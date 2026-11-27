@@ -34,7 +34,7 @@ L’activation installée dépend encore du contrat exact InkyOS : fichiers root
 
 Le corpus raw commun reste dans `bootstrap-wire-proposal/vectors.json`. Python et Swift utilisent les mêmes octets pour conserver les doublons, les nombres non entiers et les encodages invalides au lieu de les normaliser avant la validation.
 
-Les tests backend s’exécutent avec `python -m pytest` depuis `server/`. Le banc natif `scripts/test-bootstrap-channel.sh` compile les sources Swift de production contre le runtime Python de production, sur des pipes privés et un ledger temporaire. Il n’utilise aucune radio, aucun GPIO ni service système. Le banc normal `scripts/test-bluetooth-channel.sh` demeure une vérification séparée de compatibilité v1.
+Les tests backend s’exécutent avec `python -m pytest` depuis `server/`. Le [banc natif historique](https://github.com/mehdi7129/inky-studio/tree/f32387a/scripts/bootstrap-channel-bench) compilait les sources Swift de production contre le runtime Python de production, sur des pipes privés et un ledger temporaire. Il n’utilise aucune radio, aucun GPIO ni service système. Le banc normal `scripts/test-bluetooth-channel.sh` demeure une vérification séparée de compatibilité v1.
 
 La CI iOS exécute les deux bancs ainsi que les tests du bridge TLS, les tests de l’app et le build Release. Les tests simulateur ou les adaptateurs inertes ne qualifient pas le QR affiché, BlueZ, les permissions iPhone ou la chaîne Raspberry réelle.
 
