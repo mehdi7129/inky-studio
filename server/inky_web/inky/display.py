@@ -45,7 +45,26 @@ SATURATION = 1.0
 # This opt-in accepts only the known driver's full timed fallback, without
 # claiming that a BUSY edge or the physical image has been confirmed.
 AC073_TIMED_WAIT_PROFILE = "ac073-800x480-timed-wait"
+PIMORONI_AUTO_PROFILE = "pimoroni-auto"
 _AC073_PROFILES = {"ac073-800x480", AC073_TIMED_WAIT_PROFILE}
+
+# EEPROM variants routed by Pimoroni's inky.auto in the pinned wheel.
+_PIMORONI_DISPLAYS = {
+    ("inky.phat", (212, 104)): {1, 4, 5},
+    ("inky.phat", (250, 122)): {10, 11, 12},
+    ("inky.what", (400, 300)): {2, 3, 6, 7, 8},
+    ("inky.inky_ssd1683", (400, 300)): {17, 18, 19},
+    ("inky.inky_ac073tc1a", (800, 480)): {20},
+    ("inky.inky_el133uf1", (1600, 1200)): {21, 27},
+    ("inky.inky_e673", (800, 480)): {22, 26},
+    ("inky.inky_jd79661", (250, 122)): {23},
+    ("inky.inky_jd79668", (400, 300)): {24},
+    ("inky.inky_e640", (600, 400)): {25},
+    ("inky.inky_ssd2683", (400, 300)): {28},
+    ("inky.inky_uc8159", (600, 448)): {14},
+    ("inky.inky_uc8159", (640, 400)): {15, 16},
+}
+_PIMORONI_DRIVER_VERSION = "2.6.0"
 
 
 class DisplayController:
@@ -61,7 +80,7 @@ class DisplayController:
             raise ValueError("INKY_STUDIO_DISPLAY_MODE must be auto, hardware or mock")
         self._mode = ("hardware" if platform.system() == "Linux" else "mock") if requested == "auto" else requested
         self._profile = os.environ.get("INKY_STUDIO_DISPLAY_PROFILE", "")
-        if self._profile not in {"", *_AC073_PROFILES}:
+        if self._profile not in {"", PIMORONI_AUTO_PROFILE, *_AC073_PROFILES}:
             raise ValueError("Unknown INKY_STUDIO_DISPLAY_PROFILE")
         if self._profile and self._mode != "hardware":
             raise ValueError("A display hardware profile requires hardware mode")
@@ -72,6 +91,7 @@ class DisplayController:
         self._pending_confirmation: DisplayConfirmationPending | None = None
         self._confirmation = "not_observed"
         self._confirmation_barrier: ConfirmationBarrier | None = None
+        self._allow_ac073_timed_wait = self._profile == AC073_TIMED_WAIT_PROFILE
         self._initialized = False
         self._refreshing = False
         self._busy_observer: Any | None = None
@@ -171,24 +191,34 @@ class DisplayController:
         selected = families.get(module)
         is_ac073 = module == "inky.inky_ac073tc1a" and (impl.width, impl.height) == (800, 480)
         eeprom_size = (getattr(eeprom, "width", None), getattr(eeprom, "height", None))
-        if self._profile and not is_ac073:
+        if self._profile in _AC073_PROFILES and not is_ac073:
             raise ValueError("Detected driver does not match the selected bench profile")
+        if self._profile == PIMORONI_AUTO_PROFILE:
+            self._check_pimoroni_identity(impl, module, eeprom_size, variant)
+            installed = version("inky")
+            self._driver_info["inky_version"] = installed
+            if installed != _PIMORONI_DRIVER_VERSION:
+                raise ValueError("The universal Pimoroni profile requires inky 2.6.0")
         if is_ac073:
             fields = (*eeprom_size, variant, color, impl.width, impl.height)
             if not all(type(value) is int for value in fields) or eeprom_size != (800, 480) or variant != 20 or color not in {4, 5}:
                 raise ValueError("Unexpected raw EEPROM tuple for the AC073 observer")
-            if color == 4 and self._profile not in _AC073_PROFILES:
+            if color == 4 and self._profile not in {*_AC073_PROFILES, PIMORONI_AUTO_PROFILE}:
                 raise ValueError("Unmapped EEPROM color 4 requires the explicit bench profile")
+            if self._profile == PIMORONI_AUTO_PROFILE:
+                # Keep the existing timed-wait policy only for this exact driver
+                # and EEPROM tuple. It never applies to E673 at the same size.
+                self._allow_ac073_timed_wait = True
         if selected is not None:
             family, dimensions = selected
             if type(impl.width) is not int or type(impl.height) is not int or (impl.width, impl.height) not in dimensions:
                 raise ValueError("Detected dimensions do not match the qualified BUSY contract")
             installed = version("inky")
             self._driver_info["inky_version"] = installed
-            if installed != "2.5.0":
-                raise ValueError("Impression BUSY observer requires inky 2.5.0")
+            if installed not in {"2.5.0", _PIMORONI_DRIVER_VERSION}:
+                raise ValueError("No qualified BUSY contract for this inky version")
             from inky_web.inky.busy import BusyObserver
-            self._busy_observer = BusyObserver(impl, family)
+            self._busy_observer = BusyObserver(impl, family, driver_version=installed)
             if family == "ac073":
                 self._confirmation_barrier = ConfirmationBarrier(data_dir())
                 barrier = self._confirmation_barrier.load()
@@ -204,6 +234,14 @@ class DisplayController:
                     self._driver_info[f"{dependency}_version"] = version(dependency)
                 except PackageNotFoundError:
                     self._driver_info[f"{dependency}_version"] = None
+
+    @staticmethod
+    def _check_pimoroni_identity(impl, module, eeprom_size, variant) -> None:
+        if type(variant) is not int or not all(type(size) is int for size in (*eeprom_size, impl.width, impl.height)):
+            raise ValueError("Missing or invalid Pimoroni EEPROM")
+        size = (impl.width, impl.height)
+        if eeprom_size != size or variant not in _PIMORONI_DISPLAYS.get((module, size), ()):
+            raise ValueError("Pimoroni driver, dimensions and EEPROM variant do not match")
 
     def require_available(self) -> None:
         if self._error is not None:
@@ -236,7 +274,8 @@ class DisplayController:
             "warning": self._pending_confirmation.payload() if self._pending_confirmation else None,
             "automatic_rotation_paused": self.automatic_rotation_paused,
             "driver": dict(self._driver_info),
-            "busy_monitor": f"{self._busy_observer.family}_2.5.0" if self._busy_observer is not None else "not_monitored",
+            "busy_monitor": (f"{self._busy_observer.family}_{self._busy_observer.driver_version}"
+                             if self._busy_observer is not None else "not_monitored"),
             "observations": [dict(item) for item in self._observations],
         }
 
@@ -366,9 +405,10 @@ class DisplayController:
             # Each driver owns its clocks/waits. EL133 refuses an unproved
             # refresh before POF; all other verdicts follow the full show().
             from inky_web.inky.busy import completed_ac073_waits, validate_observations
-            timed_wait = self._profile == AC073_TIMED_WAIT_PROFILE
+            timed_wait = self._allow_ac073_timed_wait
             try:
-                validate_observations(observations, family, allow_ac073_timed_wait=timed_wait)
+                validate_observations(observations, family, allow_ac073_timed_wait=timed_wait,
+                                      driver_version=self._busy_observer.driver_version)
             except DisplayUnavailableError as exc:
                 recoverable = (
                     family == "ac073" and exc.code == "display_busy_unverified"
@@ -418,6 +458,8 @@ def _detect_model_name(impl: Any) -> str:
         return 'Inky wHAT 4.2" (4-color)'
     if module == "inky.phat":
         return f'Inky pHAT 2.13" ({_detect_color_count(impl)}-color)'
+    if module == "inky.inky_ssd2683":
+        return 'Inky wHAT 4.2" (4-color)'
     if module in {"inky.what", "inky.inky_ssd1683"}:
         return f'Inky wHAT 4.2" ({_detect_color_count(impl)}-color)'
     return f"Inky Impression ({cls})"
@@ -433,7 +475,7 @@ def _detect_color_count(impl: Any) -> int:
         return 6  # Spectra 6
     if "ac073tc1a" in module or "uc8159" in module:
         return 7  # Classic 7-color Inky Impression
-    if "jd79661" in module or "jd79668" in module:
+    if "jd79661" in module or "jd79668" in module or module == "inky.inky_ssd2683":
         return 4  # Black, white, red and yellow
     if module in {"inky.phat", "inky.what", "inky.inky_ssd1683"}:
         # EEPROM colour is independent of the nominal display variant.

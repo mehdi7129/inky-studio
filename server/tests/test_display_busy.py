@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import warnings
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from threading import Barrier, Event
@@ -17,6 +18,7 @@ from inky_web.inky.confirmation import NAME
 from inky_web.inky.display import DisplayController, DisplaySpec
 from inky_web.inky.errors import DisplayUnavailableError
 from tests.fixtures.inky_busy_250 import BUSY_PINS, CONSTANTS, SOURCES
+from tests.test_inky_250_wheel import BUSY_MODULES, _verified_wheel
 
 
 class Value(Enum):
@@ -51,12 +53,13 @@ class Clock:
 
 
 class FakeGPIO:
-    def __init__(self, trace, family, scenarios, barrier, blocked):
+    def __init__(self, trace, family, scenarios, barrier, blocked, driver_version):
         self.trace = trace
         self.family = family
         self.scenarios = scenarios
         self.barrier = barrier
         self.blocked = blocked
+        self.driver_version = driver_version
         self.phase = "setup"
         self.indices = {}
 
@@ -72,7 +75,8 @@ class FakeGPIO:
                 entered.set()
                 assert release.wait(3)
         defaults = ([Value.INACTIVE] if self.family in {"ac073", "uc8159"}
-                    else [Value.INACTIVE, Value.INACTIVE] if self.family == "el133uf1" and self.phase != "refresh"
+                    else [Value.INACTIVE, Value.INACTIVE] if self.family == "el133uf1"
+                    and self.phase != "refresh" and self.driver_version == "2.5.0"
                     else [Value.INACTIVE, Value.INACTIVE, Value.ACTIVE])
         values = self.scenarios.get(self.phase, {}).get("values", defaults)
         value = values[min(index, len(values) - 1)]
@@ -83,11 +87,12 @@ class FakeGPIO:
 
 @pytest.fixture
 def driver_factory():
-    def make(family="ac073", scenarios=None, *, lazy_gpio=False, barrier=None, blocked=None):
+    def make(family="ac073", scenarios=None, *, lazy_gpio=False, barrier=None, blocked=None,
+             driver_version="2.5.0"):
         trace = []
         scenarios = scenarios or {}
         clock = Clock(trace)
-        gpio = FakeGPIO(trace, family, scenarios, barrier, blocked)
+        gpio = FakeGPIO(trace, family, scenarios, barrier, blocked, driver_version)
 
         def wait_for_edge(request, line, timeout):
             # The helper receives the very same real request as the baseline;
@@ -103,9 +108,21 @@ def driver_factory():
         namespace = {"Value": Value, "time": clock, "warnings": warnings,
                      "gpiod": SimpleNamespace(EdgeEvent=EdgeEvent), "gpiodevice": helper}
         namespace.update(CONSTANTS[family])
-        parsed = ast.parse(SOURCES[family]).body[0]
-        exec(compile(ast.Module(body=parsed.body, type_ignores=[]), f"inky-2.5.0-{family}", "exec"), namespace)
-        upstream = type("PinnedWaitAndUpdate", (), {node.name: namespace[node.name] for node in parsed.body})
+        setup_timeout = CONTRACTS[family][0][2]
+        if driver_version == "2.6.0":
+            with zipfile.ZipFile(_verified_wheel(driver_version)) as wheel:
+                tree = ast.parse(wheel.read(f"inky/{BUSY_MODULES[family]}.py"))
+            driver_class = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Inky")
+            setup = next(node for node in driver_class.body if isinstance(node, ast.FunctionDef) and node.name == "setup")
+            wait_call, = (node for node in ast.walk(setup) if isinstance(node, ast.Call)
+                          and isinstance(node.func, ast.Attribute) and node.func.attr == "_busy_wait")
+            setup_timeout = ast.literal_eval(wait_call.args[0])
+            bodies = [node for node in driver_class.body if isinstance(node, ast.FunctionDef)
+                      and node.name in {"_busy_wait", "_refresh_wait", "_update"}]
+        else:
+            bodies = ast.parse(SOURCES[family]).body[0].body
+        exec(compile(ast.Module(body=bodies, type_ignores=[]), f"inky-{driver_version}-{family}", "exec"), namespace)
+        upstream = type("PinnedWaitAndUpdate", (), {node.name: namespace[node.name] for node in bodies})
         dims = {"ac073": (800, 480), "uc8159": (600, 448), "e640": (600, 400),
                 "e673": (800, 480), "el133uf1": (1600, 1200)}[family]
 
@@ -124,7 +141,7 @@ def driver_factory():
                     self._gpio = gpio
                 gpio.phase = "setup"
                 gpio.indices = {}
-                self._busy_wait(CONTRACTS[family][0][2])
+                self._busy_wait(setup_timeout)
 
             def show(self):
                 self.show_calls += 1
@@ -162,6 +179,41 @@ def test_healthy_trace_identical_to_unobserved_upstream_and_globals_unchanged(dr
     assert [item["timeout"] for item in observed] == [timeout for _, _, timeout in CONTRACTS[family]]
     assert namespace == before and driver._gpio is gpio
     assert all(name not in vars(driver) for name in ("_busy_wait", "_refresh_wait"))
+
+
+@pytest.mark.parametrize("family", CONTRACTS)
+def test_260_contract_matches_healthy_trace_of_exact_official_wheel(driver_factory, family):
+    baseline, _, baseline_trace, _ = driver_factory(family, driver_version="2.6.0")
+    baseline.show()
+    driver, gpio, observed_trace, _ = driver_factory(family, driver_version="2.6.0")
+    observations = BusyObserver(driver, family, driver_version="2.6.0").run_show()
+    validate_observations(observations, family, driver_version="2.6.0")
+    assert baseline_trace == observed_trace
+    assert driver.show_calls == 1 and driver._gpio is gpio
+    if family == "el133uf1":
+        assert [row["outcome"] for row in observations] == [
+            "level_released", "level_released", "refresh_completed", "level_released",
+        ]
+
+
+@pytest.mark.parametrize(("phase", "values", "forbidden_command"), [
+    ("setup", [Value.INACTIVE], 0x04),
+    ("power_on", [Value.INACTIVE], 0x12),
+    ("refresh", [Value.ACTIVE], 0x02),
+    ("refresh", [Value.INACTIVE], 0x02),
+])
+@pytest.mark.filterwarnings("ignore:.*Wait")
+def test_260_large_spectra_never_advances_to_next_command_without_readiness(
+    driver_factory, phase, values, forbidden_command,
+):
+    driver, gpio, trace, _ = driver_factory(
+        "el133uf1", {phase: {"values": values}}, driver_version="2.6.0",
+    )
+    with pytest.raises(DisplayUnavailableError) as error:
+        BusyObserver(driver, "el133uf1", driver_version="2.6.0").run_show()
+    assert error.value.code == "display_busy_timeout"
+    assert not any(item[0] == "command" and item[1] == forbidden_command for item in trace)
+    assert driver._gpio is gpio
 
 
 @pytest.mark.parametrize("family", ["ac073", "uc8159"])

@@ -1,6 +1,6 @@
 [project]
 name = "inky-studio-server"
-version = "0.5.0rc2"
+version = "0.5.0rc3"
 description = "FastAPI backend for Inky Studio — web UI for Inky e-ink photo frame"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,10 +22,8 @@ dependencies = [
 
 [project.optional-dependencies]
 pi = [
-    # Source candidate only: per-family BUSY contracts target this exact wheel.
-    # A new native dependency closure and physical qualification are required
-    # before this candidate replaces an installed 2.3.0 payload.
-    "inky==2.5.0",
+    # Exact runtime wheel for the universal display profile and BUSY contracts.
+    "inky==2.6.0",
     "gpiod>=2.2",
     "RPi.GPIO>=0.7",
 ]

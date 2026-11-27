@@ -58,6 +58,7 @@ jobs:
           python -m pip install -e ".[dev]"
           ruff check .
           python -m pip download --no-deps --require-hashes -r tests/fixtures/inky_250_requirement.txt -d .test-wheels
+          python -m pip download --no-deps --require-hashes -r tests/fixtures/inky_260_requirement.txt -d .test-wheels
           pytest -q
           python ../scripts/qualify-password-upgrade.py
 

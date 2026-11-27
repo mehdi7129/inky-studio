@@ -217,7 +217,9 @@ def test_authenticated_reads_survive_sticky_display_fault_without_admitting_writ
     )
     if outcome == "driver_error":
         observations[2].update(outcome="error", error_type="OSError")
-    display._busy_observer = SimpleNamespace(family="ac073", run_show=run_show, observations=observations)
+    display._busy_observer = SimpleNamespace(
+        family="ac073", driver_version="2.5.0", run_show=run_show, observations=observations,
+    )
     photo, _ = photos.save(content=png_factory(), original_filename="retained.png")
     queue.add(photo.id)
     app.state.bus.broadcast = Mock()
@@ -292,7 +294,9 @@ def test_busy_fault_is_deferred_until_sequence_return_and_preserves_queue(
         trace.extend(["refresh", "power_off", "power_off_wait", "return"])
         return observations
 
-    display._busy_observer = SimpleNamespace(run_show=run_show, observations=observations, family="ac073")
+    display._busy_observer = SimpleNamespace(
+        run_show=run_show, observations=observations, family="ac073", driver_version="2.5.0",
+    )
     response = client.post("/api/display/next")
     assert trace[-1] == "return"
     assert response.status_code == 503

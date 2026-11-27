@@ -1,0 +1,2 @@
+# Official pure-Python Pimoroni wheel for universal display conformance.
+inky==2.6.0 --hash=sha256:3fd163e937f14f973e593a69e9558eba6fe666d5e46a17e7a82ff30849d7d009
