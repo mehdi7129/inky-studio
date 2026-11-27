@@ -1062,7 +1062,7 @@ final class AppStoreTests: XCTestCase {
         await fulfillment(of: [gate.started], timeout: 3)
         gate.release(status: 502)
         guard case .failure(let message) = await changing.value else { return XCTFail("Expected uncertain result") }
-        XCTAssertTrue(message.contains("nouveau mot de passe"))
+        XCTAssertEqual(message, String(localized: "Le résultat n’a pas pu être confirmé. Essayez de vous reconnecter avec le nouveau mot de passe ; s’il est refusé, utilisez l’ancien."))
         XCTAssertFalse(fixture.store.authenticated)
         XCTAssertFalse(fixture.store.credentialStored)
         XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == "/api/auth/password" }.count, 1)
@@ -2123,17 +2123,17 @@ final class AppStoreTests: XCTestCase {
 
     func testRestorationAdmitsKnownLocatorOnlyAfterPinnedIdentityCheck() async throws {
         let verified = try verifiedLegacyFixture()
-        let id = verified.identity.id.uuidString.lowercased().replacingOccurrences(of: "-", with: "")
-        let newHost = "inky-\(id).local"
+        let newHost = "studio-living-room.local"
+        let announced = try XCTUnwrap(URL(string: "https://\(newHost):8443"))
         for matches in [true, false] {
             let fixture = StoreFixture(proveLegacyTLS: { _, _ in verified }, testingLegacyHTTP: false)
             defer { fixture.dispose() }
-            fixture.stub.enablePhotoAccess(verified.identity)
+            fixture.stub.enablePhotoAccess(verified.identity, stableLocator: announced.absoluteString)
             await fixture.store.loginFromLANQRCode(lanQR)
             await fixture.store.logout()
             let firstHost = try XCTUnwrap(verified.endpoint.host)
             fixture.stub.failNext(host: firstHost, path: "/api/auth/device-session", method: "POST",
-                                  error: URLError(.cannotConnectToHost))
+                                  error: URLError(matches ? .serverCertificateUntrusted : .cannotConnectToHost))
             if !matches {
                 fixture.stub.respondNextJSON(host: newHost, path: "/api/auth/frame-identity", method: "GET",
                     status: 200, body: ["frame_id": verified.identity.id.uuidString.lowercased(),
@@ -2150,6 +2150,22 @@ final class AppStoreTests: XCTestCase {
             XCTAssertEqual(fixture.store.address, matches ? "https://\(newHost):8443" : verified.endpoint.absoluteString)
             XCTAssertEqual(fixture.store.authenticated, matches)
         }
+    }
+
+    func testRestorationDoesNotInventALocatorForAnOlderBackend() async throws {
+        let verified = try verifiedLegacyFixture()
+        let fixture = StoreFixture(proveLegacyTLS: { _, _ in verified }, testingLegacyHTTP: false)
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(verified.identity)
+        await fixture.store.loginFromLANQRCode(lanQR)
+        await fixture.store.logout()
+        fixture.stub.failNext(host: try XCTUnwrap(verified.endpoint.host), path: "/api/auth/device-session",
+                              method: "POST", error: URLError(.cannotConnectToHost))
+        let before = fixture.stub.requests.count
+        await fixture.store.unlock()
+        XCTAssertEqual(fixture.stub.requests.dropFirst(before).map { $0.url?.host }, [verified.endpoint.host])
+        XCTAssertEqual(fixture.store.address, verified.endpoint.absoluteString)
+        XCTAssertFalse(fixture.store.authenticated)
     }
 
     func testExpiredSessionReopensProtectedDeviceOnSameOriginWithoutPassword() async throws {
@@ -2210,6 +2226,11 @@ final class AppStoreTests: XCTestCase {
         let binding = PhotoUploadBinding(frameID: UUID(), spki: Data(repeating: 12, count: 32), deviceID: UUID())
         let draft = PhotoUploadDraft(binding: binding, filename: "photo.png", png: Data([0, 1, 2]))
         try PhotoUploadDraftStore(directory: root).save(draft)
+        var oldRecord = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
+        oldRecord.removeValue(forKey: "delivery")
+        let oldDraft = try JSONDecoder().decode(PhotoUploadDraft.self, from: JSONSerialization.data(withJSONObject: oldRecord))
+        XCTAssertEqual(oldDraft.id, draft.id)
+        XCTAssertNil(oldDraft.delivery)
         let reopened = PhotoUploadDraftStore(directory: root)
         XCTAssertEqual(try reopened.load(binding)?.id, draft.id)
         XCTAssertEqual(try reopened.load(binding)?.png, draft.png)
@@ -2248,6 +2269,48 @@ final class AppStoreTests: XCTestCase {
         let posts = fixture.stub.requests.filter { $0.url?.path == "/api/queue" && $0.httpMethod == "POST" }
         XCTAssertEqual(posts.count, 1)
         XCTAssertEqual(posts.first?.value(forHTTPHeaderField: "Idempotency-Key"), draft.id.uuidString.lowercased())
+    }
+
+    func testOldServerResumeReconcilesQueueWithoutPostingEvenAfterUpgrade() async throws {
+        let verified = try verifiedLegacyFixture()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let drafts = PhotoUploadDraftStore(directory: root)
+        let fixture = StoreFixture(proveLegacyTLS: { _, _ in verified }, testingLegacyHTTP: false, uploadDrafts: drafts)
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(verified.identity)
+        fixture.stub.setReceiptSupport(false)
+        await fixture.store.loginFromLANQRCode(lanQR)
+        let host = try XCTUnwrap(verified.endpoint.host)
+        fixture.stub.failNext(host: host, path: "/api/queue", method: "POST", error: URLError(.networkConnectionLost))
+        do {
+            try await fixture.store.upload(Data([0, 1, 2]), filename: "photo.png")
+            XCTFail("Expected an uncertain result after submitting")
+        } catch is URLError {}
+        let draft = try XCTUnwrap(fixture.store.pendingPhotoUpload())
+        XCTAssertEqual(draft.delivery, .receiptUnavailable)
+        await fixture.store.refresh()
+        XCTAssertTrue(fixture.store.canMutate)
+        let route = "/api/queue/uploads/" + draft.id.uuidString.lowercased()
+        for supportsReceipts in [false, true] {
+            fixture.stub.setReceiptSupport(supportsReceipts)
+            fixture.stub.respondNextJSON(host: host, path: "/api/queue", method: "GET", status: 200, body: [])
+            let before = fixture.stub.requests.count
+            do {
+                try await fixture.store.resumePhotoUpload(draft)
+                XCTFail("An empty queue cannot confirm the upload")
+            } catch PhotoUploadRecoveryError.unconfirmed {}
+            XCTAssertEqual(fixture.stub.requests.dropFirst(before).map { $0.url?.path }, [route, "/api/queue"])
+            XCTAssertEqual(try fixture.store.pendingPhotoUpload()?.id, draft.id)
+        }
+        fixture.stub.setReceiptSupport(false)
+        let photo: [String: Any] = ["id": "raw00001", "sha256": draft.hash, "original_filename": "photo.png",
+                                    "mime": "image/png", "width": 800, "height": 480, "size_bytes": 3, "created_at": 1234]
+        fixture.stub.respondNextJSON(host: host, path: "/api/queue", method: "GET", status: 200,
+                                     body: [["id": 1, "position": 0, "added_at": 1234, "photo": photo]])
+        try await fixture.store.resumePhotoUpload(draft)
+        XCTAssertNil(try fixture.store.pendingPhotoUpload())
+        XCTAssertEqual(fixture.stub.requests.filter { $0.url?.path == "/api/queue" && $0.httpMethod == "POST" }.count, 1)
     }
 
     func testRevokedDraftResumePreservesProtectedDraftAndNeverPosts() async throws {
@@ -2332,7 +2395,7 @@ final class AppStoreTests: XCTestCase {
             XCTAssertNil(fixture.store.activeInvitation, stage)
             XCTAssertNotNil(fixture.store.photoAccessError, stage)
             if ["proof", "login", "enroll", "session"].contains(stage) {
-                XCTAssertEqual(fixture.store.photoAccessError, "Le partage nécessite une mise à jour du cadre.")
+                XCTAssertEqual(fixture.store.photoAccessError, String(localized: "Le partage nécessite une mise à jour du cadre."))
             }
         }
     }
@@ -2806,6 +2869,8 @@ private final class StoreStub: @unchecked Sendable {
     private var calls: [URLRequest] = []
     private var accessIdentity: FrameIdentity?
     private var accessCanInvite: Bool?
+    private var advertisedLocator: String?
+    private var receiptsSupported = true
     private var accessDeviceRoles: [String: String] = [:]
     private var responseErrors: [String: URLError] = [:]
     private var displayStatus: [String: Any]?
@@ -2814,8 +2879,16 @@ private final class StoreStub: @unchecked Sendable {
     var requests: [URLRequest] { lock.withLock { calls } }
     init(totals: [String: Int]) { self.totals = totals }
 
-    func enablePhotoAccess(_ identity: FrameIdentity, canInvite: Bool? = nil) {
-        lock.withLock { accessIdentity = identity; accessCanInvite = canInvite }
+    func enablePhotoAccess(_ identity: FrameIdentity, canInvite: Bool? = nil, stableLocator: String? = nil) {
+        lock.withLock {
+            accessIdentity = identity
+            accessCanInvite = canInvite
+            advertisedLocator = stableLocator
+        }
+    }
+
+    func setReceiptSupport(_ supported: Bool) {
+        lock.withLock { receiptsSupported = supported }
     }
 
     func failNext(host: String, path: String, method: String = "GET", error: URLError) {
@@ -2909,7 +2982,12 @@ private final class StoreStub: @unchecked Sendable {
             body = [:] as [String: String]
             defaultStatus = 204
         case let path where path.hasPrefix("/api/queue/uploads/"):
-            body = ["receipt": NSNull()]
+            if lock.withLock({ receiptsSupported }) {
+                body = ["receipt": NSNull()]
+            } else {
+                body = ["detail": "Not Found"]
+                defaultStatus = 404
+            }
         case "/api/auth/invitations/claim", "/api/auth/device-session", "/api/auth/devices/enroll", "/api/auth/factory-device-enroll":
             let fields = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any] ?? [:]
             let identity = lock.withLock { accessIdentity }!
@@ -2923,6 +3001,7 @@ private final class StoreStub: @unchecked Sendable {
                 "identity": ["frame_id": identity.id.uuidString.lowercased(), "spki_sha256": identity.spkiSHA256.map { String(format: "%02x", $0) }.joined()]]
             if path != "/api/auth/factory-device-enroll" { reply["authenticated"] = true }
             if let canInvite = lock.withLock({ accessCanInvite }) { reply["can_invite"] = canInvite }
+            if let locator = lock.withLock({ advertisedLocator }) { reply["stable_locator"] = locator }
             body = reply
         case "/api/auth/invitations":
             let fields = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any] ?? [:]

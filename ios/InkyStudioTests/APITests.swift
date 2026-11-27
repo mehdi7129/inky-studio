@@ -280,14 +280,18 @@ final class APITests: XCTestCase {
         let api = client(stub)
         do { _ = try await api.login(password: "test"); XCTFail("Expected validation error") }
         catch let error as APIError {
-            XCTAssertEqual(error, .http(statusCode: 422, message: "Données non valides : Field required"))
+            XCTAssertEqual(error, .http(statusCode: 422, message: String(localized: "Données non valides : ") + "Field required"))
             XCTAssertFalse(error.localizedDescription.contains("never-echo-this-secret"))
         }
         XCTAssertEqual(stub.requests.count, 1)
         XCTAssertEqual(APIError.response(status: 401, data: Data()), .unauthorized)
         XCTAssertTrue(APIError.unauthorized.isUnauthorized)
         XCTAssertEqual(APIError.response(status: 409, data: Data(#"{"detail":"Cadre occupé"}"#.utf8)), .http(statusCode: 409, message: "Cadre occupé"))
-        XCTAssertEqual(APIError.response(status: 502, data: Data("<html>secret proxy details</html>".utf8)).localizedDescription, "Le cadre rencontre une erreur (502). Réessayez dans un instant.")
+        let status = 502
+        let proxyError = APIError.response(status: status, data: Data("<html>secret proxy details</html>".utf8))
+        XCTAssertEqual(proxyError.localizedDescription,
+                       String(localized: "Le cadre rencontre une erreur (\(status)). Réessayez dans un instant."))
+        XCTAssertFalse(proxyError.localizedDescription.contains("secret proxy details"))
         api.clearSession()
     }
 

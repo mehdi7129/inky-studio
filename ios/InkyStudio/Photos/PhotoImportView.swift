@@ -275,6 +275,8 @@ struct PhotoImportView: View {
                         dismiss()
                     } catch is CancellationError {
                         return
+                    } catch let error as PhotoUploadRecoveryError {
+                        model.errorMessage = error.errorDescription
                     } catch {
                         model.errorMessage = String(localized: "L’envoi n’a pas pu être confirmé. Vérifiez le Wi-Fi et la file du cadre avant de réessayer.")
                     }

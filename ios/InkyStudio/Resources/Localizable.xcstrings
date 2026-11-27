@@ -30085,6 +30085,76 @@
         }
       }
     },
+    "Le cadre n’a pas pu confirmer cet envoi. Le brouillon est conservé. Vérifiez l’historique du cadre avant tout nouvel envoi.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "لم يتمكن الإطار من تأكيد الإرسال. تم الاحتفاظ بالمسودة. تحقق من سجل الإطار قبل الإرسال من جديد."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Der Rahmen konnte das Senden nicht bestätigen. Der Entwurf bleibt gespeichert. Prüfe den Verlauf des Rahmens, bevor du erneut sendest."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "The frame couldn’t confirm the upload. The draft was kept. Check the frame’s history before sending again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "El marco no pudo confirmar el envío. Se ha guardado el borrador. Consulta el historial del marco antes de volver a enviar la foto."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le cadre n’a pas pu confirmer cet envoi. Le brouillon est conservé. Vérifiez l’historique du cadre avant tout nouvel envoi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "La cornice non ha potuto confermare l’invio. La bozza è stata conservata. Controlla la cronologia della cornice prima di inviare di nuovo la foto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "フレームで送信を確認できませんでした。下書きは保存されています。再送信の前にフレームの履歴を確認してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "액자에서 전송을 확인하지 못했습니다. 임시 저장본은 유지됩니다. 다시 보내기 전에 액자의 기록을 확인하세요."
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "A moldura não conseguiu confirmar o envio. O rascunho foi guardado. Consulte o histórico da moldura antes de voltar a enviar a fotografia."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "相框未能确认上传。草稿已保留。再次发送前，请查看相框的历史记录。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "相框無法確認上傳。草稿已保留。再次傳送前，請查看相框的歷史記錄。"
+          }
+        }
+      }
+    },
     "Un envoi est en attente.": {
       "localizations": {
         "ar": {

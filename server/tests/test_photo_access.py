@@ -197,6 +197,21 @@ def login(client, app):
     assert client.post("/api/auth/login", json={"password": app.state.auth_service.credentials.bootstrap_password}).status_code == 200
 
 
+@pytest.mark.parametrize(("origin", "advertised"), [
+    ("https://studio-living-room.local:8443", "https://studio-living-room.local:8443"),
+    ("https://192.168.1.20:8443", None),
+    ("http://studio-living-room.local:8443", None),
+])
+def test_device_session_advertises_only_configured_local_locator(frame, monkeypatch, origin, advertised):
+    client, app = frame
+    owner = enroll_client(client, app)
+    monkeypatch.setenv("INKY_STUDIO_PHOTO_ACCESS_URL", origin)
+    result = client.post("/api/auth/device-session", json={key: owner[key] for key in ("device_id", "device_token")})
+    assert result.status_code == 200
+    assert result.json().get("stable_locator") == advertised
+    assert set(result.json()["identity"]) == {"frame_id", "spki_sha256"}
+
+
 def enroll_client(client, app):
     login(client, app)
     owner = enrollment()

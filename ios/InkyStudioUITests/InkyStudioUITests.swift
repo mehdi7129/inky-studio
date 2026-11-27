@@ -14,7 +14,8 @@ final class InkyStudioUITests: XCTestCase {
         app = XCUIApplication()
         // Resetting a protected resource terminates an already-running app.
         if resetCamera { app.resetAuthorizationStatus(for: .camera) }
-        app.launchArguments = ["--uitesting", "--legacy-login-fixture", "--local-auth-fixture", "success", "--frame-address", fixtureURL.absoluteString] + languageArguments
+        app.launchArguments = ["--uitesting", "--legacy-login-fixture", "--local-auth-fixture", "success", "--frame-address", fixtureURL.absoluteString] +
+            (languageArguments.isEmpty ? ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR"] : languageArguments)
         app.launchEnvironment["INKY_UI_FIXTURE_PASSWORD"] = fixturePassword
         app.launch()
         let teardown: @MainActor @Sendable () -> Void = { [weak self] in
@@ -272,7 +273,7 @@ final class InkyStudioUITests: XCTestCase {
     func testUnavailableFrameShowsRecoverableError() {
         launchFixtureApp()
         app.terminate()
-        app.launchArguments = ["--uitesting", "--legacy-login-fixture", "--local-auth-fixture", "success", "--frame-address", "http://127.0.0.1:8766"]
+        app.launchArguments = ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR", "--uitesting", "--legacy-login-fixture", "--local-auth-fixture", "success", "--frame-address", "http://127.0.0.1:8766"]
         app.launch()
         let password = app.secureTextFields["connection.password"]
         XCTAssertTrue(password.waitForExistence(timeout: 10))

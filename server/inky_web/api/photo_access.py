@@ -144,23 +144,35 @@ def public_identity(request, *, with_url=False):
     )
     result = {"frame_id": uuid(identity.frame_id), "spki_sha256": hashlib.sha256(spki).hexdigest()}
     if with_url:
-        provider = getattr(request.app.state, "photo_access_origin", None)
-        raw = (provider() if provider is not None else
-               os.environ.get("INKY_STUDIO_PHOTO_ACCESS_URL", ""))
-        if type(raw) is not str:
-            raise HTTPException(503, "Adresse HTTPS de partage non configurée")
-        try:
-            parsed = urlsplit(raw)
-            if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
-                    or parsed.password is not None or parsed.query or parsed.fragment
-                    or parsed.path not in ("", "/") or len(parsed.netloc) > 259
-                    or not re.fullmatch(r"[a-zA-Z0-9.\[\]:-]+", parsed.netloc)
-                    or (parsed.port is not None and not 1 <= parsed.port <= 65535)):
-                raise ValueError
-            result["url"] = f"https://{parsed.netloc}"
-        except ValueError:
-            raise HTTPException(503, "Adresse HTTPS de partage non configurée") from None
+        result["url"] = photo_origin(request)
     return result
+
+
+def photo_origin(request):
+    provider = getattr(request.app.state, "photo_access_origin", None)
+    raw = provider() if provider is not None else os.environ.get("INKY_STUDIO_PHOTO_ACCESS_URL", "")
+    if type(raw) is not str:
+        raise HTTPException(503, "Adresse HTTPS de partage non configurée")
+    try:
+        parsed = urlsplit(raw)
+        if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
+                or parsed.password is not None or parsed.query or parsed.fragment
+                or parsed.path not in ("", "/") or len(parsed.netloc) > 259
+                or not re.fullmatch(r"[a-zA-Z0-9.\[\]:-]+", parsed.netloc)
+                or (parsed.port is not None and not 1 <= parsed.port <= 65535)):
+            raise ValueError
+        return f"https://{parsed.netloc}"
+    except ValueError:
+        raise HTTPException(503, "Adresse HTTPS de partage non configurée") from None
+
+
+def recovery_locator(request):
+    try:
+        origin = photo_origin(request)
+    except HTTPException:
+        return {}
+    # Only an explicitly advertised mDNS locator can follow DHCP changes.
+    return {"stable_locator": origin} if urlsplit(origin).hostname.endswith(".local") else {}
 
 
 async def call(function, *args):
@@ -265,7 +277,7 @@ async def device_session(request: Request, payload: DeviceCredential, response: 
     principal, session = await call(operation)
     auth.set_session_cookie(response, session, secure=True)
     return {"authenticated": True, "device_id": principal.device_id, "role": principal.role, "identity": identity,
-            "can_invite": await call(value.can_invite, principal)}
+            "can_invite": await call(value.can_invite, principal), **recovery_locator(request)}
 
 
 @router.post("/retire-bootstrap", status_code=204)
@@ -305,7 +317,7 @@ async def claim_invitation(request: Request, payload: Claim, response: Response)
     principal, session = await call(operation)
     auth.set_session_cookie(response, session, secure=True)
     return {"authenticated": True, "device_id": principal.device_id, "role": principal.role, "identity": identity,
-            "can_invite": await call(value.can_invite, principal)}
+            "can_invite": await call(value.can_invite, principal), **recovery_locator(request)}
 
 
 @router.delete("/invitations/{invitation_id}")

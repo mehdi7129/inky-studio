@@ -714,7 +714,7 @@ final class AppStore: ObservableObject {
             let session = try await PhotoAccessClient(api: pinned, identity: owner.identity).openSession(credential)
             guard current() else { return false }
             pendingClient = nil
-            try commitPhotoAccess(credential, client: pinned, canInvite: session.canInvite)
+            try commitPhotoAccess(credential, client: pinned, session: session)
             defaults.set(owner.id.uuidString.lowercased(), forKey: "frameOwnerID")
             committed = true
             photoAccessBusy = false
@@ -1351,11 +1351,11 @@ final class AppStore: ObservableObject {
         if let binding = photoUploadBinding {
             if let previous = try uploadDrafts.load(binding) {
                 guard previous.hash == PhotoUploadDraft.digest(data) else { throw PhotoAccessError.unavailable }
-                return try await sendPhotoDraft(previous, on: api, resuming: true)
+                return try await sendPhotoDraft(previous, on: api)
             }
             let draft = PhotoUploadDraft(binding: binding, filename: filename, png: data)
             try uploadDrafts.save(draft)
-            return try await sendPhotoDraft(draft, on: api, resuming: false)
+            return try await sendPhotoDraft(draft, on: api)
         }
         // Preserve legacy HTTPS and Simulator callers that have no individual device binding.
         let epoch = generation
@@ -1375,10 +1375,10 @@ final class AppStore: ObservableObject {
     func resumePhotoUpload(_ draft: PhotoUploadDraft) async throws {
         guard canMutate, photoUploadBinding == draft.binding, let api,
               let saved = try uploadDrafts.load(draft.binding), saved.id == draft.id else { throw CancellationError() }
-        try await sendPhotoDraft(saved, on: api, resuming: true)
+        try await sendPhotoDraft(saved, on: api)
     }
 
-    private func sendPhotoDraft(_ draft: PhotoUploadDraft, on client: InkyAPI, resuming: Bool) async throws {
+    private func sendPhotoDraft(_ draft: PhotoUploadDraft, on client: InkyAPI) async throws {
         let epoch = generation
         busy = true
         defer { if epoch == generation { busy = false } }
@@ -1388,13 +1388,33 @@ final class AppStore: ObservableObject {
         }
         do {
             let prior: UploadResponse?
-            do { prior = try await client.uploadReceipt(draft.id) }
-            catch APIError.http(statusCode: 404, message: _) where !resuming { prior = nil }
+            let supportsReceipts: Bool
+            do {
+                prior = try await client.uploadReceipt(draft.id)
+                supportsReceipts = true
+            } catch APIError.http(statusCode: 404, message: _) {
+                prior = nil
+                supportsReceipts = false
+            }
             try checkAdmission()
             let response: UploadResponse
-            if let prior { response = prior }
-            else {
+            if let prior {
+                response = prior
+            } else if draft.delivery == .ready || (supportsReceipts && draft.delivery == .receiptBacked) {
+                // Record the contract before a POST can reach the frame. A later
+                // upgrade cannot manufacture a receipt for a legacy upload.
+                var sending = draft
+                sending.delivery = supportsReceipts ? .receiptBacked : .receiptUnavailable
+                try uploadDrafts.save(sending)
+                try checkAdmission()
                 response = try await client.upload(png: draft.png, filename: draft.filename, idempotencyKey: draft.id)
+            } else {
+                let queue = try await client.queue()
+                try checkAdmission()
+                guard let entry = queue.first(where: { $0.photo.sha256 == draft.hash }) else {
+                    throw PhotoUploadRecoveryError.unconfirmed
+                }
+                response = UploadResponse(photo: entry.photo, queueEntry: entry, alreadyExisted: true)
             }
             try checkAdmission()
             guard response.photo.sha256 == draft.hash, response.queueEntry.photo.id == response.photo.id else {
@@ -1574,7 +1594,7 @@ private extension AppStore {
             candidate = pinned
             guard stillSelected() else { return false }
             pendingClient = nil
-            try commitPhotoAccess(prepared.credential, client: pinned, canInvite: prepared.canInvite, preservingLegacyUpgrade: true)
+            try commitPhotoAccess(prepared.credential, client: pinned, session: prepared.session, preservingLegacyUpgrade: true)
             defaults.set(prepared.credential.identity.id.uuidString, forKey: "pendingBootstrapRetirement")
             candidate = nil
             epoch = generation
@@ -1616,7 +1636,7 @@ private extension AppStore {
             candidate = prepared.client
             guard admitted() else { return false }
             pendingClient = nil
-            try commitPhotoAccess(prepared.credential, client: prepared.client, canInvite: prepared.canInvite)
+            try commitPhotoAccess(prepared.credential, client: prepared.client, session: prepared.session)
             defaults.set(prepared.credential.identity.id.uuidString, forKey: "pendingBootstrapRetirement")
             candidate = nil
             let committedEpoch = generation
@@ -1645,7 +1665,7 @@ private extension AppStore {
     }
 
     func prepareVerifiedOwner(endpoint: URL, password: String, admitted: () -> Bool) async throws
-        -> (client: InkyAPI, credential: PhotoAccessCredential, canInvite: Bool) {
+        -> (client: InkyAPI, credential: PhotoAccessCredential, session: PhotoAccessSessionReply) {
         let verified = try await proveLegacyTLS(endpoint, password)
         guard admitted() else { throw CancellationError() }
         let pinned = makePinnedAPI(verified.endpoint, verified.identity)
@@ -1669,7 +1689,7 @@ private extension AppStore {
             }
             credential = try PhotoAccessCredential(identity: verified.identity, endpoint: verified.endpoint,
                 deviceID: saved.deviceID, deviceToken: saved.deviceToken, requestID: saved.requestID,
-                expectedRole: .owner, state: .pending)
+                expectedRole: .owner, state: .pending, stableLocator: saved.stableLocator)
         } else {
             credential = try PhotoAccessCredential.make(identity: verified.identity, endpoint: verified.endpoint, role: .owner)
         }
@@ -1681,7 +1701,7 @@ private extension AppStore {
         let session = try await access.openSession(credential)
         guard admitted() else { throw CancellationError() }
         ready = true
-        return (pinned, credential, session.canInvite)
+        return (pinned, credential, session)
     }
 
     func finishPhotoAccessWiFi(endpoint: URL, owner: OwnershipRecord, selected: PhotoAccessSelection) async {
@@ -1701,7 +1721,7 @@ private extension AppStore {
             guard selected.validates(credential) else { throw PhotoAccessError.identityMismatch }
             let relocated = try PhotoAccessCredential(identity: credential.identity, endpoint: endpoint,
                 deviceID: credential.deviceID, deviceToken: credential.deviceToken, requestID: credential.requestID,
-                expectedRole: .owner, state: .active, invitationID: credential.invitationID)
+                expectedRole: .owner, state: .active, invitationID: credential.invitationID, stableLocator: credential.stableLocator)
             let client = makePinnedAPI(endpoint, selected.identity)
             candidate = client; pendingClient = client
             let session = try await PhotoAccessClient(api: client, identity: selected.identity).openSession(relocated)
@@ -1709,7 +1729,7 @@ private extension AppStore {
             // BLE ownership stays separate. This only records the verified locator for the same owner.
             _ = try ownershipVault.markClaimed(id: owner.id, endpoint: endpoint)
             pendingClient = nil
-            try commitPhotoAccess(relocated, client: client, canInvite: session.canInvite)
+            try commitPhotoAccess(relocated, client: client, session: session)
             defaults.set(owner.id.uuidString.lowercased(), forKey: "frameOwnerID")
             candidate = nil
             connecting = false; photoAccessBusy = false
@@ -1745,17 +1765,18 @@ private extension AppStore {
         pendingPhotoAccess = selection
         defaults.set(data, forKey: "photoAccessPending")
     }
-    func commitPhotoAccess(_ credential: PhotoAccessCredential, client: InkyAPI, canInvite: Bool,
+    func commitPhotoAccess(_ credential: PhotoAccessCredential, client: InkyAPI, session: PhotoAccessSessionReply,
                            preservingLegacyUpgrade: Bool = false, preservingLogicalSession: Bool = false) throws {
         var saved = credential
         saved.state = .active
+        if let locator = session.stableLocator { saved.stableLocator = locator }
         let selection = PhotoAccessSelection(saved)
         try photoAccessVault.save(saved, account: selection.account)
         let selectionData = try JSONEncoder().encode(selection)
         resetSession(cancelLegacyUpgrade: !preservingLegacyUpgrade)
         selectedPhotoAccess = selection
         photoAccessRole = credential.expectedRole
-        photoAccessCanInvite = canInvite
+        photoAccessCanInvite = session.canInvite
         defaults.set(selectionData, forKey: "photoAccessSelection")
         defaults.removeObject(forKey: "photoAccessPending")
         pendingPhotoAccess = nil
@@ -1796,10 +1817,7 @@ private extension AppStore {
         if let record = try? ownershipVault.load(id: credential.identity.id), record.identity == credential.identity {
             candidates.append(contentsOf: record.endpoints.reversed().prefix(4))
         }
-        let compactID = credential.identity.id.uuidString.lowercased().replacingOccurrences(of: "-", with: "")
-        if let canonical = try? FactorySetupValidation.origin("https://inky-\(compactID).local:8443") {
-            candidates.append(canonical)
-        }
+        if let locator = credential.stableLocator { candidates.insert(locator, at: 0) }
         var origins = [credential.endpoint]
         return candidates.filter { candidate in
             guard !origins.contains(where: { OriginRedirectDelegate.sameOrigin($0, candidate) }) else { return false }
@@ -1831,7 +1849,7 @@ private extension AppStore {
                 pendingClient = client
                 let relocated = try PhotoAccessCredential(identity: credential.identity, endpoint: endpoint,
                     deviceID: credential.deviceID, deviceToken: credential.deviceToken, requestID: credential.requestID,
-                    expectedRole: credential.expectedRole, state: credential.state, invitationID: credential.invitationID)
+                    expectedRole: credential.expectedRole, state: credential.state, invitationID: credential.invitationID, stableLocator: credential.stableLocator)
                 let access = try PhotoAccessClient(api: client, identity: selection.identity)
                 let session: PhotoAccessSessionReply
                 do {
@@ -1847,7 +1865,7 @@ private extension AppStore {
                 }
                 guard await waitForActiveScene(authentication: attempt), epoch == generation, localUnlocked else { return }
                 pendingClient = nil
-                try commitPhotoAccess(relocated, client: client, canInvite: session.canInvite,
+                try commitPhotoAccess(relocated, client: client, session: session,
                                       preservingLogicalSession: recoveringSession)
                 candidate = nil
                 connecting = false
@@ -1878,7 +1896,12 @@ private extension AppStore {
     }
 
     static func isLocatorUnavailable(_ error: URLError) -> Bool {
-        [.cannotFindHost, .dnsLookupFailed, .cannotConnectToHost, .notConnectedToInternet, .networkConnectionLost, .timedOut].contains(error.code)
+        // A stale address can now belong to a different device. The pinned
+        // transport has rejected it before sending credentials. Try only the
+        // other locators already known for this frame.
+        [.cannotFindHost, .dnsLookupFailed, .cannotConnectToHost, .notConnectedToInternet,
+         .networkConnectionLost, .timedOut, .secureConnectionFailed, .serverCertificateUntrusted,
+         .serverCertificateHasUnknownRoot, .serverCertificateHasBadDate, .serverCertificateNotYetValid].contains(error.code)
     }
 
     func ensurePhotoOwner(epoch: UUID, operation: UUID) async throws -> PhotoAccessClient {
@@ -2013,7 +2036,7 @@ extension AppStore {
             let session = try await client.claim(code, credential: credential)
             guard photoOperationValid(epoch, operation) else { return }
             pendingClient = nil
-            try commitPhotoAccess(credential, client: candidate, canInvite: session.canInvite)
+            try commitPhotoAccess(credential, client: candidate, session: session)
             committed = true
             connecting = false
             photoAccessBusy = false
