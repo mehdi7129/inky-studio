@@ -2062,6 +2062,235 @@ final class AppStoreTests: XCTestCase {
         XCTAssertTrue(fixture.store.canMutate)
     }
 
+    func testSingleLegacyQRPromotesToProtectedHTTPSWithoutSendingFrameRequestsOverHTTP() async throws {
+        let verified = try verifiedLegacyFixture()
+        var proofInputs: [URL] = []
+        let fixture = StoreFixture(proveLegacyTLS: { endpoint, _ in
+            proofInputs.append(endpoint)
+            return verified
+        }, testingLegacyHTTP: false)
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(verified.identity)
+        await fixture.store.loginFromLANQRCode(lanQR)
+        XCTAssertEqual(proofInputs.map(\.absoluteString), ["http://192.168.1.120:8000"])
+        XCTAssertTrue(fixture.stub.requests.allSatisfy { $0.url?.scheme == "https" })
+        let auth = fixture.stub.requests.compactMap { $0.url?.path }.filter { $0.hasPrefix("/api/auth/") }
+        XCTAssertEqual(auth, ["/api/auth/login", "/api/auth/devices/enroll", "/api/auth/device-session"])
+        XCTAssertEqual(fixture.store.address, verified.endpoint.absoluteString)
+        XCTAssertEqual(fixture.store.photoAccessRole, .owner)
+        XCTAssertTrue(fixture.store.canMutate)
+        XCTAssertNil(fixture.defaults.data(forKey: "photoAccessPending"))
+        XCTAssertTrue(fixture.credentials.passwords.isEmpty)
+        let account = PhotoAccessSelection.account(identity: verified.identity, invitationID: nil)
+        let saved = try await fixture.photoVault.loadCredential(account: account)
+        XCTAssertEqual(saved.state, .active)
+    }
+
+    func testLaterLaunchRetiresBootstrapAfterRestoringPersistedOwner() async throws {
+        let verified = try verifiedLegacyFixture()
+        var credential = try PhotoAccessCredential.make(identity: verified.identity, endpoint: verified.endpoint, role: .owner)
+        credential.state = .active
+        let fixture = StoreFixture(testingLegacyHTTP: false, initialProtectedAccess: credential)
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(verified.identity)
+        let host = try XCTUnwrap(verified.endpoint.host)
+        fixture.stub.respondNextJSON(host: host, path: "/api/auth/device-session", method: "POST", status: 200,
+            body: ["device_id": credential.deviceID.uuidString.lowercased(), "role": "owner", "authenticated": true,
+                   "identity": ["frame_id": credential.identity.id.uuidString.lowercased(),
+                                "spki_sha256": credential.identity.spkiSHA256.map { String(format: "%02x", $0) }.joined()]])
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+        await fixture.store.unlock()
+        let auth = fixture.stub.requests.compactMap { $0.url?.path }.filter { $0.hasPrefix("/api/auth/") }
+        XCTAssertEqual(auth, ["/api/auth/device-session", "/api/auth/retire-bootstrap"])
+        XCTAssertNil(fixture.defaults.string(forKey: "pendingBootstrapRetirement"))
+        XCTAssertTrue(fixture.store.authenticated)
+    }
+
+    func testFirstQRFailureDoesNotSelectAnAccessOrFallBackToHTTP() async throws {
+        let verified = try verifiedLegacyFixture()
+        for status in [401, 503] {
+            let fixture = StoreFixture(proveLegacyTLS: { _, _ in verified }, testingLegacyHTTP: false)
+            defer { fixture.dispose() }
+            fixture.stub.respondNextJSON(host: verified.endpoint.host!, path: "/api/auth/login", method: "POST",
+                                        status: status, body: ["detail": "Fixture declined authentication"])
+            await fixture.store.loginFromLANQRCode(lanQR)
+            XCTAssertEqual(fixture.stub.requests.map { $0.url?.scheme }, ["https"])
+            XCTAssertFalse(fixture.store.authenticated)
+            XCTAssertNil(fixture.defaults.data(forKey: "photoAccessSelection"))
+            XCTAssertNil(fixture.defaults.string(forKey: "frameAddress"))
+        }
+    }
+
+    func testRestorationAdmitsKnownLocatorOnlyAfterPinnedIdentityCheck() async throws {
+        let verified = try verifiedLegacyFixture()
+        let id = verified.identity.id.uuidString.lowercased().replacingOccurrences(of: "-", with: "")
+        let newHost = "inky-\(id).local"
+        for matches in [true, false] {
+            let fixture = StoreFixture(proveLegacyTLS: { _, _ in verified }, testingLegacyHTTP: false)
+            defer { fixture.dispose() }
+            fixture.stub.enablePhotoAccess(verified.identity)
+            await fixture.store.loginFromLANQRCode(lanQR)
+            await fixture.store.logout()
+            let firstHost = try XCTUnwrap(verified.endpoint.host)
+            fixture.stub.failNext(host: firstHost, path: "/api/auth/device-session", method: "POST",
+                                  error: URLError(.cannotConnectToHost))
+            if !matches {
+                fixture.stub.respondNextJSON(host: newHost, path: "/api/auth/frame-identity", method: "GET",
+                    status: 200, body: ["frame_id": verified.identity.id.uuidString.lowercased(),
+                                        "spki_sha256": String(repeating: "00", count: 32)])
+            }
+            let before = fixture.stub.requests.count
+            await fixture.store.unlock()
+            let candidate = fixture.stub.requests.dropFirst(before).filter { $0.url?.host == newHost }
+            XCTAssertEqual(candidate.first?.url?.path, "/api/auth/frame-identity")
+            XCTAssertNil(candidate.first?.httpBody)
+            XCTAssertNil(candidate.first?.value(forHTTPHeaderField: "Cookie"))
+            let opened = candidate.contains { $0.url?.path == "/api/auth/device-session" }
+            XCTAssertEqual(opened, matches)
+            XCTAssertEqual(fixture.store.address, matches ? "https://\(newHost):8443" : verified.endpoint.absoluteString)
+            XCTAssertEqual(fixture.store.authenticated, matches)
+        }
+    }
+
+    func testExpiredSessionReopensProtectedDeviceOnSameOriginWithoutPassword() async throws {
+        let verified = try verifiedLegacyFixture()
+        let fixture = StoreFixture(proveLegacyTLS: { _, _ in verified }, testingLegacyHTTP: false)
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(verified.identity)
+        await fixture.store.loginFromLANQRCode(lanQR)
+        let logicalSession = fixture.store.sessionIdentity
+        let host = try XCTUnwrap(verified.endpoint.host)
+        fixture.stub.respondNextJSON(host: host, path: "/api/state", method: "GET", status: 401,
+                                     body: ["detail": "Fixture lost its process-local session"])
+        let gate = fixture.stub.hold(host: host, path: "/api/auth/device-session", method: "POST")
+        let before = fixture.stub.requests.count
+        await fixture.store.refresh()
+        await fulfillment(of: [gate.started], timeout: 3)
+        XCTAssertFalse(fixture.store.canMutate)
+        let recovered = expectation(description: "Pinned device session and frame state restored")
+        let state = fixture.store.$connected.dropFirst().sink { if $0 { recovered.fulfill() } }
+        gate.release()
+        await fulfillment(of: [recovered], timeout: 4)
+        state.cancel()
+        let auth = fixture.stub.requests.dropFirst(before).filter { $0.url?.path.hasPrefix("/api/auth/") == true }
+        XCTAssertEqual(auth.map { $0.url?.path }, ["/api/auth/device-session"])
+        XCTAssertEqual(fixture.store.address, verified.endpoint.absoluteString)
+        XCTAssertEqual(fixture.store.sessionIdentity, logicalSession)
+    }
+
+    func testColdLegacyUnlockMigratesOnlyAfterExplicitLocalAuthorization() async throws {
+        let verified = try verifiedLegacyFixture()
+        let old = "http://old-frame.local:8000"
+        var authorizationCount = 0
+        var proofs = 0
+        let fixture = StoreFixture(authenticateLocal: { authorizationCount += 1 },
+            proveLegacyTLS: { endpoint, _ in
+                XCTAssertEqual(authorizationCount, 1)
+                XCTAssertEqual(endpoint.absoluteString, old)
+                proofs += 1
+                return verified
+            }, testingLegacyHTTP: false)
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(verified.identity)
+        fixture.store.address = old
+        fixture.defaults.set(old, forKey: "frameAddress")
+        fixture.credentials.passwords[old] = "Abcdef0123456789"
+        fixture.store.sceneChanged(.active)
+        XCTAssertEqual(proofs, 0)
+        await fixture.store.unlock()
+        XCTAssertEqual(proofs, 1)
+        XCTAssertTrue(fixture.store.authenticated)
+        XCTAssertTrue(fixture.stub.requests.allSatisfy { $0.url?.scheme == "https" })
+        XCTAssertNotNil(fixture.credentials.passwords[old])
+    }
+
+    func testUploadDraftSurvivesStorageReopenAndCannotBeReadByAnotherDevice() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let binding = PhotoUploadBinding(frameID: UUID(), spki: Data(repeating: 12, count: 32), deviceID: UUID())
+        let draft = PhotoUploadDraft(binding: binding, filename: "photo.png", png: Data([0, 1, 2]))
+        try PhotoUploadDraftStore(directory: root).save(draft)
+        let reopened = PhotoUploadDraftStore(directory: root)
+        XCTAssertEqual(try reopened.load(binding)?.id, draft.id)
+        XCTAssertEqual(try reopened.load(binding)?.png, draft.png)
+        XCTAssertNil(try reopened.load(.init(frameID: binding.frameID, spki: binding.spki, deviceID: UUID())))
+        XCTAssertNil(try reopened.load(.init(frameID: UUID(), spki: binding.spki, deviceID: binding.deviceID)))
+        try reopened.remove(draft)
+        XCTAssertNil(try reopened.load(binding))
+    }
+
+    func testConfirmedReceiptClearsUncertainDraftWithoutSecondPost() async throws {
+        let verified = try verifiedLegacyFixture()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = StoreFixture(proveLegacyTLS: { _, _ in verified }, testingLegacyHTTP: false,
+                                   uploadDrafts: PhotoUploadDraftStore(directory: root))
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(verified.identity)
+        await fixture.store.loginFromLANQRCode(lanQR)
+        let host = try XCTUnwrap(verified.endpoint.host)
+        fixture.stub.respondNextJSON(host: host, path: "/api/queue", method: "POST", status: 503,
+                                     body: ["detail": "Synthetic uncertain response"])
+        let data = Data([0, 1, 2])
+        do {
+            try await fixture.store.upload(data, filename: "photo.png")
+            XCTFail("Expected the first response to be uncertain")
+        } catch {}
+        let draft = try XCTUnwrap(fixture.store.pendingPhotoUpload())
+        let route = "/api/queue/uploads/" + draft.id.uuidString.lowercased()
+        let photo: [String: Any] = ["id": "raw00001", "sha256": draft.hash, "original_filename": "photo.png",
+                                     "mime": "image/png", "width": 800, "height": 480, "size_bytes": 3, "created_at": 1234]
+        let entry: [String: Any] = ["id": 1, "position": 0, "added_at": 1234, "photo": photo]
+        fixture.stub.respondNextJSON(host: host, path: route, method: "GET", status: 200,
+            body: ["receipt": ["photo": photo, "queue_entry": entry, "already_existed": false]])
+        try await fixture.store.resumePhotoUpload(draft)
+        XCTAssertNil(try fixture.store.pendingPhotoUpload())
+        let posts = fixture.stub.requests.filter { $0.url?.path == "/api/queue" && $0.httpMethod == "POST" }
+        XCTAssertEqual(posts.count, 1)
+        XCTAssertEqual(posts.first?.value(forHTTPHeaderField: "Idempotency-Key"), draft.id.uuidString.lowercased())
+    }
+
+    func testRevokedDraftResumePreservesProtectedDraftAndNeverPosts() async throws {
+        let verified = try verifiedLegacyFixture()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let drafts = PhotoUploadDraftStore(directory: root)
+        let fixture = StoreFixture(proveLegacyTLS: { _, _ in verified }, testingLegacyHTTP: false, uploadDrafts: drafts)
+        defer { fixture.dispose() }
+        fixture.stub.enablePhotoAccess(verified.identity)
+        await fixture.store.loginFromLANQRCode(lanQR)
+        let account = PhotoAccessSelection.account(identity: verified.identity, invitationID: nil)
+        let credential = try await fixture.photoVault.loadCredential(account: account)
+        let binding = PhotoUploadBinding(frameID: verified.identity.id, spki: verified.identity.spkiSHA256,
+                                         deviceID: credential.deviceID)
+        let draft = PhotoUploadDraft(binding: binding, filename: "photo.png", png: Data([0, 1, 2]))
+        try drafts.save(draft)
+        let route = "/api/queue/uploads/" + draft.id.uuidString.lowercased()
+        fixture.stub.respondNextJSON(host: try XCTUnwrap(verified.endpoint.host), path: route, method: "GET",
+                                     status: 401, body: ["detail": "Fixture device revoked"])
+        let before = fixture.stub.requests.count
+        do {
+            try await fixture.store.resumePhotoUpload(draft)
+            XCTFail("Revocation must stop the pending upload")
+        } catch {}
+        XCTAssertEqual(try drafts.load(binding)?.id, draft.id)
+        XCTAssertEqual(fixture.stub.requests.dropFirst(before).map { $0.url?.path }, [route])
+    }
+
+    func testFirstQRBackgroundDiscardsLateProof() async throws {
+        let proof = LegacySharingProofGate(try verifiedLegacyFixture())
+        let fixture = StoreFixture(proveLegacyTLS: { _, _ in await proof.wait() }, testingLegacyHTTP: false)
+        defer { fixture.dispose() }
+        let login = Task { await fixture.store.loginFromLANQRCode(lanQR) }
+        await fulfillment(of: [proof.started], timeout: 3)
+        fixture.store.sceneChanged(.background)
+        proof.release()
+        await login.value
+        XCTAssertTrue(fixture.stub.requests.isEmpty)
+        XCTAssertFalse(fixture.store.authenticated)
+        XCTAssertNil(fixture.defaults.data(forKey: "photoAccessSelection"))
+    }
+
     func testLegacyUpgradeFailureAtEveryStagePreservesOldHTTPAndProtectedSecret() async throws {
         let verified = try verifiedLegacyFixture()
         for stage in ["proof", "login", "enroll", "session", "pending-save", "final-save"] {
@@ -2450,7 +2679,9 @@ private final class StoreFixture {
          beforePhotoCredentialRead: (@MainActor () async throws -> Void)? = nil,
          pin: FrameIdentity? = nil,
          candidatePin: FrameIdentity? = nil,
-         proveLegacyTLS: (@MainActor (URL, String) async throws -> VerifiedLegacyTLSEndpoint)? = nil) {
+         proveLegacyTLS: (@MainActor (URL, String) async throws -> VerifiedLegacyTLSEndpoint)? = nil,
+         testingLegacyHTTP: Bool = true, uploadDrafts: PhotoUploadDraftStore = PhotoUploadDraftStore(),
+         initialProtectedAccess: PhotoAccessCredential? = nil) {
         let defaults = UserDefaults(suiteName: suite)!
         self.defaults = defaults
         let stub = StoreStub(totals: totals)
@@ -2470,6 +2701,13 @@ private final class StoreFixture {
             photoMemory.passwords.removeValue(forKey: account)
         })
         photoVault = protectedAccess
+        if let initialProtectedAccess {
+            let selection = PhotoAccessSelection(initialProtectedAccess)
+            try! protectedAccess.save(initialProtectedAccess, account: selection.account)
+            defaults.set(try! JSONEncoder().encode(selection), forKey: "photoAccessSelection")
+            defaults.set(selection.endpoint.absoluteString, forKey: "frameAddress")
+            defaults.set(selection.identity.id.uuidString, forKey: "pendingBootstrapRetirement")
+        }
         store = AppStore(defaults: defaults,
                          makeAPI: { InkyAPI(baseURL: $0, configuration: stub.configuration(), trustedIdentity: pin) },
                          vault: BiometricVault(service: vaultService),
@@ -2489,7 +2727,7 @@ private final class StoreFixture {
                          },
                          containsCredential: { credentialMemory.passwords[$0] != nil },
                          authenticationName: { "code iPhone" },
-                         monitorsEvents: false)
+                         monitorsEvents: false, testingLegacyHTTP: testingLegacyHTTP, uploadDrafts: uploadDrafts)
     }
 
     func login(_ host: String) async {
@@ -2580,8 +2818,8 @@ private final class StoreStub: @unchecked Sendable {
         lock.withLock { accessIdentity = identity; accessCanInvite = canInvite }
     }
 
-    func failNext(host: String, path: String, error: URLError) {
-        lock.withLock { responseErrors["\(host)|GET|\(path)"] = error }
+    func failNext(host: String, path: String, method: String = "GET", error: URLError) {
+        lock.withLock { responseErrors["\(host)|\(method)|\(path)"] = error }
     }
 
     func setDisplayStatus(state: String, error: String? = nil) {
@@ -2663,6 +2901,15 @@ private final class StoreStub: @unchecked Sendable {
         let body: Any
         var defaultStatus = 200
         switch path {
+        case "/api/auth/frame-identity":
+            let identity = lock.withLock { accessIdentity }!
+            body = ["frame_id": identity.id.uuidString.lowercased(),
+                    "spki_sha256": identity.spkiSHA256.map { String(format: "%02x", $0) }.joined()]
+        case "/api/auth/retire-bootstrap":
+            body = [:] as [String: String]
+            defaultStatus = 204
+        case let path where path.hasPrefix("/api/queue/uploads/"):
+            body = ["receipt": NSNull()]
         case "/api/auth/invitations/claim", "/api/auth/device-session", "/api/auth/devices/enroll", "/api/auth/factory-device-enroll":
             let fields = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any] ?? [:]
             let identity = lock.withLock { accessIdentity }!

@@ -23,7 +23,6 @@ from .bootstrap_identity import PREPARED_IDENTITY_FILENAME
 from .connected_peer import ConnectedPeerGuard
 from .first_boot import FirstBootCoordinator, FirstBootRefused, FirstBootResult, FirstBootUncertain
 from .initialization_ipc import InitializationIPCClient
-from .ownership import credential_epoch
 
 MARKER_PATH = Path("/etc/inky-studio/factory-v1.json")
 EXPECTED_DATA_DIR = Path("/var/lib/inky-studio")
@@ -253,6 +252,9 @@ def _verified_epoch_locked(config: FactoryRuntimeConfig) -> str:
             and (_bootstrap_verification.config != config or _bootstrap_verification.raw != raw)):
         _bootstrap_verification = None
     record = _json(raw)
+    if set(record) == {"version", "bootstrap_retired", "photo_epoch", "owner_epoch"}:
+        # Same pinned local file and exact retired schema depend on no password verifier.
+        return auth._parse_record(config.data_dir / "credentials.json", record).owner_epoch()
     required = {"version", "algorithm", "n", "r", "p", "salt", "hash"}
     if set(record) not in (required, required | {"bootstrap_password"}):
         raise ValueError
@@ -275,7 +277,7 @@ def _verified_epoch_locked(config: FactoryRuntimeConfig) -> str:
     # The permissive legacy parser only receives this strictly validated v2
     # shape, so it can neither migrate nor choose arbitrary scrypt parameters.
     credentials = auth._parse_record(config.data_dir / "credentials.json", record)
-    epoch = credential_epoch(credentials.salt, credentials.digest)
+    epoch = credentials.owner_epoch()
     if "bootstrap_password" in record:
         _bootstrap_verification = _BootstrapVerification(config, raw, epoch)
     return epoch

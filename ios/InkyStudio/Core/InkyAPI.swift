@@ -153,6 +153,24 @@ final class InkyAPI: FramePhotoClient {
     }
 
     func upload(png: Data, filename: String) async throws -> UploadResponse {
+        try await upload(png: png, filename: filename, idempotencyKey: nil)
+    }
+
+    func uploadReceipt(_ id: UUID) async throws -> UploadResponse? {
+        struct Reply: Decodable {
+            let receipt: UploadResponse?
+            init(from decoder: Decoder) throws {
+                enum Keys: String, CodingKey { case receipt }
+                let fields = try decoder.container(keyedBy: Keys.self)
+                guard fields.contains(.receipt) else { throw APIError.invalidData }
+                receipt = try fields.decodeIfPresent(UploadResponse.self, forKey: .receipt)
+            }
+        }
+        let reply: Reply = try await get("/api/queue/uploads/" + id.uuidString.lowercased(), timeout: 15)
+        return reply.receipt
+    }
+
+    func upload(png: Data, filename: String, idempotencyKey: UUID?) async throws -> UploadResponse {
         let boundary = "InkyStudio-" + UUID().uuidString
         // Quotes and CR/LF must not become multipart headers supplied by a filename.
         let safeName = filename.replacingOccurrences(of: "\r", with: "_")
@@ -164,6 +182,7 @@ final class InkyAPI: FramePhotoClient {
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
         var upload = try request("POST", path: "/api/queue", timeout: 60)
         upload.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let idempotencyKey { upload.setValue(idempotencyKey.uuidString.lowercased(), forHTTPHeaderField: "Idempotency-Key") }
         upload.httpBody = body
         let data = try await perform(upload)
         return try decodeResponse(data)
@@ -379,7 +398,11 @@ final class InkyAPI: FramePhotoClient {
         parts.fragment = nil
         guard let url = parts.url else { throw APIError.invalidResponse }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+        #if !DEBUG
+        guard url.scheme == "https" else { throw PhotoAccessError.trustedHTTPSRequired }
+        #endif
         request.httpMethod = method
+        if path.hasPrefix("/api/auth/") { request.setValue("1", forHTTPHeaderField: "X-Inky-Direct-Auth") }
         request.httpShouldHandleCookies = false
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let owner {

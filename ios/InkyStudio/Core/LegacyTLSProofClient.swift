@@ -10,7 +10,7 @@ final class LegacyTLSProofClient {
     private let timeout: TimeInterval
 
     init(configuration: URLSessionConfiguration = .ephemeral, timeout: TimeInterval = 12,
-         nonceGenerator: @escaping @Sendable () throws -> Data = LegacyTLSProofClient.randomNonce) {
+         nonceGenerator: @escaping @Sendable () throws -> Data = { try LegacyTLSProofClient.randomNonce() }) {
         // Preserve only protocol classes for isolated test injection, never caller headers/storage/proxy configuration.
         let sterile = URLSessionConfiguration.ephemeral
         sterile.protocolClasses = configuration.protocolClasses

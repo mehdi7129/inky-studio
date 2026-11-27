@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS queue (
 );
 CREATE INDEX IF NOT EXISTS idx_queue_position ON queue(position);
 
+CREATE TABLE IF NOT EXISTS upload_receipts (
+    idempotency_key TEXT PRIMARY KEY,
+    sha256          TEXT NOT NULL,
+    response        TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS history (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     photo_id      TEXT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
@@ -87,6 +93,7 @@ def _connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = FULL")
     return conn
 
 

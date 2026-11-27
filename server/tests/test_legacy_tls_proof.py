@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from contextlib import suppress
 from dataclasses import replace
 from types import SimpleNamespace
 from uuid import UUID
@@ -114,7 +115,8 @@ def frame(tmp_path, monkeypatch):
     with TestClient(app, base_url="http://testserver") as client:
         client.portal.call(app.state.scheduler.stop)
         yield SimpleNamespace(client=client, app=app, identity=expected_identity, directory=tmp_path)
-    del app.state.frame_identity
+    with suppress(AttributeError, KeyError):
+        del app.state.frame_identity
 
 
 @pytest.mark.parametrize("vector", VECTORS)
@@ -334,8 +336,9 @@ def test_unavailable_or_invalid_loaded_identity_refuses_fixed_response(frame, mo
         cert_pem=b"private-marker" if kind == "bad_cert" else current.cert_pem,
         frame_id="private-marker" if kind == "bad_uuid" else current.frame_id,
     )
-    monkeypatch.setattr(frame.app.state, "frame_identity", replacement)
-    response = frame.client.post(PROOF_PATH, json={"v": 1, "nonce": NONCE})
+    with monkeypatch.context() as patch:
+        patch.setattr(frame.app.state, "frame_identity", replacement)
+        response = frame.client.post(PROOF_PATH, json={"v": 1, "nonce": NONCE})
     assert response.status_code == 503
     assert response.json() == UNAVAILABLE
     no_store_no_cookie(response)

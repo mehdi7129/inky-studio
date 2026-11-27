@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
@@ -34,6 +33,7 @@ from inky_web.photo_access import PhotoAccessStore
 from inky_web.provisioning.api import CONFIRM_PATH
 from inky_web.provisioning.api import router as provisioning_router
 from inky_web.provisioning.factory_writer import FactoryWriterRefused, main_writer_guard
+from inky_web.services import photos
 from inky_web.services.scheduler import Scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -164,6 +164,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 def _media_route(method: str, path: str, *, allow_invitations: bool = False) -> bool:
     """Closed capability list: future/admin endpoints are denied by default."""
+    if method == "GET" and path.startswith("/api/queue/uploads/"):
+        suffix = path.removeprefix("/api/queue/uploads/")
+        return len(suffix) == 36 and "/" not in suffix
     if (method, path) in {
         ("GET", "/api/health"), ("GET", "/api/auth/status"), ("POST", "/api/auth/logout"),
         ("GET", "/api/state"), ("GET", "/api/display"), ("GET", "/api/display/status"),
@@ -246,6 +249,7 @@ async def lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
 async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
                            factory=None, lan_photo: bool = False):
     init_db()
+    photos.recover_upload_files()
     app.state.sessions = auth.SessionStore()
     credentials = (auth.load_or_create_credentials(data_dir()) if factory is None else
                    auth._parse_record(data_dir() / "credentials.json",
@@ -270,7 +274,7 @@ async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = 
                     validated_credentials = auth._parse_record(current.path, record)
                     validated_record = record
                 verified = validated_credentials
-                return hashlib.sha256(b"inky-photo-epoch-v1\0" + verified.salt + verified.digest).hexdigest()
+                return verified.photo_epoch()
             except (ValueError, OSError):
                 raise OSError("Identifiants du cadre indisponibles") from None
         app.state.photo_access = PhotoAccessStore(

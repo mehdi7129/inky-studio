@@ -12,7 +12,7 @@ from inky_web.provisioning import screen
 from inky_web.provisioning.bluez import BlueZServer
 from inky_web.provisioning.identity import canonical_uuid, load_or_create_identity, validate_token
 from inky_web.provisioning.network import NetworkClient, NetworkUnavailable
-from inky_web.provisioning.ownership import OwnershipError, OwnershipStore, credential_epoch
+from inky_web.provisioning.ownership import OwnershipError, OwnershipStore
 from inky_web.provisioning.transport import GATTTransport
 
 
@@ -55,12 +55,12 @@ class ProvisioningRuntime:
         if not self.credentials.credentials.path.is_file():
             raise auth.CredentialFormatError()
         credentials = auth.load_or_create_credentials(self.credentials.credentials.path.parent)
-        return credential_epoch(credentials.salt, credentials.digest)
+        return credentials.owner_epoch()
 
     def prepare_rotation(self, replacement, actor_owner_id):
         self.network.cancel_pending_sync()
         self.owners.prepare_password_rotation(
-            self.epoch(), credential_epoch(replacement.salt, replacement.digest), actor_owner_id,
+            self.epoch(), replacement.owner_epoch(), actor_owner_id,
         )
 
     async def start(self):

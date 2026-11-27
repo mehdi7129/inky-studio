@@ -180,6 +180,13 @@ def throttle(request):
         raise HTTPException(429, "Trop de tentatives — réessaye dans une minute")
 
 
+@router.get("/frame-identity")
+async def frame_identity(request: Request, response: Response):
+    store(request)
+    response.headers["Cache-Control"] = "no-store"
+    return public_identity(request)
+
+
 @router.post("/devices/enroll")
 async def enroll(request: Request, payload: Enrollment):
     value = store(request)
@@ -196,7 +203,7 @@ async def enroll(request: Request, payload: Enrollment):
                 if sessions.principal(session) is not None:
                     raise AccessError("forbidden")
                 current = request.app.state.auth_service.credentials
-                ram_epoch = hashlib.sha256(b"inky-photo-epoch-v1\0" + current.salt + current.digest).hexdigest()
+                ram_epoch = current.photo_epoch()
                 if ram_epoch != value._epoch():
                     raise AccessError()
                 return value.enroll(payload.device_id, payload.device_token, payload.request_id)
@@ -231,7 +238,7 @@ async def factory_enroll(request: Request, payload: FactoryEnrollment):
                 factory._verify()
                 factory.owners.status(owner_id, owner_token, request_id=payload.claim_request_id)
                 current = request.app.state.auth_service.credentials
-                ram_epoch = hashlib.sha256(b"inky-photo-epoch-v1\0" + current.salt + current.digest).hexdigest()
+                ram_epoch = current.photo_epoch()
                 if ram_epoch != value._epoch():
                     raise AccessError()
                 return value.enroll(payload.device_id, payload.device_token, payload.request_id)
@@ -259,6 +266,20 @@ async def device_session(request: Request, payload: DeviceCredential, response: 
     auth.set_session_cookie(response, session, secure=True)
     return {"authenticated": True, "device_id": principal.device_id, "role": principal.role, "identity": identity,
             "can_invite": await call(value.can_invite, principal)}
+
+
+@router.post("/retire-bootstrap", status_code=204)
+async def retire_bootstrap(request: Request):
+    store(request)
+    service = request.app.state.auth_service
+
+    def operation():
+        with service._lock:
+            actor(request)
+            service.retire_bootstrap()
+
+    await call(operation)
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/invitations")

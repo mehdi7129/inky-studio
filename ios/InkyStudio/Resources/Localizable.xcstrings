@@ -1250,13 +1250,13 @@
         "ar": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "اضغط على التالي لإظهارها أو دع جدولك يفعل ذلك."
+            "value": "اضغط على «التالي» لعرض الصورة، أو دعها تُعرض وفقًا للجدول."
           }
         },
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Tippen Sie auf Nächstes, um es zu zeigen, oder lassen Sie Ihren Zeitplan es tun."
+            "value": "Tippen Sie auf „Weiter“, um das Foto anzuzeigen, oder warten Sie auf den geplanten Wechsel."
           }
         },
         "en": {
@@ -1268,7 +1268,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Toca Siguiente para mostrarlo o deja que tu horario lo haga."
+            "value": "Pulsa «Siguiente» para mostrar la foto, o espera a que se muestre según la programación."
           }
         },
         "fr": {
@@ -1280,37 +1280,37 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Tocca Next per mostrarlo o lascia che il tuo programma lo faccia."
+            "value": "Tocca «Successiva» per mostrare la foto oppure attendi il cambio programmato."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "次のタップをクリックして表示するか,スケジュールで表示してください."
+            "value": "「次の写真」をタップするか、設定したスケジュールに従って表示します。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "다음을 누르면 보여드릴 수 있습니다. 아니면 스케줄을 클릭하세요."
+            "value": "「다음 사진」을 눌러 표시하거나 설정한 일정에 따라 표시하세요."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Toque em Próximo para mostrá-lo ou deixe o seu cronograma fazer."
+            "value": "Toque em «Seguinte» para mostrar a fotografia ou aguarde pela mudança programada."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "按下下面,以显示它,或者让你的时间表做."
+            "value": "轻点“下一张”立即显示照片，或按设定的时间自动显示。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "請按下下方,或讓您的時間表進行."
+            "value": "點一下「下一張」立即顯示照片，或依照設定的排程自動顯示。"
           }
         }
       }
@@ -1460,13 +1460,13 @@
         "ar": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "أظهرت رقم %@"
+            "value": "تاريخ العرض: %@"
           }
         },
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Aufgeschrieben: %@"
+            "value": "Angezeigt am %@"
           }
         },
         "en": {
@@ -1478,7 +1478,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "En el %@"
+            "value": "Mostrada el %@"
           }
         },
         "fr": {
@@ -1490,19 +1490,19 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Pubblicato al %@"
+            "value": "Visualizzata il %@"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "掲示番号は%@"
+            "value": "表示日時：%@"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "%@에 표시된"
+            "value": "표시 날짜: %@"
           }
         },
         "pt": {
@@ -1514,13 +1514,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "显示%@号"
+            "value": "显示时间：%@"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "顯示在%@"
+            "value": "顯示時間：%@"
           }
         }
       }
@@ -3124,7 +3124,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "将照片 ⁇ 相结合起来,以实现共享."
+            "value": "请先通过安全连接配对相框，再启用共享。"
           }
         },
         "zh-Hant": {
@@ -3200,7 +3200,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "沒有找到 ⁇"
+            "value": "找不到相框"
           }
         }
       }
@@ -3550,7 +3550,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "在 iOS 設定中允許攝影機使用圖片 ⁇ 的QR圖碼."
+            "value": "請在 iOS 設定中允許使用相機，以掃描相框的 QR Code。"
           }
         }
       }
@@ -4460,7 +4460,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "這個配對 QR 代碼是無效的.掃描照片 ⁇ 的歡迎屏幕上的QR碼."
+            "value": "此連線 QR Code 無效。請掃描相框主畫面上的 QR Code。"
           }
         }
       }
@@ -4616,7 +4616,7 @@
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Dieser QR Code ist ungültig. Scannen Sie den QR-Code des Bildrahmens oder bitten Sie den Besitzer um eine neue Einladung."
+            "value": "Dieser QR-Code ist ungültig. Scannen Sie den QR-Code des Rahmens oder bitten Sie den Besitzer um eine neue Einladung."
           }
         },
         "en": {
@@ -4628,7 +4628,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Este código QR es inválido. Escanear el código QR del fotograma o pedirle al propietario una nueva invitación."
+            "value": "Este código QR no es válido. Escanea el código del marco o pide al propietario una nueva invitación."
           }
         },
         "fr": {
@@ -4640,37 +4640,37 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Questo codice QR è invalido. Scansione il codice QR del fotogramma o chiedi al proprietario un nuovo invito."
+            "value": "Questo codice QR non è valido. Scansiona il codice della cornice o chiedi un nuovo invito al proprietario."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "このQRコードは無効です.写真フレームのQRコードをスキャンするか,新しい招待状をオーナーに尋ねてください."
+            "value": "このQRコードは無効です。フレームのQRコードを読み取るか、所有者に新しい招待を依頼してください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "이 QR 코드는 유효하지 않습니다. 사진 프레임의 QR 코드를 스캔하거나 소유자에게 새로운 초대장을 요청하십시오."
+            "value": "유효하지 않은 QR 코드입니다. 액자의 QR 코드를 스캔하거나 소유자에게 새 초대를 요청하세요."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Este código QR é inválido. Escreva o código QR do quadro da foto ou peça ao proprietário um novo convite."
+            "value": "Este código QR é inválido. Leia o código QR da moldura ou peça um novo convite ao proprietário."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "这个QR码是无效的.扫描相框 ⁇ 的QR码,或者请主提供新的邀请."
+            "value": "此二维码无效。请扫描相框上的二维码，或请相框所有者重新发送邀请。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "這個QR代碼是無效的.掃描照片 ⁇ 的QR代碼或請主持人提供新的邀請."
+            "value": "此 QR Code 無效。請掃描相框上的 QR Code，或請相框擁有者重新傳送邀請。"
           }
         }
       }
@@ -6220,13 +6220,13 @@
         "ar": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "تغيير إطار الصور  ⁇  Wi-Fi"
+            "value": "تغيير شبكة Wi-Fi للإطار"
           }
         },
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Wechseln Sie den Foto-Rahmen  ⁇ s Wifi"
+            "value": "WLAN des Rahmens wechseln"
           }
         },
         "en": {
@@ -6238,7 +6238,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Cambiar el marco de la foto ⁇ s Wi-Fi"
+            "value": "Cambiar la red Wi-Fi del marco"
           }
         },
         "fr": {
@@ -6250,7 +6250,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Cambiare la cornice foto  ⁇  Wi-Fi"
+            "value": "Cambia la rete Wi-Fi della cornice"
           }
         },
         "ja": {
@@ -6268,7 +6268,7 @@
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Alterar o quadro de foto  ⁇ s Wi-Fi"
+            "value": "Alterar a rede Wi-Fi da moldura"
           }
         },
         "zh-Hans": {
@@ -8934,7 +8934,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "在连接到相框时,打开设置 → 设置相框Wi-Fi,将这款iPhone通过蓝牙对接.一个 ⁇ 配的iPhone可以找到相框架.支持WPA2个人网络.企业网络和酒店登录页面都不在这个设置之外."
+            "value": "连接相框后，打开“设置”→“配置相框的 Wi-Fi”，通过蓝牙配对此 iPhone。已配对的 iPhone 可以在附近找到相框。支持 WPA2 个人网络，企业网络和需要网页登录的酒店网络无法使用。"
           }
         },
         "zh-Hant": {
@@ -9440,13 +9440,13 @@
         "ar": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "سحب و ضغط على الحصاد."
+            "value": "اسحب الصورة واستخدم إصبعين لتكبيرها أو تصغيرها وضبط الإطار."
           }
         },
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Ziehen und Klemmen, um zu schneiden."
+            "value": "Ziehen Sie das Foto und ändern Sie den Zoom mit zwei Fingern, um den Ausschnitt festzulegen."
           }
         },
         "en": {
@@ -9458,7 +9458,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Trae y pincha para cosechar."
+            "value": "Arrastra la foto y pellizca para ajustar el encuadre."
           }
         },
         "fr": {
@@ -9470,37 +9470,37 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Tirare e pizzicare per raccogliere."
+            "value": "Trascina la foto e pizzica con due dita per regolare l’inquadratura."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "引っ張って 刈り取る"
+            "value": "写真をドラッグし、ピンチ操作で拡大・縮小して構図を調整します。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "긁어 긁어 뜯어 뜯어"
+            "value": "사진을 드래그하고 두 손가락으로 확대하거나 축소해 구도를 조정하세요."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Arrastar e apertar para colher."
+            "value": "Arraste a fotografia e ajuste o zoom com dois dedos para a enquadrar."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "拖拉和 ⁇ 到收获."
+            "value": "拖动照片并用双指缩放，调整取景范围。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "拖拉和 ⁇ 接到收割."
+            "value": "拖曳照片並用雙指縮放，調整取景範圍。"
           }
         }
       }
@@ -9726,7 +9726,7 @@
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Öffnen Sie Inky Studio mit Face ID, Touch ID oder diesem Passcode des iPhone ⁇ ."
+            "value": "Entsperren Sie Inky Studio mit Face ID, Touch ID oder dem Code dieses iPhones."
           }
         },
         "en": {
@@ -9756,7 +9756,7 @@
         "ja": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "フェイスID,タッチID,またはこのiPhone ⁇ のパスワードを使用してInky Studioをロックします."
+            "value": "Face ID、Touch ID、またはこのiPhoneのパスコードでInky Studioのロックを解除してください。"
           }
         },
         "ko": {
@@ -9768,13 +9768,13 @@
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Desbloqueie o Inky Studio usando o Face ID, o Touch ID ou o código de passagem do iPhone ⁇ ."
+            "value": "Desbloqueie o Inky Studio com o Face ID, o Touch ID ou o código deste iPhone."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "使用面部ID,触摸ID或这个iPhone ⁇ 密码解锁Inky Studio."
+            "value": "使用面容 ID、触控 ID 或这台 iPhone 的锁屏密码解锁 Inky Studio。"
           }
         },
         "zh-Hant": {
@@ -9972,7 +9972,7 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "이 아이폰의 허락을 저장합니다. 사진 프레임  ⁇ 의 화면이 새로워지는 데 시간이 걸릴 수 있습니다."
+            "value": "이 iPhone의 접근 권한을 저장하는 중입니다. 액자 화면이 갱신되기까지 잠시 걸릴 수 있습니다."
           }
         },
         "pt": {
@@ -9990,7 +9990,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "保存這個iPhone的許可.照片 ⁇ 幕可能需要一段時間才能刷新."
+            "value": "正在儲存這部 iPhone 的授權。相框畫面可能需要一點時間才會更新。"
           }
         }
       }
@@ -10970,7 +10970,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "已經保存了八個 ⁇ .忘記一個,然後再加上另一個."
+            "value": "已儲存八個相框。請先移除一個相框，再配對新的相框。"
           }
         }
       }
@@ -12020,7 +12020,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的設置已確認."
+            "value": "已確認相框設定。"
           }
         }
       }
@@ -12072,7 +12072,7 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진 프레임  ⁇ 의 구성과 이전 접속은 여전히 사용할 수 있습니다. 새로운 사진 접속은 확인되지 않았습니다."
+            "value": "액자 설정과 기존 접근 권한은 유지됩니다. 새로운 사진 접근 권한을 확인하지 못했습니다."
           }
         },
         "pt": {
@@ -12154,13 +12154,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 设置已保存.让它重新打开,以完成设置照片访问."
+            "value": "相框设置已保留。请重新打开设置，完成照片访问授权。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的設定已保存.這樣就可以完成設定照片的接入."
+            "value": "相框設定已保留。請重新開啟設定，完成照片存取授權。"
           }
         }
       }
@@ -12230,7 +12230,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "沒有確認照片 ⁇ 的設定.檢查其狀況."
+            "value": "無法確認相框設定。請重新連線以檢查相框狀態。"
           }
         }
       }
@@ -12632,7 +12632,7 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진  ⁇ 에 연결된 연결이 바뀌었습니다."
+            "value": "액자 연결이 변경되었습니다."
           }
         },
         "pt": {
@@ -13350,7 +13350,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "準備的照片超過相片 ⁇ 的10MB限制.選擇另一張照片."
+            "value": "處理後的照片超過相框的 10 MB 上限。請選擇其他照片。"
           }
         }
       }
@@ -13420,7 +13420,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "沒有讀取照片 ⁇ 的反應.檢查它的軟體版本,"
+            "value": "無法讀取相框的回應。請確認相框的軟體版本後再試一次。"
           }
         }
       }
@@ -13910,7 +13910,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "更新照片 ⁇ 軟體, 在繼續之前啟用Bluetooth."
+            "value": "這個相框尚未啟用藍牙。請先更新相框軟體，再繼續操作。"
           }
         }
       }
@@ -14060,13 +14060,13 @@
         "ar": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "لم يتمكنوا من الوصول إلى Raspberry Pi. تحقق من عنوانها، والاتصال بالواي فاي والإذن لشبكة محلية في إعدادات iOS."
+            "value": "تعذّر الاتصال بـ Raspberry Pi. تحقّق من عنوانه واتصال Wi-Fi وإذن الشبكة المحلية في إعدادات iOS."
           }
         },
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Ich konnte den Raspberry Pi nicht erreichen. Überprüfen Sie seine Adresse, die Wi-Fi-Verbindung und die Berechtigung zum lokalen Netzwerk in iOS-Einstellungen."
+            "value": "Der Raspberry Pi ist nicht erreichbar. Prüfen Sie seine Adresse, das WLAN und die Berechtigung für das lokale Netzwerk in den iOS-Einstellungen."
           }
         },
         "en": {
@@ -14078,7 +14078,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "No pude llegar al Raspberry Pi. Compruebe su dirección, la conexión Wi-Fi y el permiso de red local en la configuración de iOS."
+            "value": "No se puede conectar al Raspberry Pi. Comprueba su dirección, la red Wi-Fi y el permiso de red local en los ajustes de iOS."
           }
         },
         "fr": {
@@ -14090,37 +14090,37 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Non riuscivo a raggiungere il Raspberry Pi. Controlla il suo indirizzo, la connessione Wi-Fi e le autorizzazioni della rete locale nelle impostazioni iOS."
+            "value": "Impossibile raggiungere il Raspberry Pi. Controlla l’indirizzo, la rete Wi-Fi e l’autorizzazione alla rete locale nelle impostazioni di iOS."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "ラスベリーパイには 届かなかったアドレス,Wi-Fi接続,ローカルネットワークの許可を iOS 設定で確認してください."
+            "value": "Raspberry Piに接続できません。アドレス、Wi-Fi、iOSの設定でローカルネットワークへのアクセス許可を確認してください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "라즈베리 파이에 도달할 수 없었습니다. 주소, Wi-Fi 연결 및 로컬 네트워크 권한을 iOS 설정에서 확인합니다."
+            "value": "Raspberry Pi에 연결할 수 없습니다. 주소와 Wi-Fi 연결, iOS 설정의 로컬 네트워크 접근 권한을 확인하세요."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Não consegui chegar ao Raspberry Pi. Verifique o endereço, a conexão Wi-Fi e a permissão de rede local nas configurações do iOS."
+            "value": "Não foi possível ligar ao Raspberry Pi. Verifique o endereço, a rede Wi-Fi e a permissão de acesso à rede local nas definições do iOS."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "无法达到 ⁇ 果 ⁇ .在iOS设置中查看其地址,Wi-Fi连接和本地网络权限."
+            "value": "无法连接到 Raspberry Pi。请检查其地址、Wi-Fi 连接以及 iOS 设置中的本地网络权限。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "沒有找到拉斯伯利皮.在 iOS 設定中檢查其地址, Wi-Fi 連接和本地網路許可."
+            "value": "無法連線至 Raspberry Pi。請檢查其位址、Wi-Fi 連線及 iOS 設定中的本機網路權限。"
           }
         }
       }
@@ -14960,7 +14960,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 必須在允許照片接入之前確認其網路地址.您現在可以設定其Wi-Fi."
+            "value": "相框必須先確認自己的網路位址，才能開放照片存取。你現在可以設定相框的 Wi-Fi。"
           }
         }
       }
@@ -15170,7 +15170,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "攝影機 ⁇ 忙.請等待它結束,"
+            "value": "相框正在處理其他操作。請等候操作完成後再試一次。"
           }
         }
       }
@@ -15180,13 +15180,13 @@
         "ar": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "الإطار الصوير محدد"
+            "value": "تم تحديث الإطار."
           }
         },
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Die Fotogramm ist aktuell."
+            "value": "Der Rahmen wurde aktualisiert."
           }
         },
         "en": {
@@ -15198,7 +15198,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "El marco de la foto está actualizado."
+            "value": "El marco se ha actualizado."
           }
         },
         "fr": {
@@ -15210,37 +15210,37 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Il quadro fotografico è aggiornato."
+            "value": "La cornice è stata aggiornata."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "写真は更新されています"
+            "value": "フレームを更新しました。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진 프레임이 업데이트 되었습니다."
+            "value": "액자가 업데이트되었습니다."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "O quadro da foto está atualizado."
+            "value": "A moldura foi atualizada."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片的 ⁇ 格是最新的."
+            "value": "相框已更新。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "這張照片的相框是最新的."
+            "value": "相框已更新。"
           }
         }
       }
@@ -16150,7 +16150,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 證書是無效的.檢查您的iPhone日期, 再次掃描相框的QR代碼."
+            "value": "相框憑證無效。請檢查 iPhone 的日期，再重新掃描相框的 QR Code。"
           }
         }
       }
@@ -16290,7 +16290,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的顯示尺寸無法使用.接觸相機, 再試一次."
+            "value": "無法取得相框的顯示尺寸。請重新連線至相框後再試一次。"
           }
         }
       }
@@ -16482,7 +16482,7 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진 프레임 ⁇ 의 호스트 이름 또는 IP 주소는 무효입니다."
+            "value": "액자의 이름 또는 IP 주소가 올바르지 않습니다."
           }
         },
         "pt": {
@@ -16500,7 +16500,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的主機名稱或IP地址是無效的."
+            "value": "相框名稱或 IP 位址無效。"
           }
         }
       }
@@ -16634,7 +16634,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "将照片 ⁇ 相结合起来,以实现共享."
+            "value": "共享功能需要先与相框建立安全配对。"
           }
         },
         "zh-Hant": {
@@ -17550,7 +17550,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "相框保存了試用設定.開始試驗,如果照片 ⁇ 的反應消失,"
+            "value": "相框已儲存此次測試的設定。請手動開始測試以切換至家用網路。如果未收到回應，測試不會自動重試。"
           }
         }
       }
@@ -17882,7 +17882,7 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "이 아이폰에서 이미 저장된 액세스를 사용하기 위해 앱을 잠금 해제하십시오. 사진 프레임을 잊어버리거나 전화를 바꾸었다면, 사진 프레임  ⁇ 의 가이드를 따라 새로운 QR 코드를 얻으십시오."
+            "value": "앱의 잠금을 해제하면 이 iPhone에 저장된 연결을 다시 사용할 수 있습니다. 액자 연결을 삭제했거나 iPhone을 바꿨다면 액자의 도움말을 따라 연결용 QR 코드를 다시 찾으세요."
           }
         },
         "pt": {
@@ -17894,7 +17894,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "解锁应用程序,以使用已在iPhone上保存的访问.如果您忘记了相框或更换了手机,请按照相框 ⁇ 指南获得新的配对QR码."
+            "value": "解锁应用后即可使用这台 iPhone 上已保存的连接。如果你已移除相框或更换 iPhone，请按照相框的帮助说明重新获取连接二维码。"
           }
         },
         "zh-Hant": {
@@ -18372,7 +18372,7 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진 프레임  ⁇ 의 IPv4 주소는 유효하지 않습니다."
+            "value": "액자의 IPv4 주소가 올바르지 않습니다."
           }
         },
         "pt": {
@@ -18390,7 +18390,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的IPv4地址是無效的."
+            "value": "相框的 IPv4 位址無效。"
           }
         }
       }
@@ -18454,13 +18454,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的IPv6地址是无效的."
+            "value": "相框的 IPv6 地址无效。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的IPv6地址是無效的."
+            "value": "相框的 IPv6 位址無效。"
           }
         }
       }
@@ -18530,7 +18530,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的地址是無效的."
+            "value": "相框位址無效。"
           }
         }
       }
@@ -18600,7 +18600,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的安全地址是無效的."
+            "value": "相框的安全連線位址無效。"
           }
         }
       }
@@ -18810,7 +18810,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "這種情況是不完整的.照片沒有確認此連結的證據.掃描照片 ⁇ 的QR代碼,"
+            "value": "配對尚未完成，這次連線的憑證仍未確認。請重新掃描相框的 QR Code 以完成配對。"
           }
         }
       }
@@ -18874,7 +18874,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "⁇ 配是不完整的,暂时的身份证已不出现在.再次扫描QR代码,才能完成配对."
+            "value": "配对尚未完成，临时凭证已不可用。请重新扫描二维码以完成配对。"
           }
         },
         "zh-Hant": {
@@ -19818,7 +19818,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "iOS preguntará antes de unirse al marco de la foto  ⁇ s Wi-Fi temporal. La aplicación luego verifica la identidad del fotograma utilizando el código QR."
+            "value": "El iPhone te pedirá permiso para conectarse a la red Wi-Fi temporal del marco. Después se verificará la identidad del marco con el código QR."
           }
         },
         "fr": {
@@ -19848,7 +19848,7 @@
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "O iOS vai perguntar antes de se juntar ao quadro de fotos  ⁇ s Wi-Fi temporário. O aplicativo verifica a identidade do quadro de fotos usando o código QR."
+            "value": "O iPhone vai pedir autorização para se ligar à rede Wi-Fi temporária da moldura. A identidade da moldura será então verificada através do código QR."
           }
         },
         "zh-Hans": {
@@ -19860,7 +19860,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "在加入相框之前, iOS會要求暫時Wi-Fi.該應用程式使用QR代碼驗證照片 ⁇ 的身份."
+            "value": "iPhone 會詢問是否要加入相框的臨時 Wi-Fi 網路，接著會透過 QR Code 驗證相框身分。"
           }
         }
       }
@@ -19924,7 +19924,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "这张照片 ⁇ 的身份改变了.再将它与物理相框架相结合."
+            "value": "相框的身份已更改。请在相框旁重新配对。"
           }
         },
         "zh-Hant": {
@@ -20000,7 +20000,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的身份與QR代碼不相符."
+            "value": "相框的身分與 QR Code 不符。"
           }
         }
       }
@@ -20070,7 +20070,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的身份與QR代碼不相符.沒有任何證件被發送."
+            "value": "相框的身分與 QR Code 不符。未傳送任何機密資料。"
           }
         }
       }
@@ -20140,7 +20140,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片 ⁇ 的身份並不符合預期的接入.該應用程式沒有保存任何新的接入."
+            "value": "相框身分與原本的存取授權不符。未儲存新的存取授權。"
           }
         }
       }
@@ -20210,7 +20210,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "該應用程式通過常見的連接來驗證相同的相片 ⁇ 的身份."
+            "value": "已透過一般網路連線確認這是同一個相框。"
           }
         }
       }
@@ -20915,6 +20915,76 @@
         }
       }
     },
+    "Mettez à jour le logiciel du cadre, puis réessayez.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حدّث برنامج الإطار، ثم أعد المحاولة."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualisieren Sie die Software des Rahmens und versuchen Sie es erneut."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update the frame’s software, then try again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualiza el software del marco y vuelve a intentarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mettez à jour le logiciel du cadre, puis réessayez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiorna il software della cornice e riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フレームのソフトウェアを更新してから、もう一度お試しください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "액자의 소프트웨어를 업데이트한 뒤 다시 시도하세요."
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualize o software da moldura e tente novamente."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请更新相框软件，然后重试。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請更新相框軟體後再試一次。"
+          }
+        }
+      }
+    },
     "Mettre à jour le cadre ?": {
       "localizations": {
         "ar": {
@@ -21330,7 +21400,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "我自己的照片 ⁇"
+            "value": "我的相框"
           }
         }
       }
@@ -22956,7 +23026,7 @@
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Foto hinzugefügt in die Warteschlange."
+            "value": "Foto zur Warteschlange hinzugefügt."
           }
         },
         "en": {
@@ -22986,31 +23056,31 @@
         "ja": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "フォトは列に追加されました."
+            "value": "写真をキューに追加しました。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진이 줄을 이었다."
+            "value": "사진이 대기열에 추가되었습니다."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Foto adicionada à fila."
+            "value": "Fotografia adicionada à fila."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片加入了排队."
+            "value": "照片已加入队列。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "照片加入排隊."
+            "value": "照片已加入佇列。"
           }
         }
       }
@@ -23132,7 +23202,7 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진 프레임  ⁇ 의 QR 코드를 뷰파이더에 배치하십시오."
+            "value": "액자에 표시된 QR 코드를 화면 안에 맞추세요."
           }
         },
         "pt": {
@@ -23144,13 +23214,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "在查看器中放置相框架 ⁇ 的QR码."
+            "value": "将相框上显示的二维码对准取景框。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "在查看器中放置照片 ⁇ 的QR代碼."
+            "value": "將相框上顯示的 QR Code 對準取景框。"
           }
         }
       }
@@ -23166,7 +23236,7 @@
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Scannen Sie den QR-Code des Foto-Rahmens oder eine Einladung von einem anderen iPhone. Um Fotos zu teilen, verbinden Sie sich mit demselben Wi-Fi-Netzwerk wie der Fotorahmen."
+            "value": "Richten Sie die Kamera auf den QR-Code des Rahmens oder auf die Einladung auf einem anderen iPhone. Verbinden Sie sich zum Senden von Fotos mit demselben WLAN wie der Rahmen."
           }
         },
         "en": {
@@ -23178,7 +23248,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Escanear el código QR del fotograma o una invitación de otro iPhone. Para compartir fotos, únete a la misma red Wi-Fi que el fotograma."
+            "value": "Encuadra el código QR del marco o la invitación de otro iPhone. Para enviar fotos, conéctate a la misma red Wi-Fi que el marco."
           }
         },
         "fr": {
@@ -23190,7 +23260,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Scansione il codice QR della cornice fotografica o un invito da un altro iPhone. Per condividere le foto, accede alla stessa rete Wi-Fi della cornice fotografica."
+            "value": "Inquadra il codice QR della cornice o l’invito su un altro iPhone. Per inviare foto, connettiti alla stessa rete Wi-Fi della cornice."
           }
         },
         "ja": {
@@ -23202,25 +23272,25 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진 프레임 QR 코드를 스캔하거나 다른 아이폰에서 초대장을 스캔하십시오. 사진을 공유하려면 사진 프레임과 같은 Wi-Fi 네트워크에 접속하세요."
+            "value": "액자의 QR 코드나 다른 iPhone에 표시된 초대 코드를 화면에 맞추세요. 사진을 보내려면 액자와 같은 Wi-Fi에 연결하세요."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Escanear o código QR do quadro de foto ou um convite de outro iPhone. Para compartilhar fotos, junte-se à mesma rede Wi-Fi que o quadro da foto."
+            "value": "Enquadre o código QR da moldura ou o convite apresentado noutro iPhone. Para enviar fotografias, ligue-se à mesma rede Wi-Fi que a moldura."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "扫描相框 ⁇ 的QR码或来自另一个iPhone的邀请.为了分享照片, 加入与相框架相同的Wi-Fi网络."
+            "value": "将相框二维码或另一台 iPhone 上的邀请二维码对准取景框。发送照片时，请连接到与相框相同的 Wi-Fi 网络。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "掃描照片 ⁇ 的QR代碼或來自其他iPhone的邀請.聯繫與相框相同的Wi-Fi網絡."
+            "value": "將相框的 QR Code 或另一部 iPhone 上的邀請 QR Code 對準取景框。傳送照片時，請連線至與相框相同的 Wi-Fi 網路。"
           }
         }
       }
@@ -23494,13 +23564,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "为了首次进行配对,请从连接的照片 ⁇ 设置中显示QR代码.一个配对的iPhone可以找到下面的相框."
+            "value": "首次配对时，请在相框的设置中显示二维码。已配对的 iPhone 可在下方找到相框。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "顯示連接照片 ⁇ 的設定中的QR代碼.這張照片的相框可以找到."
+            "value": "首次配對時，請在相框設定中顯示 QR Code。已配對的 iPhone 可在下方找到相框。"
           }
         }
       }
@@ -25476,7 +25546,7 @@
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Fügen Sie das Foto-Frame  ⁇ s Wi-Fi"
+            "value": "Mit dem WLAN des Rahmens verbinden"
           }
         },
         "en": {
@@ -25546,7 +25616,7 @@
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Fügen Sie sich dem Foto-Rahmen  ⁇ s vorübergehende Wi-Fi"
+            "value": "Mit dem temporären WLAN des Rahmens verbinden"
           }
         },
         "en": {
@@ -25558,7 +25628,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Unirse al marco de la foto  ⁇ s Wi-Fi temporal"
+            "value": "Conectarse a la red Wi-Fi temporal del marco"
           }
         },
         "fr": {
@@ -25582,13 +25652,13 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진 프레임 ⁇ 의 임시 Wi-Fi에 가입"
+            "value": "액자의 임시 Wi-Fi에 연결"
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Junte-se ao quadro de fotos  ⁇ s Wi-Fi temporário"
+            "value": "Ligar à rede Wi-Fi temporária da moldura"
           }
         },
         "zh-Hans": {
@@ -25600,7 +25670,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "加入相框 ⁇ 的暫時Wi-Fi"
+            "value": "加入相框的臨時 Wi-Fi 網路"
           }
         }
       }
@@ -26091,6 +26161,76 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "恢復 Wi-Fi 驗證"
+          }
+        }
+      }
+    },
+    "Reprendre l’envoi": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "استئناف الإرسال"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versand fortsetzen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume upload"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reanudar el envío"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reprendre l’envoi"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riprendi l’invio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "送信を再開"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전송 다시 시작"
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retomar o envio"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续发送"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "繼續傳送"
           }
         }
       }
@@ -27396,31 +27536,31 @@
         "ja": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "設定を保存しました"
+            "value": "設定を保存しました。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "설정을 저장합니다."
+            "value": "설정이 저장되었습니다."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Configurações guardadas."
+            "value": "Definições guardadas."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "设置保存."
+            "value": "设置已保存。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "預覽 預覽"
+            "value": "設定已儲存。"
           }
         }
       }
@@ -27752,7 +27892,7 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진 프레임 ⁇ 의 주소를 입력하세요."
+            "value": "액자 주소를 입력하세요(예: inkyold.local)."
           }
         },
         "pt": {
@@ -27770,7 +27910,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "輸入照片 ⁇ 的地址,例如 inkyold.local."
+            "value": "請輸入相框位址，例如 inkyold.local。"
           }
         }
       }
@@ -27920,7 +28060,7 @@
         "ar": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "مسح إطار الصور  ⁇ شفرة QR الحالية"
+            "value": "مسح رمز QR المعروض حاليًا على الإطار"
           }
         },
         "de": {
@@ -27962,25 +28102,25 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진 프레임  ⁇ 의 현재 QR 코드를 스캔"
+            "value": "현재 액자에 표시된 QR 코드 스캔"
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Escanar o quadro da foto ⁇ s código QR atual"
+            "value": "Ler o código QR que está na moldura"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "扫描相框架 ⁇ 的当前QR码"
+            "value": "扫描相框当前显示的二维码"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "掃描相框 ⁇ 目前的QR代碼"
+            "value": "掃描相框目前顯示的 QR Code"
           }
         }
       }
@@ -28470,7 +28610,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "掃描照片 ⁇ 上顯示的QR代碼,"
+            "value": "請掃描相框上顯示的 QR Code 以完成配對。"
           }
         }
       }
@@ -28744,13 +28884,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "使用拉斯贝瑞 ⁇ 的当地时间."
+            "value": "以 Raspberry Pi 的本地时间为准。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "透過拉斯貝利 ⁇ 斯的當地時間."
+            "value": "以 Raspberry Pi 的當地時間為準。"
           }
         }
       }
@@ -28814,7 +28954,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "如果您不能看到一个QR码,请查看相框架的设置指南.首先安装InkyOS在你的 ⁇ 果皮上."
+            "value": "如果找不到二维码，请查阅相框的帮助说明。请先在 Raspberry Pi 上完成相框软件的安装。"
           }
         },
         "zh-Hant": {
@@ -29945,6 +30085,76 @@
         }
       }
     },
+    "Un envoi est en attente.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يوجد إرسال في الانتظار."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Foto wartet auf den Versand."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A photo upload is pending."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hay un envío pendiente."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un envoi est en attente."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "C’è un invio in sospeso."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "送信待ちの写真があります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "대기 중인 사진 전송이 있습니다."
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Há um envio pendente."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有一张照片等待发送。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有一張照片等待傳送。"
+          }
+        }
+      }
+    },
     "Un instant…": {
       "localizations": {
         "ar": {
@@ -30062,7 +30272,7 @@
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진  ⁇ 에 새 기억"
+            "value": "액자에 새 추억 추가하기"
           }
         },
         "pt": {
@@ -30580,13 +30790,13 @@
         "ar": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "استخدم السابق و التالي في علامة التبويب إطار الصور لتغيير الصور."
+            "value": "استخدم «السابق» و«التالي» في علامة تبويب «الإطار» لتغيير الصورة."
           }
         },
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Verwenden Sie vorherige und nachfolgende Bilder in der Registerkarte Fotos, um Fotos zu ändern."
+            "value": "Verwenden Sie „Zurück“ und „Weiter“ im Tab „Rahmen“, um das Foto zu wechseln."
           }
         },
         "en": {
@@ -30598,7 +30808,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Para cambiar las fotos, utilice Anteriormente y Próximo en la pestaña marco de fotos."
+            "value": "Usa «Anterior» y «Siguiente» en la pestaña «Marco» para cambiar de foto."
           }
         },
         "fr": {
@@ -30610,37 +30820,37 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Utilizzare precedente e successivo nell' scheda quadri foto per modificare le foto."
+            "value": "Usa «Precedente» e «Successiva» nella scheda «Cornice» per cambiare foto."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "写真を変更するには,フォトフレームタブで\"前\"と\"次\"を使用します."
+            "value": "「フレーム」タブの「前の写真」または「次の写真」をタップして写真を切り替えます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "사진 프레임 탭에서 이전과 다음을 사용하여 사진을 변경하십시오."
+            "value": "「액자」 탭에서 「이전 사진」과 「다음 사진」을 눌러 사진을 바꾸세요."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Use Anterior e Próximo na guia quadro de fotos para alterar fotos."
+            "value": "Use «Anterior» e «Seguinte» no separador «Moldura» para mudar de fotografia."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "在相框 ⁇ 中使用\"前\"和\"下\"来更改照片."
+            "value": "在“相框”标签页中轻点“上一张”或“下一张”切换照片。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "在相框標籤中使用\"前\"和\"下\"來更改照片."
+            "value": "在「相框」分頁中點一下「上一張」或「下一張」切換照片。"
           }
         }
       }
@@ -31700,13 +31910,13 @@
         "ar": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "انتهت جلستك أو كلمة المرور غير صحيحة اعيد الاتصال بإطار الصور"
+            "value": "انتهت صلاحية الجلسة أو أن كلمة المرور غير صحيحة. أعد الاتصال بالإطار."
           }
         },
         "de": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Ihre Sitzung ist abgelaufen oder das Passwort ist falsch. Verbinden Sie sich wieder mit dem Bildrahmen."
+            "value": "Ihre Sitzung ist abgelaufen oder das Passwort ist falsch. Verbinden Sie sich erneut mit dem Rahmen."
           }
         },
         "en": {
@@ -31718,7 +31928,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Su sesión expiró o la contraseña es incorrecta. Reconectate al marco de la foto."
+            "value": "Tu sesión ha caducado o la contraseña es incorrecta. Vuelve a conectar con el marco."
           }
         },
         "fr": {
@@ -31730,37 +31940,37 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "La tua sessione è scaduta o la password è sbagliata. Riconnettersi al fotogramma."
+            "value": "La sessione è scaduta o la password non è corretta. Riconnettiti alla cornice."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "セッションが終了したか パスワードが間違っているか写真フレームに再接続"
+            "value": "セッションの有効期限が切れたか、パスワードが違います。フレームに再接続してください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "세션이 만료되었거나 비밀번호가 잘못되었습니다. 사진 프레임에 다시 연결해"
+            "value": "세션이 만료되었거나 비밀번호가 올바르지 않습니다. 액자에 다시 연결하세요."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "A sua sessão expirou ou a senha é incorreta. Reconecte-se ao quadro da foto."
+            "value": "A sessão expirou ou a palavra-passe está incorreta. Volte a ligar-se à moldura."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "你的会话过期或密码是错误的.再连接到相框架."
+            "value": "会话已过期或密码不正确。请重新连接相框。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "或是您的密碼不正確.接觸到相片架子."
+            "value": "連線已逾時，或密碼不正確。請重新連線至相框。"
           }
         }
       }
@@ -32104,13 +32314,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "检查照片 ⁇ 的地址..."
+            "value": "正在验证相框地址…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "檢查照片 ⁇ 的地址..."
+            "value": "正在驗證相框位址…"
           }
         }
       }
@@ -32740,7 +32950,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "檢查照片 ⁇ 是否開啟,在 iOS 設定中允許本地網絡和相機接入.您的移动數據連接無法遠程到達相框."
+            "value": "請確認相框已開機，並與 iPhone 連線至同一個 Wi-Fi 網路。在 iOS 設定中允許存取本機網路與相機。相框需透過區域網路連線。"
           }
         }
       }

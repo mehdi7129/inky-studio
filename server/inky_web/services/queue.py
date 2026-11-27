@@ -48,19 +48,16 @@ def _next_position(conn) -> int:
 
 
 def add(photo_id: str) -> QueueEntry:
-    now = time.time()
     with transaction() as conn:
-        existing = conn.execute("SELECT id FROM queue WHERE photo_id = ?", (photo_id,)).fetchone()
-        if existing:
-            logger.info("Photo %s already in queue (entry %s) — no-op", photo_id, existing["id"])
-        else:
-            position = _next_position(conn)
-            conn.execute(
-                "INSERT INTO queue (photo_id, position, added_at) VALUES (?, ?, ?)",
-                (photo_id, position, now),
-            )
-        entry = _entry_for_photo(photo_id, conn)
-    return entry
+        return add_in_transaction(photo_id, conn)
+
+
+def add_in_transaction(photo_id: str, conn) -> QueueEntry:
+    existing = conn.execute("SELECT id FROM queue WHERE photo_id = ?", (photo_id,)).fetchone()
+    if existing is None:
+        conn.execute("INSERT INTO queue (photo_id, position, added_at) VALUES (?, ?, ?)",
+                     (photo_id, _next_position(conn), time.time()))
+    return _entry_for_photo(photo_id, conn)
 
 
 def _entry_for_photo(photo_id: str, conn) -> QueueEntry:

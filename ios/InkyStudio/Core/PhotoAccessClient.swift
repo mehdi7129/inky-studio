@@ -15,6 +15,15 @@ final class PhotoAccessClient {
         self.api = api; self.identity = identity; endpoint = api.baseURL
     }
 
+    func retireBootstrap() async throws {
+        _ = try await api.photoAccessRequest("POST", path: "/api/auth/retire-bootstrap")
+    }
+
+    func verifyLocatorIdentity() async throws {
+        let reply: PhotoAccessIdentityReply = try decode(await api.photoAccessRequest("GET", path: "/api/auth/frame-identity"))
+        guard reply.frameIdentity == identity else { throw PhotoAccessError.identityMismatch }
+    }
+
     func enroll(_ credential: PhotoAccessCredential) async throws -> PhotoAccessSessionIdentityReply {
         try validate(credential)
         guard credential.expectedRole == .owner, credential.invitationID == nil else { throw PhotoAccessError.invalidData }

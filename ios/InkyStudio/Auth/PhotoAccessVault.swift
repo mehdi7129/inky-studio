@@ -67,7 +67,11 @@ struct PhotoAccessSelection: Codable, Equatable, Sendable {
         "photo:" + identity.id.uuidString.lowercased() + ":" + (invitationID?.uuidString.lowercased() ?? "owner")
     }
     func validates(_ credential: PhotoAccessCredential) -> Bool {
-        identity == credential.identity && endpoint == credential.endpoint && deviceID == credential.deviceID &&
+        endpoint == credential.endpoint && matchesDevice(credential)
+    }
+
+    func matchesDevice(_ credential: PhotoAccessCredential) -> Bool {
+        identity == credential.identity && deviceID == credential.deviceID &&
         role == credential.expectedRole && invitationID == credential.invitationID &&
         account == Self.account(identity: identity, invitationID: invitationID)
     }

@@ -42,6 +42,9 @@ final class AppStore: ObservableObject {
     }
     private var activeSceneWaiters: [UUID: ActiveSceneWaiter] = [:]
     private let photoAccessVault: PhotoAccessVault
+    private let legacyHTTPFixture: Bool
+    private let uploadDrafts: PhotoUploadDraftStore
+    private let bootstrapRetirementFromLaunch: String?
     private let makePinnedAPI: @MainActor (URL, FrameIdentity) -> InkyAPI
     private let proveLegacyTLS: @MainActor (URL, String) async throws -> VerifiedLegacyTLSEndpoint
     private var legacySharingUpgradeTask: Task<Bool, Never>?
@@ -118,7 +121,8 @@ final class AppStore: ObservableObject {
          loadCredential: (@MainActor (String) async throws -> String)? = nil,
          containsCredential: (@MainActor (String) -> Bool)? = nil,
          authenticationName: (@MainActor () -> String)? = nil,
-         monitorsEvents: Bool = true) {
+         monitorsEvents: Bool = true, testingLegacyHTTP: Bool = false,
+         uploadDrafts: PhotoUploadDraftStore = PhotoUploadDraftStore()) {
         self.defaults = defaults
         self.makeAPI = makeAPI
         self.vault = vault
@@ -134,6 +138,16 @@ final class AppStore: ObservableObject {
         self.containsCredential = containsCredential ?? { vault.contains(address: $0) }
         self.authenticationName = authenticationName ?? { deviceAuthentication.name }
         self.monitorsEvents = monitorsEvents
+        self.uploadDrafts = uploadDrafts
+        // Retire only after a later launch observes the persisted selection and
+        // reopens its protected device session. Pairing itself leaves the old QR usable.
+        bootstrapRetirementFromLaunch = defaults.string(forKey: "pendingBootstrapRetirement")
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        legacyHTTPFixture = testingLegacyHTTP || (arguments.contains("--uitesting") && arguments.contains("--legacy-login-fixture"))
+        #else
+        legacyHTTPFixture = false
+        #endif
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--uitesting") {
@@ -187,7 +201,7 @@ final class AppStore: ObservableObject {
     var hasAdoptedFrame: Bool { defaults.string(forKey: "frameOwnerID") != nil }
     var panelWidth: Int { state?.display.width ?? 800 }
     var panelHeight: Int { state?.display.height ?? 480 }
-    var canMutate: Bool { localUnlocked && active && !unlocking && !recoveringConnection && !pairingNeedsCompletion && !photoAccessBusy && authenticated && connected && !busy && !updating }
+    var canMutate: Bool { localUnlocked && active && !unlocking && !connecting && !recoveringConnection && !pairingNeedsCompletion && !photoAccessBusy && authenticated && connected && !busy && !updating }
     var photoAccessDeviceID: UUID? { selectedPhotoAccess?.deviceID ?? (fixturePhotoAccess != nil ? UUID(uuidString: fixturePhotoAccess?.hasPrefix("media") == true ? "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff" : "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee") : nil) }
     var isMediaPhotoAccess: Bool { selectedPhotoAccess?.role == .media || photoAccessRole == .media }
     var hasIndividualPhotoAccess: Bool { selectedPhotoAccess != nil }
@@ -324,6 +338,27 @@ final class AppStore: ObservableObject {
         // Face ID/passcode can finish before UIKit reactivates this window.
         // Resume this same unlock on activation instead of requiring another tap.
         guard await waitForActiveScene(authentication: attempt), localUnlocked else { return }
+        if !legacyHTTPFixture, selectedPhotoAccess == nil, hasSavedFrame,
+           let endpoint = try? FrameAddress.parse(address), endpoint.scheme == "http" {
+            do {
+                let password = try await readCredential(credentialAccount)
+                guard await waitForActiveScene(authentication: attempt), localUnlocked else { return }
+                guard await pairOverVerifiedHTTPS(endpoint: endpoint, password: password, attempt: attempt) else {
+                    if attempt == localAuthenticationGeneration {
+                        localUnlocked = false
+                        localAuthenticationError = errorMessage
+                        invalidateAuthentication()
+                    }
+                    return
+                }
+            } catch {
+                guard attempt == localAuthenticationGeneration, !Task.isCancelled else { return }
+                localUnlocked = false
+                localAuthenticationError = error.localizedDescription
+                invalidateAuthentication()
+            }
+            return
+        }
         if authenticated, api != nil {
             // Cookie-only sessions remain usable. Do not require a lost QR or force logout.
             credentialStored = selectedPhotoAccess.map { photoAccessVault.contains(account: $0.account) } ??
@@ -333,6 +368,7 @@ final class AppStore: ObservableObject {
             }
             startMonitoring()
             await refresh()
+            if let api { await retireBootstrapIfPending(on: api) }
             return
         }
         if let selection = selectedPhotoAccess ?? (!hasSavedFrame ? pendingPhotoAccess : nil) {
@@ -724,8 +760,14 @@ final class AppStore: ObservableObject {
             }
             return
         }
-        if recoveringConnection { await connectRecovery(code) }
-        else { await connect(password: code.password, at: code.endpoint, savePassword: true) }
+        #if DEBUG
+        if legacyHTTPFixture {
+            if recoveringConnection { await connectRecovery(code) }
+            else { await connect(password: code.password, at: code.endpoint, savePassword: true) }
+            return
+        }
+        #endif
+        _ = await pairOverVerifiedHTTPS(endpoint: code.endpoint, password: code.password, attempt: attempt)
     }
 
     func cancelLogin() {
@@ -759,6 +801,7 @@ final class AppStore: ObservableObject {
         }
         do {
             let url = try endpoint ?? FrameAddress.parse(address)
+            guard url.scheme == "https" || legacyHTTPFixture else { throw PhotoAccessError.trustedHTTPSRequired }
             let normalized = url.absoluteString
             let credentialAddress = defaults.string(forKey: "frameOwnerID").map { "inky-frame:" + $0 } ?? normalized
             let client = try connectionClient(url)
@@ -812,6 +855,7 @@ final class AppStore: ObservableObject {
         } catch { if epoch == generation { handle(error) } }
     }
 
+    #if DEBUG
     private func connectRecovery(_ code: FrameLANLoginCode) async {
         guard recoveringConnection, localUnlocked, !hasAdoptedFrame, !connecting else { return }
         let epoch = generation
@@ -860,6 +904,8 @@ final class AppStore: ObservableObject {
             errorMessage = String(localized: "La nouvelle connexion n’a pas pu être finalisée. L’ancien accès est conservé. ") + error.localizedDescription
         }
     }
+
+    #endif
 
     var canRetryCredentialStorage: Bool {
         localUnlocked && active && authenticated && !unlocking && !busy &&
@@ -1047,7 +1093,7 @@ final class AppStore: ObservableObject {
         imageCache.removeAllObjects()
     }
 
-    func refresh() async {
+    func refresh(allowSessionRecovery: Bool = true) async {
         #if DEBUG
         if fixturePhotoAccess != nil { return }
         #endif
@@ -1092,6 +1138,7 @@ final class AppStore: ObservableObject {
             let failures: [Error] = [result.0.failure, result.1.failure, result.2.failure,
                                       result.3.failure, result.4.failure, result.5.failure].compactMap { $0 }
             if let unauthorized = failures.first(where: { ($0 as? APIError)?.isUnauthorized == true }) {
+                if allowSessionRecovery, schedulePhotoRecovery() { return }
                 handle(unauthorized)
                 return
             }
@@ -1120,6 +1167,7 @@ final class AppStore: ObservableObject {
             // A server-side display error is still an HTTP response from a
             // reachable frame. Keep its other data and diagnostics usable.
             let reachable = failures.count < 6 || failures.contains { !($0 is URLError) }
+            if !reachable, allowSessionRecovery, schedulePhotoRecovery() { return }
             let otherFailures = [result.1.failure, result.2.failure, result.3.failure, result.4.failure]
                 .compactMap { $0 }
             if let failure = otherFailures.first ?? (reachable ? nil : failures.first) {
@@ -1211,8 +1259,7 @@ final class AppStore: ObservableObject {
             } catch {
                 guard let self, !Task.isCancelled, self.generation == epoch,
                       self.monitoringID == identifier else { return }
-                if (error as? APIError)?.isUnauthorized == true { self.handle(error) }
-                else { await self.refresh() }
+                await self.refresh()
             }
             if let self, self.generation == epoch, self.monitoringID == identifier {
                 self.eventsTask = nil
@@ -1282,20 +1329,88 @@ final class AppStore: ObservableObject {
         if epoch == generation { await refresh() }
     }
 
+    private var photoUploadBinding: PhotoUploadBinding? {
+        guard localUnlocked, active, authenticated, !recoveringConnection,
+              let selected = selectedPhotoAccess, api?.pinnedIdentity == selected.identity else { return nil }
+        return PhotoUploadBinding(frameID: selected.identity.id, spki: selected.identity.spkiSHA256,
+                                  deviceID: selected.deviceID)
+    }
+
+    func pendingPhotoUpload() throws -> PhotoUploadDraft? {
+        guard let binding = photoUploadBinding else { return nil }
+        return try uploadDrafts.load(binding)
+    }
+
+    func discardPhotoUpload(_ draft: PhotoUploadDraft) throws {
+        guard !busy, photoUploadBinding == draft.binding else { throw CancellationError() }
+        try uploadDrafts.remove(draft)
+    }
+
     func upload(_ data: Data, filename: String) async throws {
-        guard canMutate, let api = photoClient else { throw APIError.invalidResponse }
+        guard canMutate, let api else { throw APIError.invalidResponse }
+        if let binding = photoUploadBinding {
+            if let previous = try uploadDrafts.load(binding) {
+                guard previous.hash == PhotoUploadDraft.digest(data) else { throw PhotoAccessError.unavailable }
+                return try await sendPhotoDraft(previous, on: api, resuming: true)
+            }
+            let draft = PhotoUploadDraft(binding: binding, filename: filename, png: data)
+            try uploadDrafts.save(draft)
+            return try await sendPhotoDraft(draft, on: api, resuming: false)
+        }
+        // Preserve legacy HTTPS and Simulator callers that have no individual device binding.
         let epoch = generation
         busy = true
         defer { if epoch == generation { busy = false } }
         do {
             let response = try await api.upload(png: data, filename: filename)
             guard epoch == generation else { throw CancellationError() }
-            notice = response.alreadyExisted ? String(localized: "Cette photo est dans la file.") : String(localized: "Photo ajoutée à la file.")
+            showUploadNotice(response)
             await refresh()
         } catch {
             if epoch == generation { handle(error) }
             throw error
         }
+    }
+
+    func resumePhotoUpload(_ draft: PhotoUploadDraft) async throws {
+        guard canMutate, photoUploadBinding == draft.binding, let api,
+              let saved = try uploadDrafts.load(draft.binding), saved.id == draft.id else { throw CancellationError() }
+        try await sendPhotoDraft(saved, on: api, resuming: true)
+    }
+
+    private func sendPhotoDraft(_ draft: PhotoUploadDraft, on client: InkyAPI, resuming: Bool) async throws {
+        let epoch = generation
+        busy = true
+        defer { if epoch == generation { busy = false } }
+        func checkAdmission() throws {
+            try Task.checkCancellation()
+            guard epoch == generation, api === client, photoUploadBinding == draft.binding else { throw CancellationError() }
+        }
+        do {
+            let prior: UploadResponse?
+            do { prior = try await client.uploadReceipt(draft.id) }
+            catch APIError.http(statusCode: 404, message: _) where !resuming { prior = nil }
+            try checkAdmission()
+            let response: UploadResponse
+            if let prior { response = prior }
+            else {
+                response = try await client.upload(png: draft.png, filename: draft.filename, idempotencyKey: draft.id)
+            }
+            try checkAdmission()
+            guard response.photo.sha256 == draft.hash, response.queueEntry.photo.id == response.photo.id else {
+                throw APIError.invalidData
+            }
+            try uploadDrafts.remove(draft)
+            showUploadNotice(response)
+            await refresh()
+        } catch {
+            if epoch == generation { handle(error) }
+            throw error
+        }
+    }
+
+    private func showUploadNotice(_ response: UploadResponse) {
+        notice = response.alreadyExisted ? String(localized: "Cette photo est dans la file.") : String(localized: "Photo ajoutée à la file.")
     }
 
     func requeue(_ entry: HistoryEntry) async {
@@ -1452,46 +1567,15 @@ private extension AppStore {
         do {
             var bootstrapPassword = try await readCredential(previousAccount)
             guard await waitForLegacySharingForeground(epoch: epoch, operation: operation), stillSelected() else { return false }
-            // This client has no access to the live HTTP jar. It sends a fresh nonce only.
-            let verified = try await proveLegacyTLS(previous.baseURL, bootstrapPassword)
-            guard stillSelected() else { return false }
-            let pinned = makePinnedAPI(verified.endpoint, verified.identity)
-            candidate = pinned
-            pendingClient = pinned
-            guard OriginRedirectDelegate.sameOrigin(pinned.baseURL, verified.endpoint) else { throw PhotoAccessError.identityMismatch }
-            let access = try PhotoAccessClient(api: pinned, identity: verified.identity)
-            // The verifier is the only constructor of VerifiedLegacyTLSEndpoint. The secret
-            // first leaves this iPhone on the strictly pinned HTTPS candidate, never on HTTP.
-            let authenticatedReply = try await pinned.login(password: bootstrapPassword)
+            let prepared = try await prepareVerifiedOwner(endpoint: previous.baseURL, password: bootstrapPassword,
+                admitted: stillSelected)
             bootstrapPassword = ""
+            let pinned = prepared.client
+            candidate = pinned
             guard stillSelected() else { return false }
-            guard authenticatedReply.authenticated else { throw APIError.unauthorized }
-            let account = PhotoAccessSelection.account(identity: verified.identity, invitationID: nil)
-            var credential: PhotoAccessCredential
-            if photoAccessVault.contains(account: account) {
-                let saved = try await photoAccessVault.loadCredential(account: account)
-                guard await waitForLegacySharingForeground(epoch: epoch, operation: operation), stillSelected() else { return false }
-                guard saved.identity == verified.identity, saved.expectedRole == .owner, saved.invitationID == nil else {
-                    throw PhotoAccessError.identityMismatch
-                }
-                // Reuse exact device/request IDs after an uncertain response, including a verified locator change.
-                credential = try PhotoAccessCredential(identity: saved.identity, endpoint: verified.endpoint,
-                    deviceID: saved.deviceID, deviceToken: saved.deviceToken, requestID: saved.requestID,
-                    expectedRole: .owner, state: .pending)
-            } else {
-                credential = try PhotoAccessCredential.make(identity: verified.identity, endpoint: verified.endpoint, role: .owner)
-            }
-            guard stillSelected() else { return false }
-            credential.state = .pending
-            try rememberPendingPhotoAccess(credential)
-            _ = try await access.enroll(credential)
-            guard stillSelected() else { return false }
-            let session = try await access.openSession(credential)
-            guard stillSelected() else { return false }
-            // Protected final save and local selection commit happen synchronously. Until this
-            // exact boundary the previous HTTP cookie, locator and protected QR secret remain usable.
             pendingClient = nil
-            try commitPhotoAccess(credential, client: pinned, canInvite: session.canInvite, preservingLegacyUpgrade: true)
+            try commitPhotoAccess(prepared.credential, client: pinned, canInvite: prepared.canInvite, preservingLegacyUpgrade: true)
+            defaults.set(prepared.credential.identity.id.uuidString, forKey: "pendingBootstrapRetirement")
             candidate = nil
             epoch = generation
             operation = UUID()
@@ -1510,6 +1594,94 @@ private extension AppStore {
             }
             return false
         }
+    }
+
+    func pairOverVerifiedHTTPS(endpoint: URL, password: String, attempt: UUID) async -> Bool {
+        let epoch = generation
+        connecting = true
+        errorMessage = nil
+        var candidate: InkyAPI?
+        func admitted() -> Bool {
+            epoch == generation && attempt == localAuthenticationGeneration && localUnlocked && active && !Task.isCancelled
+        }
+        defer {
+            candidate?.clearSession()
+            if epoch == generation && attempt == localAuthenticationGeneration {
+                connecting = false
+                pendingClient = nil
+            }
+        }
+        do {
+            let prepared = try await prepareVerifiedOwner(endpoint: endpoint, password: password, admitted: admitted)
+            candidate = prepared.client
+            guard admitted() else { return false }
+            pendingClient = nil
+            try commitPhotoAccess(prepared.credential, client: prepared.client, canInvite: prepared.canInvite)
+            defaults.set(prepared.credential.identity.id.uuidString, forKey: "pendingBootstrapRetirement")
+            candidate = nil
+            let committedEpoch = generation
+            await refresh()
+            if committedEpoch == generation && localUnlocked && authenticated { startMonitoring() }
+            return true
+        } catch {
+            guard admitted(), !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return false }
+            errorMessage = error is VaultError ? error.localizedDescription : String(localized: "Mettez à jour le logiciel du cadre, puis réessayez.")
+            return false
+        }
+    }
+
+    func retireBootstrapIfPending(on client: InkyAPI) async {
+        guard api === client, localUnlocked, active, !Task.isCancelled, let selected = selectedPhotoAccess,
+              selected.role == .owner, bootstrapRetirementFromLaunch == selected.identity.id.uuidString,
+              defaults.string(forKey: "pendingBootstrapRetirement") == selected.identity.id.uuidString else { return }
+        let epoch = generation
+        do {
+            try await PhotoAccessClient(api: client, identity: selected.identity).retireBootstrap()
+            guard epoch == generation, api === client, localUnlocked, active, !Task.isCancelled else { return }
+            defaults.removeObject(forKey: "pendingBootstrapRetirement")
+        } catch {
+            // Older frames keep their credentials. A later explicit unlock may confirm retirement.
+        }
+    }
+
+    func prepareVerifiedOwner(endpoint: URL, password: String, admitted: () -> Bool) async throws
+        -> (client: InkyAPI, credential: PhotoAccessCredential, canInvite: Bool) {
+        let verified = try await proveLegacyTLS(endpoint, password)
+        guard admitted() else { throw CancellationError() }
+        let pinned = makePinnedAPI(verified.endpoint, verified.identity)
+        var ready = false
+        defer {
+            if !ready { pinned.clearSession() }
+        }
+        guard OriginRedirectDelegate.sameOrigin(pinned.baseURL, verified.endpoint) else { throw PhotoAccessError.identityMismatch }
+        let access = try PhotoAccessClient(api: pinned, identity: verified.identity)
+        pendingClient = pinned
+        let reply = try await pinned.login(password: password)
+        guard admitted() else { throw CancellationError() }
+        guard reply.authenticated else { throw APIError.unauthorized }
+        let account = PhotoAccessSelection.account(identity: verified.identity, invitationID: nil)
+        let credential: PhotoAccessCredential
+        if photoAccessVault.contains(account: account) {
+            let saved = try await photoAccessVault.loadCredential(account: account)
+            guard admitted() else { throw CancellationError() }
+            guard saved.identity == verified.identity, saved.expectedRole == .owner, saved.invitationID == nil else {
+                throw PhotoAccessError.identityMismatch
+            }
+            credential = try PhotoAccessCredential(identity: verified.identity, endpoint: verified.endpoint,
+                deviceID: saved.deviceID, deviceToken: saved.deviceToken, requestID: saved.requestID,
+                expectedRole: .owner, state: .pending)
+        } else {
+            credential = try PhotoAccessCredential.make(identity: verified.identity, endpoint: verified.endpoint, role: .owner)
+        }
+        // Save the retry intent before enrollment. The selected access is published only after
+        // the server returns the matching device session and protected final save succeeds.
+        try rememberPendingPhotoAccess(credential)
+        _ = try await access.enroll(credential)
+        guard admitted() else { throw CancellationError() }
+        let session = try await access.openSession(credential)
+        guard admitted() else { throw CancellationError() }
+        ready = true
+        return (pinned, credential, session.canInvite)
     }
 
     func finishPhotoAccessWiFi(endpoint: URL, owner: OwnershipRecord, selected: PhotoAccessSelection) async {
@@ -1573,7 +1745,8 @@ private extension AppStore {
         pendingPhotoAccess = selection
         defaults.set(data, forKey: "photoAccessPending")
     }
-    func commitPhotoAccess(_ credential: PhotoAccessCredential, client: InkyAPI, canInvite: Bool, preservingLegacyUpgrade: Bool = false) throws {
+    func commitPhotoAccess(_ credential: PhotoAccessCredential, client: InkyAPI, canInvite: Bool,
+                           preservingLegacyUpgrade: Bool = false, preservingLogicalSession: Bool = false) throws {
         var saved = credential
         saved.state = .active
         let selection = PhotoAccessSelection(saved)
@@ -1600,9 +1773,42 @@ private extension AppStore {
         credentialStorageError = nil
         pairingNeedsCompletion = false
         passwordChangeSupported = false
-        sessionIdentity = UUID()
+        if !preservingLogicalSession { sessionIdentity = UUID() }
     }
-    func restorePhotoAccess(_ selection: PhotoAccessSelection, attempt: UUID) async {
+    func schedulePhotoRecovery() -> Bool {
+        guard !legacyHTTPFixture, let selected = selectedPhotoAccess, localUnlocked, active,
+              !busy, !displayBusy, !photoAccessBusy else { return false }
+        if connecting { return true }
+        let epoch = generation
+        let attempt = localAuthenticationGeneration
+        connecting = true
+        connected = false
+        Task { [weak self] in
+            guard let self, self.generation == epoch, self.localAuthenticationGeneration == attempt else { return }
+            guard self.active, self.localUnlocked else { self.connecting = false; return }
+            await self.restorePhotoAccess(selected, attempt: attempt, recoveringSession: true)
+        }
+        return true
+    }
+
+    func photoRelocationCandidates(_ credential: PhotoAccessCredential) -> [URL] {
+        var candidates: [URL] = []
+        if let record = try? ownershipVault.load(id: credential.identity.id), record.identity == credential.identity {
+            candidates.append(contentsOf: record.endpoints.reversed().prefix(4))
+        }
+        let compactID = credential.identity.id.uuidString.lowercased().replacingOccurrences(of: "-", with: "")
+        if let canonical = try? FactorySetupValidation.origin("https://inky-\(compactID).local:8443") {
+            candidates.append(canonical)
+        }
+        var origins = [credential.endpoint]
+        return candidates.filter { candidate in
+            guard !origins.contains(where: { OriginRedirectDelegate.sameOrigin($0, candidate) }) else { return false }
+            origins.append(candidate)
+            return true
+        }
+    }
+
+    func restorePhotoAccess(_ selection: PhotoAccessSelection, attempt: UUID, recoveringSession: Bool = false) async {
         let epoch = generation
         connecting = true
         var candidate: InkyAPI?
@@ -1613,29 +1819,68 @@ private extension AppStore {
         do {
             let credential = try await photoAccessVault.loadCredential(account: selection.account)
             guard await waitForActiveScene(authentication: attempt), epoch == generation, localUnlocked else { return }
-            guard selection.validates(credential) else { throw PhotoAccessError.identityMismatch }
-            let client = makePinnedAPI(selection.endpoint, selection.identity)
-            candidate = client; pendingClient = client
-            let session = try await PhotoAccessClient(api: client, identity: selection.identity).openSession(credential)
-            guard await waitForActiveScene(authentication: attempt), epoch == generation, localUnlocked else { return }
-            // Keep the candidate out of resetSession's cancellation path at commit.
-            pendingClient = nil
-            try commitPhotoAccess(credential, client: client, canInvite: session.canInvite)
-            candidate = nil
-            connecting = false
-            await refresh()
-            guard attempt == localAuthenticationGeneration, localUnlocked, authenticated, api === client else { return }
-            startMonitoring()
+            // A previous save may have persisted the new protected locator before updating
+            // its nonsecret mirror. The protected record is authoritative for this device.
+            guard selection.matchesDevice(credential) else { throw PhotoAccessError.identityMismatch }
+            let alternate = photoRelocationCandidates(credential)
+            var lastUnreachable: URLError?
+            for endpoint in [credential.endpoint] + alternate {
+                candidate?.clearSession()
+                let client = makePinnedAPI(endpoint, selection.identity)
+                candidate = client
+                pendingClient = client
+                let relocated = try PhotoAccessCredential(identity: credential.identity, endpoint: endpoint,
+                    deviceID: credential.deviceID, deviceToken: credential.deviceToken, requestID: credential.requestID,
+                    expectedRole: credential.expectedRole, state: credential.state, invitationID: credential.invitationID)
+                let access = try PhotoAccessClient(api: client, identity: selection.identity)
+                let session: PhotoAccessSessionReply
+                do {
+                    if endpoint != credential.endpoint {
+                        try await access.verifyLocatorIdentity()
+                        guard await waitForActiveScene(authentication: attempt), epoch == generation, localUnlocked else { return }
+                    }
+                    session = try await access.openSession(relocated)
+                } catch let error as URLError where Self.isLocatorUnavailable(error) {
+                    guard await waitForActiveScene(authentication: attempt), epoch == generation, localUnlocked else { return }
+                    lastUnreachable = error
+                    continue
+                }
+                guard await waitForActiveScene(authentication: attempt), epoch == generation, localUnlocked else { return }
+                pendingClient = nil
+                try commitPhotoAccess(relocated, client: client, canInvite: session.canInvite,
+                                      preservingLogicalSession: recoveringSession)
+                candidate = nil
+                connecting = false
+                await refresh(allowSessionRecovery: false)
+                if !recoveringSession { await retireBootstrapIfPending(on: client) }
+                guard attempt == localAuthenticationGeneration, localUnlocked, authenticated, api === client else { return }
+                startMonitoring()
+                return
+            }
+            throw lastUnreachable ?? URLError(.cannotConnectToHost)
         } catch {
-            guard attempt == localAuthenticationGeneration, epoch == generation else { return }
-            localUnlocked = false
-            let message = (error as? APIError)?.isUnauthorized == true ? PhotoAccessError.accessRemoved.localizedDescription : error.localizedDescription
-            localAuthenticationError = message
+            guard attempt == localAuthenticationGeneration, epoch == generation, !Task.isCancelled else { return }
+            let unauthorized = (error as? APIError)?.isUnauthorized == true
+            let message = unauthorized ? PhotoAccessError.accessRemoved.localizedDescription : error.localizedDescription
             photoAccessError = message
+            if recoveringSession && !unauthorized {
+                connected = false
+                connectionError = true
+                errorMessage = message
+                return
+            }
+            if recoveringSession { resetSession() }
+            localUnlocked = false
+            localAuthenticationError = message
             credentialStored = photoAccessVault.contains(account: selection.account)
             invalidateAuthentication()
         }
     }
+
+    static func isLocatorUnavailable(_ error: URLError) -> Bool {
+        [.cannotFindHost, .dnsLookupFailed, .cannotConnectToHost, .notConnectedToInternet, .networkConnectionLost, .timedOut].contains(error.code)
+    }
+
     func ensurePhotoOwner(epoch: UUID, operation: UUID) async throws -> PhotoAccessClient {
         guard photoOperationValid(epoch, operation), canAdminister, canShareAccess,
               let current = api, let identity = current.pinnedIdentity else {

@@ -357,6 +357,60 @@ def test_validation_and_logs_do_not_echo_any_secret(frame, caplog):
     assert secret not in caplog.text
 
 
+def test_locator_identity_is_public_on_https_and_contains_only_public_fields(frame):
+    client, app = frame
+    result = client.get("/api/auth/frame-identity")
+    assert result.status_code == 200
+    assert result.headers["cache-control"] == "no-store"
+    assert "set-cookie" not in result.headers
+    assert set(result.json()) == {"frame_id", "spki_sha256"}
+    assert result.json()["frame_id"] == str(app.state.frame_identity.frame_id)
+    assert client.get("http://testserver/api/auth/frame-identity").status_code == 403
+
+
+def test_bootstrap_retirement_requires_device_owner_and_preserves_reopened_device_session(frame):
+    client, app = frame
+    initial = app.state.auth_service.credentials
+    login(client, app)
+    password_cookie = client.cookies.get(auth.COOKIE_NAME)
+    assert client.post("/api/auth/retire-bootstrap").status_code == 403
+    owner = enroll_client(client, app)
+    assert client.post("/api/auth/retire-bootstrap").status_code == 204
+    assert client.post("/api/auth/retire-bootstrap").status_code == 204
+    assert not app.state.sessions.validate(password_cookie)
+    persisted = auth.load_or_create_credentials(initial.path.parent)
+    assert persisted.photo_epoch() == initial.photo_epoch()
+    assert persisted.owner_epoch() == initial.owner_epoch()
+    assert "salt" not in persisted.record() and "hash" not in persisted.record()
+    assert persisted.bootstrap_retired
+    assert persisted.bootstrap_password is None
+    assert "bootstrap_password" not in persisted.record()
+    assert auth.display_password(initial.path.parent) is None
+    assert client.post("/api/auth/login", json={"password": initial.bootstrap_password}).status_code == 401
+    assert client.post("http://testserver/api/auth/legacy-tls-proof",
+                       json={"v": 1, "nonce": "01" * 32}).status_code == 503
+    app.state.sessions.invalidate_all()
+    client.cookies.clear()
+    assert client.post("/api/auth/device-session",
+                       json={key: owner[key] for key in ("device_id", "device_token")}).status_code == 200
+
+
+def test_bootstrap_retirement_write_failure_preserves_authorities(frame, monkeypatch):
+    client, app = frame
+    initial = app.state.auth_service.credentials
+    enroll_client(client, app)
+
+    def unavailable(_record):
+        raise auth.CredentialStorageError(committed=False)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(auth, "_write_credentials", unavailable)
+        assert client.post("/api/auth/retire-bootstrap").status_code == 503
+    assert app.state.auth_service.credentials is initial
+    assert auth.display_password(initial.path.parent) == initial.bootstrap_password
+    assert client.post("/api/auth/retire-bootstrap").status_code == 204
+
+
 def test_password_epoch_revokes_device_sessions(frame):
     client, app = frame
     owner = enroll_client(client, app)

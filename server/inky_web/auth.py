@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import string
 import tempfile
@@ -37,7 +38,7 @@ SCRYPT_R: Final = 8
 SCRYPT_P: Final = 1
 PUBLIC_PATHS: Final = frozenset({
     "/api/health", "/api/auth/login", "/api/auth/status",
-    "/api/auth/device-session", "/api/auth/invitations/claim",
+    "/api/auth/device-session", "/api/auth/frame-identity", "/api/auth/invitations/claim",
     "/api/auth/legacy-tls-proof", "/api/auth/factory-device-enroll",
 })
 
@@ -74,14 +75,34 @@ class Credentials:
     salt: bytes = field(repr=False)
     digest: bytes = field(repr=False)
     bootstrap_password: str | None = field(default=None, repr=False)
+    retired_photo_epoch: str | None = None
+    retired_owner_epoch: str | None = None
+
+    @property
+    def bootstrap_retired(self) -> bool:
+        return self.retired_photo_epoch is not None
+
+    def photo_epoch(self) -> str:
+        return self.retired_photo_epoch or hashlib.sha256(
+            b"inky-photo-epoch-v1\0" + self.salt + self.digest
+        ).hexdigest()
+
+    def owner_epoch(self) -> str:
+        from inky_web.provisioning.ownership import credential_epoch
+        return self.retired_owner_epoch or credential_epoch(self.salt, self.digest)
 
     def verify(self, password: str) -> bool:
+        if self.bootstrap_retired:
+            return False
         try:
             return secrets.compare_digest(self.digest, _derive(password, self.salt))
         except UnicodeEncodeError:
             return False
 
     def record(self) -> dict:
+        if self.bootstrap_retired:
+            return {"version": 2, "bootstrap_retired": True,
+                    "photo_epoch": self.retired_photo_epoch, "owner_epoch": self.retired_owner_epoch}
         record = {
             "version": 2, "algorithm": "scrypt", "n": SCRYPT_N, "r": SCRYPT_R,
             "p": SCRYPT_P, "salt": self.salt.hex(), "hash": self.digest.hex(),
@@ -123,6 +144,14 @@ def _parse_record(path: Path, record: dict) -> Credentials:
     if set(record) == {"password"} and _valid_password(record["password"]):
         # Migrate without changing the password or preserving old cleartext.
         return _new_credentials(path.parent, record["password"])
+    if set(record) == {"version", "bootstrap_retired", "photo_epoch", "owner_epoch"}:
+        if type(record["version"]) is not int or record["version"] != 2 or record["bootstrap_retired"] is not True:
+            raise CredentialFormatError()
+        if not all(type(record[k]) is str and re.fullmatch("[0-9a-f]{64}", record[k])
+                   for k in ("photo_epoch", "owner_epoch")):
+            raise CredentialFormatError()
+        return Credentials(path, b"", b"", retired_photo_epoch=record["photo_epoch"],
+                           retired_owner_epoch=record["owner_epoch"])
     required = {"version", "algorithm", "n", "r", "p", "salt", "hash"}
     try:
         if not required <= record.keys() or record.keys() - required - {"bootstrap_password"}:
@@ -272,6 +301,11 @@ class SessionStore:
         with self._lock:
             return self._principals.get(token)
 
+    def invalidate_password_sessions(self) -> None:
+        with self._lock:
+            self._sessions = {token: expiry for token, expiry in self._sessions.items() if token in self._principals}
+            self._notify()
+
     def invalidate_device(self, device_id: str) -> None:
         with self._lock:
             tokens = [token for token, actor in self._principals.items() if actor.device_id == device_id]
@@ -329,6 +363,27 @@ class CredentialService:
             if not self.credentials.verify(password):
                 raise HTTPException(status_code=401, detail="Mot de passe incorrect")
             return self.sessions.create()
+
+    def retire_bootstrap(self) -> None:
+        """Keep only the authority epochs and disable the legacy QR secret."""
+        with self._lock:
+            current = self.credentials
+            if current.bootstrap_password is not None:
+                replacement = Credentials(current.path, b"", b"", retired_photo_epoch=current.photo_epoch(),
+                                          retired_owner_epoch=current.owner_epoch())
+                try:
+                    _write_credentials(replacement)
+                except CredentialStorageError as exc:
+                    if exc.committed:
+                        self.credentials = replacement
+                        self.sessions.invalidate_password_sessions()
+                    raise
+                self.credentials = replacement
+                self.sessions.invalidate_password_sessions()
+                current = replacement
+            if current.bootstrap_retired:
+                for name in ("welcome_preview.png", "_welcome_tmp.png"):
+                    (current.path.parent / name).unlink(missing_ok=True)
 
     def change_password(self, token: str | None, current_password: str, new_password: str,
                         actor_owner_id: str | None = None) -> str:

@@ -140,6 +140,8 @@ struct PhotoImportView: View {
     @State private var normalizedOffset: CGSize = .zero
     @State private var viewportSize: CGSize = .zero
     @State private var uploadTask: Task<Void, Never>?
+    @State private var draftToResume: PhotoUploadDraft?
+    @State private var showDraft = false
     @GestureState private var dragTranslation: CGSize = .zero
     @GestureState private var gestureZoom: CGFloat = 1
 
@@ -261,7 +263,33 @@ struct PhotoImportView: View {
                 secondaryButton: .cancel(Text("Annuler"))
             )
         }
+        .alert("Un envoi est en attente.", isPresented: $showDraft, presenting: draftToResume) { draft in
+            Button("Reprendre l’envoi") {
+                model.isUploading = true
+                model.progressText = String(localized: "Envoi vers le cadre…")
+                uploadTask = Task {
+                    defer { model.isUploading = false }
+                    do {
+                        try await store.resumePhotoUpload(draft)
+                        draftToResume = nil
+                        dismiss()
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        model.errorMessage = String(localized: "L’envoi n’a pas pu être confirmé. Vérifiez le Wi-Fi et la file du cadre avant de réessayer.")
+                    }
+                }
+            }
+            Button("Supprimer", role: .destructive) {
+                do {
+                    try store.discardPhotoUpload(draft)
+                    draftToResume = nil
+                } catch { model.errorMessage = error.localizedDescription }
+            }
+            Button("Plus tard", role: .cancel) { dismiss() }
+        }
         .task {
+            offerPendingUpload()
             if !validPanel {
                 model.errorMessage = PhotoPipelineError.invalidPanel.errorDescription
             }
@@ -277,6 +305,15 @@ struct PhotoImportView: View {
             uploadTask?.cancel()
             cameraRequestTask?.cancel()
             cameraPreparationTask?.cancel()
+        }
+    }
+
+    private func offerPendingUpload() {
+        do {
+            draftToResume = try store.pendingPhotoUpload()
+            showDraft = draftToResume != nil
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 
@@ -438,6 +475,7 @@ struct PhotoImportView: View {
                         try await onUpload(data, filename)
                     }
                     if succeeded { dismiss() }
+                    else if !Task.isCancelled { offerPendingUpload() }
                 }
             } label: {
                 HStack(spacing: 12) {
