@@ -11,7 +11,13 @@ from PIL import Image, ImageChops, ImageDraw, features
 from inky_web.inky.display import _PIMORONI_DISPLAYS
 from inky_web.lan_runtime import invitation_payload, render_lan_expired, render_lan_welcome
 from inky_web.provisioning.identity import load_or_create_identity
-from inky_web.welcome_locale import EXPIRED_COPY, FONT_DIR, WELCOME_COPY, resolve_welcome_language, welcome_font
+from inky_web.welcome_locale import (
+    EXPIRED_COPY,
+    FONT_DIR,
+    WELCOME_COPY,
+    resolve_welcome_language,
+    welcome_font,
+)
 from tests.test_lan_photo import bootstrap_invitation
 
 LANGUAGES = ("ar", "de", "en", "es", "fr", "it", "ja", "ko", "pt", "zh-Hans", "zh-Hant")
