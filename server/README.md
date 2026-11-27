@@ -15,6 +15,19 @@ Use InkyOS maintenance procedures for an installed frame. After a confirmed
 owner session retires an older bootstrap, reverting to a service that cannot
 read that credential format requires local recovery.
 
+## Build the distribution wheel
+
+From the root of the exact source checkout, use Python 3.13 and the pinned
+builder dependencies. Record the source commit, Python, uv and Hatchling
+versions, and UTC timestamp used by the build alongside the wheel SHA-256.
+
+```bash
+export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+uv build --wheel --python python3.13 \
+  --build-constraints server/constraints-qualification.txt \
+  --out-dir /tmp/inky-photo-wheel server
+```
+
 ## Run locally (Mac/dev)
 
 ```bash
