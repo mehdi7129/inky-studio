@@ -245,6 +245,7 @@ async def lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
 @asynccontextmanager
 async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
                            factory=None, lan_photo: bool = False):
+    app.state.lan_photo = lan_photo
     init_db()
     app.state.sessions = auth.SessionStore()
     credentials = (auth.load_or_create_credentials(data_dir()) if factory is None else
