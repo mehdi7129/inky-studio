@@ -64,6 +64,6 @@ pip download --no-deps --require-hashes -r tests/fixtures/inky_260_requirement.t
 pytest
 ```
 
-Install `.[dev]` first. For the pinned qualification environment on macOS arm64/Python 3.13, install with `pip install -c constraints-qualification.txt -e ".[dev]"`. The driver tests load the SHA-256/RECORD-verified official
+Install `.[dev]` first. For the pinned qualification environment on macOS arm64/Python 3.14, install with `pip install -c constraints-qualification.txt -e ".[dev]"`. The driver tests load the SHA-256/RECORD-verified official
 wheels from this cache, with real NumPy/Pillow and simulated GPIO/SPI ports.
 Pytest does not download dependencies or touch hardware.

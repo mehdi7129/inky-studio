@@ -206,7 +206,7 @@ def test_current_display_pin_refuses_historical_230_wheelhouse(fixture):
     inky_root, = [value for value in pi_roots if offline.Requirement(value).name == "inky"]
     fixture.project_roots([], pi=[inky_root])
     fixture.add("inky", "2.3.0")
-    with pytest.raises(offline.WheelhouseError, match=r"version mismatch: .*inky==2\.5\.0; found 2\.3\.0"):
+    with pytest.raises(offline.WheelhouseError, match=r"version mismatch: .*inky==2\.6\.0; found 2\.3\.0"):
         fixture.build()
     assert not (fixture.root / "output").exists()
 
