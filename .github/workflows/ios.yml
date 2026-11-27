@@ -3,6 +3,7 @@ name: iOS
 on:
   push:
     branches: [main]
+    tags: ["ios-v*"]
     paths: ["ios/**", "scripts/build-mbedtls-apple.sh", "scripts/test-bluetooth-channel.sh", "scripts/test-https-wire.sh", "scripts/https-wire-bench/**", "server/inky_web/**", "server/pyproject.toml", ".github/workflows/ios.yml"]
   pull_request:
     paths: ["ios/**", "scripts/build-mbedtls-apple.sh", "scripts/test-bluetooth-channel.sh", "scripts/test-https-wire.sh", "scripts/https-wire-bench/**", "server/inky_web/**", "server/pyproject.toml", ".github/workflows/ios.yml"]
@@ -17,9 +18,17 @@ permissions:
 
 jobs:
   native:
-    name: iPhone build and tests
+    name: iPhone build and tests (${{ matrix.language }}_${{ matrix.region }})
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: en
+            region: US
+          - language: fr
+            region: FR
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode
@@ -61,6 +70,8 @@ jobs:
           echo "INKY_SIMULATOR_ID=$DEVICE_ID" >> "$GITHUB_ENV"
           xcrun simctl boot "$DEVICE_ID"
           xcrun simctl bootstatus "$DEVICE_ID" -b
+          xcrun simctl spawn "$DEVICE_ID" defaults write NSGlobalDomain AppleLanguages -array "${{ matrix.language }}"
+          xcrun simctl spawn "$DEVICE_ID" defaults write NSGlobalDomain AppleLocale "${{ matrix.language }}_${{ matrix.region }}"
           python3 ios/scripts/seed-simulator-photo.py "$DEVICE_ID"
       - name: Build and test
         run: |
@@ -85,6 +96,7 @@ jobs:
           done
           xcodebuild -project ios/InkyStudio.xcodeproj -scheme InkyStudio \
             -destination "platform=iOS Simulator,id=$INKY_SIMULATOR_ID" \
+            -testLanguage "${{ matrix.language }}" -testRegion "${{ matrix.region }}" \
             -parallel-testing-enabled NO -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
           jq -e '.http_proof_audit | .requests_checked == 2 and .unique_nonces == 2 and .safety_failures == 0' \
@@ -97,6 +109,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ios-test-results
+          name: ios-test-results-${{ matrix.language }}-${{ matrix.region }}
           path: TestResults.xcresult
           retention-days: 14

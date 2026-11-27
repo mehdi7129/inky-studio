@@ -8,6 +8,7 @@ cffi==2.1.1
 click==8.5.1
 cryptography==50.0.2
 dbus-fast==5.2.0
+editables==0.5
 fastapi==0.165.0
 h11==0.16.0
 hatchling==1.33.0

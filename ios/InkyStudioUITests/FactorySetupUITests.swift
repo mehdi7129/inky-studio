@@ -35,7 +35,7 @@ final class FactorySetupUITests: XCTestCase {
 
     func testMainBootstrapQRRoutesToGlobalFactorySheetAndClosesToHome() {
         let app = XCUIApplication()
-        app.launchArguments = ["--uitesting", "--qr-input-fixture", "--local-auth-fixture", "success",
+        app.launchArguments = ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR", "--uitesting", "--qr-input-fixture", "--local-auth-fixture", "success",
                                "--bluetooth-fixture", "factory-country", "-AppleInterfaceStyle", "Light"]
         app.launch()
         let scan = app.buttons["connection.scanLANQR"]
@@ -66,7 +66,7 @@ final class FactorySetupUITests: XCTestCase {
 
     private func launchFixture(_ state: String) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--uitesting", "--bluetooth-fixture", state,
+        app.launchArguments = ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR", "--uitesting", "--bluetooth-fixture", state,
                                "-AppleInterfaceStyle", "Light"]
         app.launch()
         let entry = app.buttons["connection.bluetooth"]

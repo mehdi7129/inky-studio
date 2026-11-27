@@ -4278,7 +4278,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Este código QR ha expirado o ya se ha utilizado. Muestre un nuevo código QR en el marco de la foto."
+            "value": "El código QR ha caducado o ya se ha usado. Muestra uno nuevo en el marco."
           }
         },
         "fr": {
@@ -4290,7 +4290,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Questo codice QR è scaduto o è già stato utilizzato. Mostra un nuovo codice QR sul fotogramma."
+            "value": "Il codice QR è scaduto o è già stato usato. Mostra un nuovo codice sulla cornice."
           }
         },
         "ja": {
@@ -4418,7 +4418,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Este código QR de emparejamiento es inválido. Escanear el código QR en el marco de la foto de la pantalla de bienvenida."
+            "value": "El código QR de conexión no es válido. Escanea el que aparece en la pantalla de inicio del marco."
           }
         },
         "fr": {
@@ -4430,7 +4430,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Questo codice QR di abbinamento è invalido. Scansione del codice QR sulla schermata di accoglienza del fotogramma."
+            "value": "Il codice QR di connessione non è valido. Scansiona quello nella schermata iniziale della cornice."
           }
         },
         "ja": {
@@ -5118,7 +5118,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Este teléfono ya no está autorizado. Escanear un nuevo código QR del marco de la foto."
+            "value": "Este teléfono ya no tiene acceso. Escanea un nuevo código QR que aparezca en el marco."
           }
         },
         "fr": {
@@ -5130,7 +5130,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Questo telefono non è più autorizzato. Scansione un nuovo codice QR dal fotogramma."
+            "value": "Questo telefono non è più autorizzato. Scansiona un nuovo codice QR visualizzato sulla cornice."
           }
         },
         "ja": {
@@ -7848,7 +7848,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Conecta el marco de la foto"
+            "value": "Conecta tu marco digital"
           }
         },
         "fr": {
@@ -7860,7 +7860,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Collegare il fotogramma"
+            "value": "Connetti la tua cornice digitale"
           }
         },
         "ja": {
@@ -23178,7 +23178,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Coloque el código QR del fotograma en el visor."
+            "value": "Encuadra el código QR que aparece en el marco digital."
           }
         },
         "fr": {
@@ -23190,7 +23190,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Posizionare il codice QR del fotogramma nel visore."
+            "value": "Inquadra il codice QR visualizzato sulla cornice digitale."
           }
         },
         "ja": {
@@ -26958,7 +26958,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Encuentra el fotograma en la red"
+            "value": "Buscar el marco en la red"
           }
         },
         "fr": {
@@ -26970,7 +26970,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Trova il fotogramma sulla rete"
+            "value": "Trova la cornice sulla rete"
           }
         },
         "ja": {
@@ -30085,6 +30085,76 @@
         }
       }
     },
+    "Le cadre n’a pas pu confirmer cet envoi. Le brouillon est conservé. Vérifiez l’historique du cadre avant tout nouvel envoi.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "لم يتمكن الإطار من تأكيد الإرسال. تم الاحتفاظ بالمسودة. تحقق من سجل الإطار قبل الإرسال من جديد."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Der Rahmen konnte das Senden nicht bestätigen. Der Entwurf bleibt gespeichert. Prüfe den Verlauf des Rahmens, bevor du erneut sendest."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "The frame couldn’t confirm the upload. The draft was kept. Check the frame’s history before sending again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "El marco no pudo confirmar el envío. Se ha guardado el borrador. Consulta el historial del marco antes de volver a enviar la foto."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le cadre n’a pas pu confirmer cet envoi. Le brouillon est conservé. Vérifiez l’historique du cadre avant tout nouvel envoi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "La cornice non ha potuto confermare l’invio. La bozza è stata conservata. Controlla la cronologia della cornice prima di inviare di nuovo la foto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "フレームで送信を確認できませんでした。下書きは保存されています。再送信の前にフレームの履歴を確認してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "액자에서 전송을 확인하지 못했습니다. 임시 저장본은 유지됩니다. 다시 보내기 전에 액자의 기록을 확인하세요."
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "A moldura não conseguiu confirmar o envio. O rascunho foi guardado. Consulte o histórico da moldura antes de voltar a enviar a fotografia."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "相框未能确认上传。草稿已保留。再次发送前，请查看相框的历史记录。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "相框無法確認上傳。草稿已保留。再次傳送前，請查看相框的歷史記錄。"
+          }
+        }
+      }
+    },
     "Un envoi est en attente.": {
       "localizations": {
         "ar": {
@@ -31438,7 +31508,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Su marco de foto de tinta debe estar listo y mostrar su código QR de emparejamiento."
+            "value": "Tu marco Inky debe estar preparado y mostrar su código QR de conexión."
           }
         },
         "fr": {
@@ -31450,7 +31520,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Il tuo fotogramma Inky dovrebbe essere pronto e mostrare il suo codice QR."
+            "value": "La tua cornice Inky deve essere pronta e mostrare il codice QR di connessione."
           }
         },
         "ja": {
@@ -31508,7 +31578,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Su fotograma está conectado"
+            "value": "Tu marco está conectado"
           }
         },
         "fr": {
@@ -31520,7 +31590,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Il tuo fotogramma è collegato ."
+            "value": "La cornice è connessa"
           }
         },
         "ja": {
@@ -31578,7 +31648,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Su fotograma está listo ."
+            "value": "Tu marco está listo"
           }
         },
         "fr": {
@@ -31590,7 +31660,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Il tuo fotogramma è pronto ."
+            "value": "La cornice è pronta"
           }
         },
         "ja": {
@@ -31858,7 +31928,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Su foto se instalará en el marco de la foto."
+            "value": "La foto se adaptará al formato del marco."
           }
         },
         "fr": {
@@ -31870,7 +31940,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "La tua foto sarà inserita nel fotogramma."
+            "value": "La foto verrà adattata al formato della cornice."
           }
         },
         "ja": {

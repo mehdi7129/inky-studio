@@ -14,15 +14,18 @@ struct PhotoAccessCredential: Codable, Equatable, Sendable {
     let expectedRole: PhotoAccessRole
     var state: State
     let invitationID: UUID?
+    var stableLocator: URL?
 
     init(identity: FrameIdentity, endpoint: URL, deviceID: UUID, deviceToken: String,
          requestID: UUID, expectedRole: PhotoAccessRole, state: State = .pending,
-         invitationID: UUID? = nil) throws {
+         invitationID: UUID? = nil, stableLocator: URL? = nil) throws {
         try PhotoAccessValidation.origin(endpoint)
         guard PhotoAccessValidation.token(deviceToken) else { throw PhotoAccessError.invalidData }
         self.identity = identity; self.endpoint = endpoint; self.deviceID = deviceID
         self.deviceToken = deviceToken; self.requestID = requestID; self.expectedRole = expectedRole
         self.state = state; self.invitationID = invitationID
+        if let stableLocator { try PhotoAccessValidation.localLocator(stableLocator) }
+        self.stableLocator = stableLocator
     }
 
     static func make(identity: FrameIdentity, endpoint: URL, role: PhotoAccessRole, invitationID: UUID? = nil) throws -> Self {
@@ -32,7 +35,8 @@ struct PhotoAccessCredential: Codable, Equatable, Sendable {
 
     func validated() throws -> Self {
         try Self(identity: identity, endpoint: endpoint, deviceID: deviceID, deviceToken: deviceToken,
-                 requestID: requestID, expectedRole: expectedRole, state: state, invitationID: invitationID)
+                 requestID: requestID, expectedRole: expectedRole, state: state, invitationID: invitationID,
+                 stableLocator: stableLocator)
     }
 }
 
@@ -135,7 +139,10 @@ struct PhotoAccessSessionReply: Decodable, Equatable, Sendable {
     let role: PhotoAccessRole
     let canInvite: Bool
     let identity: PhotoAccessIdentityReply
-    enum CodingKeys: String, CodingKey { case authenticated, deviceID = "device_id", role, canInvite = "can_invite", identity }
+    let stableLocator: URL?
+    enum CodingKeys: String, CodingKey {
+        case authenticated, deviceID = "device_id", role, canInvite = "can_invite", identity, stableLocator = "stable_locator"
+    }
     init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         authenticated = try fields.decode(Bool.self, forKey: .authenticated)
@@ -145,6 +152,11 @@ struct PhotoAccessSessionReply: Decodable, Equatable, Sendable {
         // capability from this frame's authenticated, pinned PHOTO response.
         canInvite = try fields.decodeIfPresent(Bool.self, forKey: .canInvite) ?? (role == .owner)
         identity = try fields.decode(PhotoAccessIdentityReply.self, forKey: .identity)
+        // A malformed optional hint must never invalidate a working connection.
+        if let locator = try? fields.decode(URL.self, forKey: .stableLocator),
+           (try? PhotoAccessValidation.localLocator(locator)) != nil {
+            stableLocator = locator
+        } else { stableLocator = nil }
     }
 }
 
@@ -178,6 +190,11 @@ enum PhotoAccessValidation {
         guard let id = UUID(uuidString: value), id.uuidString.lowercased() == value else { throw PhotoAccessError.invalidData }
         return id
     }
+    static func localLocator(_ endpoint: URL) throws {
+        try origin(endpoint)
+        guard endpoint.host?.lowercased().hasSuffix(".local") == true else { throw PhotoAccessError.invalidData }
+    }
+
     static func origin(_ endpoint: URL) throws {
         // Reuse the closed invitation-origin grammar without interpreting a URL as a login.
         _ = try FrameInvitationCode(identity: FrameIdentity(id: UUID(), spkiSHA256: Data(repeating: 0, count: 32)),

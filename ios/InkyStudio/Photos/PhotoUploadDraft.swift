@@ -8,11 +8,15 @@ struct PhotoUploadBinding: Codable, Hashable {
 }
 
 struct PhotoUploadDraft: Codable {
+    enum Delivery: String, Codable { case ready, receiptBacked, receiptUnavailable }
+
     let id: UUID
     let binding: PhotoUploadBinding
     let filename: String
     let png: Data
     let hash: String
+    // Drafts saved before this field existed may already have reached a frame.
+    var delivery: Delivery?
 
     init(binding: PhotoUploadBinding, filename: String, png: Data) {
         id = UUID()
@@ -20,6 +24,7 @@ struct PhotoUploadDraft: Codable {
         self.filename = filename
         self.png = png
         hash = Self.digest(png)
+        delivery = .ready
     }
 
     static func digest(_ data: Data) -> String {
@@ -70,5 +75,13 @@ struct PhotoUploadDraftStore {
         let identity = binding.frameID.uuidString + binding.deviceID.uuidString
         let filename = PhotoUploadDraft.digest(Data(identity.utf8) + binding.spki)
         return directory.appendingPathComponent(filename, isDirectory: false)
+    }
+}
+
+enum PhotoUploadRecoveryError: Error, LocalizedError {
+    case unconfirmed
+
+    var errorDescription: String? {
+        String(localized: "Le cadre n’a pas pu confirmer cet envoi. Le brouillon est conservé. Vérifiez l’historique du cadre avant tout nouvel envoi.")
     }
 }
