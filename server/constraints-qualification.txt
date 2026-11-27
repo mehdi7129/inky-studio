@@ -1,4 +1,4 @@
-# Backend qualification matrix used on CPython 3.14.2, macOS arm64.
+# Local macOS arm64 fixture constraints for CPython 3.14. See CI for the full matrix.
 # uv pip sync server/constraints-qualification.txt
 annotated-doc==0.0.7
 annotated-types==0.8.0
@@ -20,7 +20,7 @@ numpy==2.5.5
 opentelemetry-api==1.45.2
 packaging==26.4
 pathspec==1.1.1
-pillow==13.0.0
+pillow==12.3.0
 pluggy==1.7.0
 pycparser==3.12
 pydantic==2.14.4

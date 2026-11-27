@@ -18,8 +18,7 @@ mkdir -p "${WORK}/Sources/InkyStudio" "${WORK}/Tests/InkyStudioTests"
 for source in FrameIdentity PinnedFrameTrust BootstrapFrameTrust FrameBootstrapCode SoftAPBootstrap BluetoothTransport SecureBluetoothChannel; do
   cp "${ROOT}/ios/InkyStudio/Provisioning/${source}.swift" "${WORK}/Sources/InkyStudio/"
 done
-cp "${ROOT}/ios/InkyStudioTests/BluetoothChannelTests.swift" \
-   "${ROOT}/ios/InkyStudioTests/BluetoothChannelInteropTests.swift" "${WORK}/Tests/InkyStudioTests/"
+cp "${ROOT}/ios/InkyStudioTests/BluetoothChannelInteropTests.swift" "${WORK}/Tests/InkyStudioTests/"
 "${INKY_TLS_TEST_PYTHON}" - "${PACKAGE}" "${WORK}" <<'PY'
 import json, pathlib, sys
 package, work = map(pathlib.Path, sys.argv[1:])

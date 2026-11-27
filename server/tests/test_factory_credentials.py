@@ -153,19 +153,20 @@ def test_real_closed_pipe_exits_70_without_traceback(isolated_python, tmp_path):
 def private_pipe(monkeypatch):
     writes = {1: bytearray(), 2: bytearray()}
     monkeypatch.setattr(sys, "argv", [MODULE, "--emit-v2"])
-    monkeypatch.setattr(os, "fstat", lambda _: SimpleNamespace(st_mode=stat.S_IFIFO))
 
     def write(fd, value):
         writes[fd].extend(value)
         return len(value)
 
-    monkeypatch.setattr(os, "write", write)
+    monkeypatch.setattr(emitter, "os", SimpleNamespace(
+        fstat=lambda _: SimpleNamespace(st_mode=stat.S_IFIFO), write=write,
+    ))
     return writes
 
 
 @pytest.mark.parametrize("mode", [stat.S_IFREG, stat.S_IFCHR, stat.S_IFSOCK, stat.S_IFDIR])
 def test_invalid_stdout_refused_before_generation(private_pipe, monkeypatch, mode):
-    monkeypatch.setattr(os, "fstat", lambda _: SimpleNamespace(st_mode=mode))
+    monkeypatch.setattr(emitter.os, "fstat", lambda _: SimpleNamespace(st_mode=mode))
     monkeypatch.setattr(emitter, "emit_v2", lambda: pytest.fail("Generation before pipe validation"))
     assert emitter.main() == 64
     assert private_pipe == {1: b"", 2: USAGE}
@@ -175,7 +176,7 @@ def test_invalid_fd_refused_before_generation(private_pipe, monkeypatch):
     def invalid(_):
         raise OSError("synthetic-secret")
 
-    monkeypatch.setattr(os, "fstat", invalid)
+    monkeypatch.setattr(emitter.os, "fstat", invalid)
     monkeypatch.setattr(emitter, "emit_v2", lambda: pytest.fail("Generation before pipe validation"))
     assert emitter.main() == 64
     assert private_pipe == {1: b"", 2: USAGE}
@@ -230,7 +231,7 @@ def test_partial_write_failure_keeps_prefix_private_and_never_retries_generation
         return 8
 
     monkeypatch.setattr(emitter, "emit_v2", generate)
-    monkeypatch.setattr(os, "write", broken_write)
+    monkeypatch.setattr(emitter.os, "write", broken_write)
     assert emitter.main() == 70 and calls == [True]
     assert private_pipe == {1: payload[:8], 2: FAILED}
 
@@ -245,7 +246,7 @@ def test_write_progress_is_complete_or_failed(private_pipe, monkeypatch, chunk):
         private_pipe[fd].extend(value[:count])
         return count
 
-    monkeypatch.setattr(os, "write", short_write)
+    monkeypatch.setattr(emitter.os, "write", short_write)
     assert emitter.main() == (0 if chunk else 70)
     assert private_pipe == ({1: payload, 2: b""} if chunk else {1: b"", 2: FAILED})
 
