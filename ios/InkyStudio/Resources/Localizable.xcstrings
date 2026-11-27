@@ -4278,7 +4278,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Este código QR ha expirado o ya se ha utilizado. Muestre un nuevo código QR en el marco de la foto."
+            "value": "El código QR ha caducado o ya se ha usado. Muestra uno nuevo en el marco."
           }
         },
         "fr": {
@@ -4290,7 +4290,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Questo codice QR è scaduto o è già stato utilizzato. Mostra un nuovo codice QR sul fotogramma."
+            "value": "Il codice QR è scaduto o è già stato usato. Mostra un nuovo codice sulla cornice."
           }
         },
         "ja": {
@@ -4418,7 +4418,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Este código QR de emparejamiento es inválido. Escanear el código QR en el marco de la foto de la pantalla de bienvenida."
+            "value": "El código QR de conexión no es válido. Escanea el que aparece en la pantalla de inicio del marco."
           }
         },
         "fr": {
@@ -4430,7 +4430,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Questo codice QR di abbinamento è invalido. Scansione del codice QR sulla schermata di accoglienza del fotogramma."
+            "value": "Il codice QR di connessione non è valido. Scansiona quello nella schermata iniziale della cornice."
           }
         },
         "ja": {
@@ -5118,7 +5118,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Este teléfono ya no está autorizado. Escanear un nuevo código QR del marco de la foto."
+            "value": "Este teléfono ya no tiene acceso. Escanea un nuevo código QR que aparezca en el marco."
           }
         },
         "fr": {
@@ -5130,7 +5130,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Questo telefono non è più autorizzato. Scansione un nuovo codice QR dal fotogramma."
+            "value": "Questo telefono non è più autorizzato. Scansiona un nuovo codice QR visualizzato sulla cornice."
           }
         },
         "ja": {
@@ -7848,7 +7848,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Conecta el marco de la foto"
+            "value": "Conecta tu marco digital"
           }
         },
         "fr": {
@@ -7860,7 +7860,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Collegare il fotogramma"
+            "value": "Connetti la tua cornice digitale"
           }
         },
         "ja": {
@@ -23178,7 +23178,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Coloque el código QR del fotograma en el visor."
+            "value": "Encuadra el código QR que aparece en el marco digital."
           }
         },
         "fr": {
@@ -23190,7 +23190,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Posizionare il codice QR del fotogramma nel visore."
+            "value": "Inquadra il codice QR visualizzato sulla cornice digitale."
           }
         },
         "ja": {
@@ -26958,7 +26958,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Encuentra el fotograma en la red"
+            "value": "Buscar el marco en la red"
           }
         },
         "fr": {
@@ -26970,7 +26970,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Trova il fotogramma sulla rete"
+            "value": "Trova la cornice sulla rete"
           }
         },
         "ja": {
@@ -31508,7 +31508,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Su marco de foto de tinta debe estar listo y mostrar su código QR de emparejamiento."
+            "value": "Tu marco Inky debe estar preparado y mostrar su código QR de conexión."
           }
         },
         "fr": {
@@ -31520,7 +31520,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Il tuo fotogramma Inky dovrebbe essere pronto e mostrare il suo codice QR."
+            "value": "La tua cornice Inky deve essere pronta e mostrare il codice QR di connessione."
           }
         },
         "ja": {
@@ -31578,7 +31578,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Su fotograma está conectado"
+            "value": "Tu marco está conectado"
           }
         },
         "fr": {
@@ -31590,7 +31590,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Il tuo fotogramma è collegato ."
+            "value": "La cornice è connessa"
           }
         },
         "ja": {
@@ -31648,7 +31648,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Su fotograma está listo ."
+            "value": "Tu marco está listo"
           }
         },
         "fr": {
@@ -31660,7 +31660,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Il tuo fotogramma è pronto ."
+            "value": "La cornice è pronta"
           }
         },
         "ja": {
@@ -31928,7 +31928,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Su foto se instalará en el marco de la foto."
+            "value": "La foto se adaptará al formato del marco."
           }
         },
         "fr": {
@@ -31940,7 +31940,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "La tua foto sarà inserita nel fotogramma."
+            "value": "La foto verrà adattata al formato della cornice."
           }
         },
         "ja": {
