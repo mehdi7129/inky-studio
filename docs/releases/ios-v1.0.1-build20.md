@@ -14,11 +14,11 @@ Public source prerelease for Xcode and backend integrators.
 | Use | Requirements |
 | --- | --- |
 | Build the app | iOS 18+, Xcode, and the pinned TLS build described in the [iOS README](../../ios/README.md). |
-| Use already supported PHOTO invitations | A compatible InkyOS frame on the local network, including the published InkyOS 2026.11.20-rc2 with PHOTO 0.5.0rc3. |
+| Use already supported PHOTO invitations | A compatible InkyOS frame on the local network, including the published InkyOS 2026.11.27-rc3 with PHOTO 0.5.0rc4. |
 | Use endpoint recovery, upload receipts and bootstrap retirement together | The companion PHOTO service 0.5.0rc5 from this release. The wheel is provided for integration and local testing. |
 | Pair an older password-based QR | The frame must support the anonymous TLS proof. If it cannot prove its identity, update the frame software before pairing. |
 
-The published InkyOS and inkyImager downloads still contain PHOTO 0.5.0rc3. Keep a recovery path before attempting a backend migration. After bootstrap retirement, switching back to an older backend requires local recovery because that backend cannot read the retired credential format. A permitted LAN PHOTO member can still invite another media member.
+The published InkyOS and inkyImager downloads contain PHOTO 0.5.0rc4. Keep a recovery path before attempting a backend migration. After bootstrap retirement, switching back to an older backend requires local recovery because that backend cannot read the retired credential format. A permitted LAN PHOTO member can still invite another media member.
 
 ## Qualification
 

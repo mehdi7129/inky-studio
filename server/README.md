@@ -6,8 +6,8 @@ FastAPI service that drives the Inky display and serves the React frontend.
 
 This repository publishes the **0.5.0rc5** PHOTO service source and a Python wheel
 for local qualification with iOS 1.0.1 (20). The distributed
-[InkyOS image](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.20-rc2)
-contains **0.5.0rc3** and the Pimoroni auto-detection profile.
+[InkyOS image](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.27-rc3)
+contains **0.5.0rc4** and the Pimoroni auto-detection profile.
 See [LAN configuration](../docs/IMAGER-LAN.md), the [PHOTO API](../docs/PHOTO-API.md)
 and the [release notes](../docs/releases/ios-v1.0.1-build20.md).
 
