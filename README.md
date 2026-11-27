@@ -12,26 +12,19 @@ interval display schedules. Photo transfer and access sharing use your local net
 
 | Component | Current delivery | Purpose |
 |---|---|---|
-| [inkyImager 0.1.4](https://github.com/mehdi7129/inkyImager/releases/tag/v0.1.4) | Notarized Universal DMG, macOS 14+ on Intel and Apple Silicon | Prepare a new SD card and its Wi-Fi configuration. |
-| [InkyOS 2026.11.20-rc2](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.20-rc2) | Clean generic image, **prerelease** | Frame system with automatic Pimoroni panel detection and the compatible PHOTO service. |
-| [Inky Studio iOS1.0.0 (19)](https://github.com/mehdi7129/inky-studio/releases/tag/ios-v1.0.0-build19) | Source of the iPhone build selected for the public App Store submission | Native iPhone photo app. The App Store listing is pending review and release. |
+| [inkyImager 0.1.5 (.dmg)](https://github.com/mehdi7129/inkyImager/releases/download/v0.1.5/inkyImager-0.1.5-Universal.dmg) | Notarized Universal DMG, macOS 14+ on Intel and Apple Silicon | Prepare a new SD card and its Wi-Fi configuration. |
+| [InkyOS 2026.11.27-rc3](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.27-rc3) | Clean generic image, **prerelease** | Frame system with automatic Pimoroni panel detection and the compatible PHOTO service. |
+| [Inky Studio iOS 1.0.0 (19)](https://github.com/mehdi7129/inky-studio/releases/tag/ios-v1.0.0-build19) | iPhone build 19 source checkpoint | Native iPhone photo app and Xcode build instructions. |
 
-The iPhone source is available under MIT and can be built in Xcode. The public
-App Store version is being prepared.
-Hardware is bought separately; this independent community project does not sell it
-and is not an official Pimoroni, Raspberry Pi or Apple product.
+The iPhone source is available under MIT and can be built in Xcode. The
+GitHub iOS release documents the source of build 19.
 
-The reference configuration is a Pi Zero2W with an Inky Impression7.3-inch
-800×480 display using the explicit AC073 profile, WPA2/2.4GHz/France. The exact
-panel SKU is not certified; do not assume every similarly named revision works.
-The maintainer reports successful photo use and QR sharing over several days.
-The **new generic image's first physical boot is not yet observed**; existing
-frame acceptance and this new artifact's software checks are separate evidence.
-The new image covers Impression, Spectra 6, pHAT and wHAT variants in software
-and keeps the existing PHOTO invitation format. See the [display compatibility
-matrix](https://github.com/mehdi7129/inkyOS/blob/main/docs/DISPLAY-COMPATIBILITY.md).
-See each project's release notes before preparing a new card. A fresh flash erases
-that card; do not reflash an already-working frame just to update the iPhone app.
+InkyOS detects compatible Pimoroni Impression, Spectra 6, pHAT and wHAT
+panels by EEPROM. The latest image has been tested with simulated displays.
+First boot and optical QR scanning for this image still require hardware
+testing. See the [display compatibility matrix](https://github.com/mehdi7129/inkyOS/blob/main/docs/DISPLAY-COMPATIBILITY.md).
+A fresh flash erases the card. Keep your current card when you only need to
+update the iPhone app.
 
 ## Connect and share
 
@@ -43,7 +36,9 @@ that card; do not reflash an already-working frame just to update the iPhone app
 4. On an authorized, unlocked phone open **Réglages → Partager le cadre →
    Partager l’accès**. The other iPhone scans the displayed invitation in Inky Studio.
 
-An invitation lasts five minutes and is single-use. Expiring the QR does not
+The initial frame QR expires after five minutes. Power-cycle the frame for a
+new invitation if initial pairing has not been completed. Each invitation is
+single-use. Expiring the QR does not
 remove an already-accepted device access. On this LAN service every authorized
 photo member may invite another photo member. Photo access covers photos, queue,
 history and scheduling; it does not grant Wi-Fi or frame administration.
@@ -51,28 +46,22 @@ Owner-authorized installations may revoke devices; guests may cancel their own
 pending invitations. Already-admitted descendants are separate device accesses.
 
 Access is retained in the protected iPhone Keychain. The QR connection verifies
-the frame's HTTPS identity. There is no cloud account, Internet remote-control
-service, tracking SDK or product demo. The old **Accès protégé** Settings block
-is removed; local authentication at opening remains. Build19 resumes connection
-automatically when the app becomes active after local authentication.
+the frame’s HTTPS identity. Build 19 resumes the connection automatically
+when the app becomes active after local authentication.
 
 ## Source provenance
 
-The source release tag combines already-delivered component sources without changing
-their runtime code. Main retains its earlier implementation; select the tag or
-frozen source branch before building the delivered candidate. The iPhone and service have independent version numbers:
+Use the component tags to build the delivered versions.
 
-| Component | Exact delivered source |
+| Component | Exact source |
 |---|---|
-| iPhone build19 | [`65e626e8760bc956e17a118f2a18175b184a6f3c`](https://github.com/mehdi7129/inky-studio/tree/release/ios-1.0.0-build19) |
-| PHOTO service0.5.0rc2 | [`716104b130d34d1973001e78f15e25989d4c2e76`](https://github.com/mehdi7129/inky-studio/tree/release/backend-lan-photo-sharing-20261023) |
-| PHOTO service 0.5.0rc3 for InkyOS | [`imager-backend-0.5.0rc3`](https://github.com/mehdi7129/inky-studio/releases/tag/imager-backend-0.5.0rc3) |
+| iPhone build 19 | [ios-v1.0.0-build19](https://github.com/mehdi7129/inky-studio/tree/ios-v1.0.0-build19/ios) |
+| PHOTO service 0.5.0rc4 for InkyOS | [imager-backend-0.5.0rc4](https://github.com/mehdi7129/inky-studio/tree/imager-backend-0.5.0rc4/server) |
 
-See [release provenance](docs/releases/ios-v1.0.0-build19.json), the
-[ecosystem guide](docs/ECOSYSTEM.md), and the [release notes](docs/releases/ios-v1.0.0-build19.md).
-The iOS tag is a GitHub prerelease and does not replace the legacy stable backend
-updater's latest release. The `v*` workflow remains for matching backend versions;
-`ios-*` releases describe iPhone/component source checkpoints.
+See the [ecosystem guide](docs/ECOSYSTEM.md) and the
+[iPhone build provenance](docs/releases/ios-v1.0.0-build19.json). The PHOTO
+service release provides the wheel built for InkyOS. Its updater is disabled
+in that profile.
 
 ## Screenshots
 
@@ -84,7 +73,7 @@ These are not physical-frame proof or live pairing credentials.
 ## Build and contribute
 
 - [Build the iPhone app or create your own client](docs/ios/CURRENT-RELEASE.md), iOS 18 minimum.
-- [PHOTO API and runtime used by the latest image](https://github.com/mehdi7129/inky-studio/blob/imager-backend-0.5.0rc3/docs/IMAGER-LAN.md) and [local backend development](server/README.md).
+- [PHOTO API and runtime used by the latest image](https://github.com/mehdi7129/inky-studio/blob/imager-backend-0.5.0rc4/docs/IMAGER-LAN.md) and [local backend development](server/README.md).
 - `client/` retains the earlier React interface; its legacy installer is distinct
   from the InkyOS/inkyImager image. New frame users should follow the links above.
 
@@ -98,9 +87,7 @@ INKY_STUDIO_DISPLAY_MODE=mock inky-studio-server
 
 Backend CI uses mocked display I/O; driver tests inspect a pinned official wheel.
 Software/Simulator tests do not independently qualify physical display hardware.
-See [CLAUDE.md](CLAUDE.md) for contributor commands and conventions. Historical
-reports and inactive prototypes stay dated; publishing sources does not resume
-paused work or enable optional factory/Bluetooth/SoftAP/OTA paths.
+See [CLAUDE.md](CLAUDE.md) for contributor commands and conventions.
 
 ## Support and privacy
 
