@@ -4,11 +4,10 @@ Guidance for Claude Code (and human contributors) working in this repository.
 
 ## Current source delivery
 
-README.md and docs/ECOSYSTEM.md are the entry points for29 October2026.
-Main's executable implementation is preserved. The source release tag combines
-frozen iPhone65e626e and backend716104; read its provenance before building.
-`ios-*` source releases do not invoke the legacy `v*` backend updater workflow.
-Keep private IPA/card/credentials out of GitHub and do not resume paused work.
+Start with [README.md](README.md) and the [ecosystem guide](docs/ECOSYSTEM.md).
+The public release combines iOS 1.0.1 (20) and PHOTO service 0.5.0rc4.
+Keep historical distribution tags pinned to their original source.
+The legacy updater uses a separate `v*` release workflow.
 
 ## What this is
 

@@ -53,3 +53,11 @@ xcuserdata/
 ios/Signing.xcconfig
 # Hash-verified upstream wheel cache used by display tests (never a Pi payload).
 server/.test-wheels/
+
+# Local publication, diagnostics and signing files
+.netlify/
+*.whl
+*.p8
+*.p12
+*.mobileprovision
+*.provisionprofile

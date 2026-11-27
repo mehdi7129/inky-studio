@@ -2,36 +2,33 @@
 
 Native SwiftUI companion for Inky Studio, iOS 18+. Photo transfer requires a Raspberry reachable on the same local network. There is no cloud account. `InkyTLS` embeds pinned Mbed TLS 4.1.1 for Bluetooth provisioning.
 
-## Candidate and delivery
+## Source releases
 
-Current: **1.0.0 (19)**, source `65e626e8760bc956e17a118f2a18175b184a6f3c`,
-available in the existing internal TestFlight group. The maintainer confirms
-working photo use and QR sharing with the compatible LAN service716104.
-This source release is not an AppStore publication or public TestFlight invitation.
-See [current release notes](../docs/releases/ios-v1.0.0-build19.md).
-
-There is no product demo or manual frame-address/password form. Saved access
-is protected by FaceID or the iPhone passcode. Open **Réglages → Partager le
-cadre → Partager l’accès** to invite another iPhone; all authorized photo members
-may delegate PHOTO access on the compatible LAN service. Build19 reconnects
-on foreground activation after local authentication without a second retry tap.
+Build **1.0.1 (20)** is the current GitHub source prerelease. See the [release notes](../docs/releases/ios-v1.0.1-build20.md) and the [build 19 distribution record](../docs/releases/ios-v1.0.0-build19.md).
+In a fresh checkout, use the release tag to reproduce that source.
 
 ## Run
 
-Open `InkyStudio.xcodeproj`, choose InkyStudio and an iPhone Simulator or device. A fresh checkout needs the local TLS binary artifact:
+Open `ios/InkyStudio.xcodeproj` and choose the InkyStudio scheme. Run these commands from the repository root to prepare the pinned TLS dependency and build for Simulator:
 
 ```bash
 # Requires Xcode, CMake and Python 3.12+; downloads hash-verified upstream source.
 scripts/build-mbedtls-apple.sh
 
-# Regenerate after adding/removing source files.
-xcodegen generate --spec ios/project.yml
-
 xcodebuild build -project ios/InkyStudio.xcodeproj -scheme InkyStudio \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
 ```
 
-Scan the frame's supported LAN login QR or an owner's PHOTO invitation from another iPhone. Keep iPhone and frame on the same Wi-Fi and accept the iOS local-network prompt. The current LAN QR assumes that the frame already has a working network. Invitation endpoints require the matching backend implementation and a previously trusted HTTPS identity on the owner's iPhone; they do not upgrade an unpinned HTTP cookie. Offline first-boot association remains a separate InkyOS contract being integrated. Unsupported QRs must be rejected without replacing an existing frame or secret.
+Keep the phone and frame on the same LAN. Allow camera and local network access,
+then scan the frame QR or a PHOTO invitation. Build 20 uses the iPhone language
+automatically among its 11 localizations.
+
+For a physical device or a fork, set your own signing team and unique bundle ID
+in the InkyStudio target. Keep `ios/project.yml` in sync if you regenerate the
+project with XcodeGen. Use your own app record, version and unused build number
+when distributing through your Apple developer account. Keep the [MIT license](../LICENSE) and
+the [third-party notices](InkyStudio/Resources/ThirdPartyNotices.txt). For a new
+client, see the [PHOTO API](../docs/PHOTO-API.md).
 
 ## Features
 
@@ -50,11 +47,20 @@ Local unlock is separate from the Pi session. Face ID or the **system iPhone pas
 
 After the first successful QR association, the credential is saved under that protection. A failed save leaves the new association incomplete and prevents mutations until storage succeeds; retrying storage does not replay network login. Cancelled local authentication leaves the app locked. A background lock preserves a live Pi session instead of logging out. Content and network actions require the local unlocked state; no prompt or login is added to each photo request. Inactive system-authentication transitions must not cancel their own unlock attempt. A scene-window cover also shields presented photo surfaces while inactive, in addition to the root and native camera covers.
 
-Cookies remain private and in memory, isolated per origin/client and shared by JSON/PNG/WebSocket requests. The Pi invalidates sessions when its process restarts. **An old session with no saved credential can be locally locked/unlocked while still alive, but cannot be made durable by recovering a password from its opaque cookie.** If v11 was closed, or an app update terminated it after credential storage was skipped, its RAM cookie/password is already gone. Individual owner enrollment can only use a live legacy cookie over independently pinned HTTPS; this candidate cannot reconstruct a lost secret or copy an HTTP cookie into a different HTTPS client. Voluntary LAN recovery authenticates locally and validates a separate QR candidate before replacing the old connection; cancelling keeps the previous cookie, locator and protected credential. An adopted frame keeps its HTTPS pin: leaving that association requires fresh local authentication and an explicit, account-scoped forget confirmation, not an HTTP downgrade.
+Cookies remain in memory and are isolated by connection. A saved device credential
+opens a new session after a frame restart. If the saved locator is unavailable,
+a known alternate address or local hostname must confirm the same frame UUID
+and TLS key before receiving that credential. An expired or revoked device
+cannot fall back to a legacy password.
 
-Individual device credentials are generated and saved under protected Keychain access before enrollment or invitation claim. Requests retain their exact identifiers for an idempotent retry; the recipient keeps the invitation token in RAM, while an issuer's pending invitation operation may retain its token briefly in protected Keychain storage. Invitation payloads must never enter logs, UserDefaults or navigation URLs. A canonical invitation address may differ from the owner's current address only after the pinned frame's response confirms the exact same UUID and SPKI. It is encoded in the QR; owner credentials and cookies are never forwarded to that address. Expiration and single-use enforcement are authoritative on the backend. An expired or revoked device session must not fall back to a legacy password or Bluetooth owner credential.
+For a password-based frame QR, an anonymous nonce challenge binds the frame UUID
+and TLS key to the scanned secret. The password is sent only to the verified
+HTTPS endpoint. A frame with an unsupported proof prompts for a software update.
+Existing PHOTO invitation QRs already carry the frame identity and TLS pin.
 
-The existing LAN QR uses private-IPv4 HTTP:8000 and carries a frame password. It has no frame-ID/SPKI trust anchor and must not be treated as a pinned identity or copied as an invitation. Adopted frames retain the separate HTTPS pin/owner path with no silent fallback to HTTP. TLS checks are never bypassed and cross-origin redirects must not forward cookies/credentials. See [Bluetooth integration](../docs/ios/BLUETOOTH-INTEGRATION.md).
+After an interrupted upload, reopen the import sheet to resume or discard its
+protected draft. Resume is an explicit action and stays bound to the selected
+frame and device. Full receipt lookup needs PHOTO service 0.5.0rc4.
 
 ## Tests and visual checks
 

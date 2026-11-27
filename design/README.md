@@ -1,6 +1,6 @@
 # Inky Studio design
 
-The approved direction is the white/black bento in [the September 2026 explorations](explorations/2026-09-26/index.html). The other two directions remain reference concepts.
+The approved direction is the white/black bento in [the September 2026 explorations](https://github.com/mehdi7129/inky-studio/tree/ios-v1.0.0-build19/design/explorations/2026-09-26). The [early iPhone designs](https://github.com/mehdi7129/inky-studio/tree/ios-v1.0.0-build19/design/ios) are archived there too.
 
 ## Implementation
 

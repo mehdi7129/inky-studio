@@ -15,7 +15,7 @@ Approved: 2026-09-27. Mehdi approved all six bento mockups and asked for end-to-
 
 ## Work boundaries
 
-Implementation is isolated in the `codex/native-ios` worktree. Existing web/server behavior remains the compatibility contract. Design references are under `design/ios/2026-09-27`.
+Implementation is isolated in the `codex/native-ios` worktree. Existing web/server behavior remains the compatibility contract. The [early iPhone design references](https://github.com/mehdi7129/inky-studio/tree/ios-v1.0.0-build19/design/ios/2026-09-27) are archived with build 19.
 
 ## Validation log
 

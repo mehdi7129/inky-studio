@@ -17,7 +17,7 @@ ouverte ; aucun Wi-Fi de production n’a été changé.
 [État de l’intégration C2](BLUETOOTH-INTEGRATION.md).
 [Livraison serveur et étape restante](SERVER-CANDIDATE-DELIVERY.md).
 
-Visuels : [Bento 2](../../design/ios/2026-09-27-refinement/README.md).
+Visuels : [Bento 2](https://github.com/mehdi7129/inky-studio/tree/ios-v1.0.0-build19/design/ios/2026-09-27-refinement).
 Audit : [constats et limites](reviews/2026-09-27-ux-audit.md).
 Distribution publique : [plan App Store existant](APP-STORE-PLAN.md).
 

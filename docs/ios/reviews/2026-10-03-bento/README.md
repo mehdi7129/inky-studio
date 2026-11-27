@@ -15,7 +15,7 @@ lisibilité et les consignes sans changer l’architecture des écrans ni l’ic
 - 36 captures PNG réelles exportées des attachments XCTest, sans retouche. Démo
   publique et fixture HTTP sur loopback ; les paysages sont synthétiques.
   Aucun compte, réseau Wi-Fi ou photo personnels utilisés.
-- Référence : [direction validée](../../../../design/ios/2026-09-27-refinement/README.md)
+- Référence : [direction validée](https://github.com/mehdi7129/inky-studio/tree/ios-v1.0.0-build19/design/ios/2026-09-27-refinement)
   et [validation des arrondis](../2026-09-27-refinement-validation.md).
 - Les dates/heures et l’historique dépendent du moment de capture. Les barres
   natives suivent iOS ; le canevas rectangulaire de cadrage conserve le format

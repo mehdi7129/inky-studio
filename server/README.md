@@ -4,14 +4,16 @@ FastAPI service that drives the Inky display and serves the React frontend.
 
 ## Current frame service
 
-The current LAN service is0.5.0rc2 from716104. It is included in the
-[generic InkyOS prerelease](https://github.com/mehdi7129/inkyOS/releases/tag/2026.10.29-rc1),
-with inky2.5.0 and the explicit AC073 profile. The maintainer's existing frame was
-updated25/10 and photo sharing is confirmed; the new generic image's first
-physical boot is a separate pending qualification. See [IMAGER-LAN](../docs/IMAGER-LAN.md)
-and [current provenance](../docs/releases/ios-v1.0.0-build19.json). The hardware
-migration notes below retain their original diagnostic scope; old2.3 TEST images
-and other screen families are not the current reference installation.
+This repository publishes the **0.5.0rc4** PHOTO service source and a Python wheel
+for local qualification with iOS 1.0.1 (20). The distributed
+[InkyOS image](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.20-rc2)
+contains **0.5.0rc3** and the Pimoroni auto-detection profile.
+See [LAN configuration](../docs/IMAGER-LAN.md), the [PHOTO API](../docs/PHOTO-API.md)
+and the [release notes](../docs/releases/ios-v1.0.1-build20.md).
+
+Use InkyOS maintenance procedures for an installed frame. After a confirmed
+owner session retires an older bootstrap, reverting to a service that cannot
+read that credential format requires local recovery.
 
 ## Run locally (Mac/dev)
 
@@ -62,6 +64,6 @@ pip download --no-deps --require-hashes -r tests/fixtures/inky_260_requirement.t
 pytest
 ```
 
-Install `.[dev]` first. The driver tests load the SHA-256/RECORD-verified official
+Install `.[dev]` first. For the pinned qualification environment on macOS arm64/Python 3.13, install with `pip install -c constraints-qualification.txt -e ".[dev]"`. The driver tests load the SHA-256/RECORD-verified official
 wheels from this cache, with real NumPy/Pillow and simulated GPIO/SPI ports.
 Pytest does not download dependencies or touch hardware.
