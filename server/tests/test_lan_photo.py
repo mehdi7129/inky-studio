@@ -607,3 +607,39 @@ async def test_concurrent_stop_waits_for_panel_write_and_closes_further_start(ru
     assert len(frame.display.images) == 1
     assert rows(frame.store, "issued_invitations") == issued
     assert all(task.done() for task in frame.runtime._tasks)
+
+
+@pytest.mark.parametrize("uncertain", [False, True])
+def test_automatic_service_restart_cannot_reissue_qr_in_same_system_boot(tmp_path, uncertain):
+    clock = SimpleNamespace(wall=1000.0, mono=50.0, epoch="a" * 64)
+    system_boot = "01234567-2345-4567-8abc-0123456789ab"
+    next_boot = "12345678-1234-4567-8123-0123456789ab"
+
+    def start(boot_id):
+        return PhotoAccessStore(
+            tmp_path / "access", lambda: clock.epoch, clock=lambda: clock.wall,
+            monotonic=lambda: clock.mono, lan_bootstrap=True, lan_system_boot_id=boot_id,
+        )
+
+    value = start(system_boot)
+    original = bootstrap_invitation()
+    value.begin_lan_bootstrap(**original)
+    clock.wall += -1 if uncertain else 300
+    with pytest.raises(AccessError):
+        renew(value, original)
+    automatic = start(system_boot)
+    assert not automatic.lan_bootstrap_available()
+    with pytest.raises(AccessError):
+        automatic.begin_lan_bootstrap(**bootstrap_invitation())
+    with pytest.raises(AccessError):
+        automatic.claim(**claim(original))
+
+    restarted = start(next_boot)
+    assert restarted.lan_bootstrap_available()
+    fresh = bootstrap_invitation()
+    restarted.begin_lan_bootstrap(**fresh)
+    payload = claim(fresh)
+    principal = restarted.claim(**payload)
+    unknown_boot = start("")
+    assert not unknown_boot.lan_bootstrap_available()
+    assert unknown_boot.authenticate(payload["device_id"], payload["device_token"]) == principal

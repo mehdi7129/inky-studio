@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS invitations (
  claim_request_id TEXT UNIQUE, claim_device_id TEXT, claim_token_hash TEXT,
  revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1))
 );
+CREATE TABLE IF NOT EXISTS lan_bootstrap_boot (
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), boot_id TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS issued_invitations (
  invitation_id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,
  token_hash TEXT NOT NULL UNIQUE
@@ -87,7 +90,7 @@ class PhotoAccessStore:
     def __init__(self, directory: Path, epoch: Callable[[], str], *, gate=None,
                  clock: Callable[[], float] = time.time,
                  monotonic: Callable[[], float] = time.monotonic,
-                 lan_bootstrap: bool = False):
+                 lan_bootstrap: bool = False, lan_system_boot_id: str | None = None):
         if type(lan_bootstrap) is not bool:
             raise ValueError("Invalid LAN bootstrap policy")
         self.directory = Path(directory)
@@ -110,6 +113,7 @@ class PhotoAccessStore:
         self._last_wall = self._last_mono = None
         self._boot = secrets.token_hex(16)
         self._lan_bootstrap_enabled = lan_bootstrap
+        self._lan_system_boot_id = uuid(lan_system_boot_id) if lan_system_boot_id else lan_system_boot_id
         self._lan_bootstrap_started = False
         self._lan_bootstrap_id = None
         self._lan_bootstrap_deadline = None
@@ -247,8 +251,15 @@ class PhotoAccessStore:
         if not self._lan_bootstrap_enabled or self._lan_bootstrap_started:
             return False
         with self._gate, self._connection() as conn:
-            return conn.execute("SELECT 1 FROM devices WHERE epoch=? LIMIT 1",
-                                (self._epoch(),)).fetchone() is None
+            return self._lan_bootstrap_admitted(conn, self._epoch())
+
+    def _lan_bootstrap_admitted(self, conn, epoch) -> bool:
+        if self._lan_system_boot_id == "":
+            return False
+        if self._lan_system_boot_id is not None and conn.execute(
+                "SELECT 1 FROM lan_bootstrap_boot WHERE boot_id=?", (self._lan_system_boot_id,)).fetchone():
+            return False
+        return conn.execute("SELECT 1 FROM devices WHERE epoch=? LIMIT 1", (epoch,)).fetchone() is None
 
     def lan_bootstrap_completed(self) -> bool:
         """Read the durable pairing result, including revoked-device tombstones."""
@@ -285,7 +296,7 @@ class PhotoAccessStore:
             if not self._lan_bootstrap_enabled or self._lan_bootstrap_started:
                 raise AccessError("forbidden")
             epoch = self._epoch()
-            if conn.execute("SELECT 1 FROM devices WHERE epoch=? LIMIT 1", (epoch,)).fetchone():
+            if not self._lan_bootstrap_admitted(conn, epoch):
                 raise AccessError("forbidden")
             now, mono = self._observe_clock(conn)
             # Consume this process's mint permission before the durable write;
@@ -293,6 +304,8 @@ class PhotoAccessStore:
             self._lan_bootstrap_started = True
             self._insert_invitation(conn, LAN_BOOTSTRAP_ISSUER, epoch,
                                     invitation_id, hashed, request_id, now, mono, MAX_TTL)
+            if self._lan_system_boot_id is not None:
+                conn.execute("INSERT OR REPLACE INTO lan_bootstrap_boot VALUES (1,?)", (self._lan_system_boot_id,))
             self._lan_bootstrap_id = invitation_id
             self._lan_bootstrap_deadline = mono + MAX_TTL
             return {"invitation_id": invitation_id, "expires_at": now + MAX_TTL}
