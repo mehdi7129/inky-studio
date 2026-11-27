@@ -218,8 +218,9 @@ final class InkyStudioUITests: XCTestCase {
         XCTAssertTrue(unlock.waitForExistence(timeout: 5))
         XCTAssertFalse(firstPhoto.exists, "Private cached data must stay hidden until local unlock.")
         unlock.tap()
-        // Unlock returns to the frame tab; explicitly revisit the preserved queue.
-        XCTAssertTrue(element("frame.add").waitForExistence(timeout: 10))
+        // The selected tab can survive a local lock. Wait for the tabs to reopen
+        // before visiting the preserved queue.
+        XCTAssertTrue(tab("queue", fallback: "File").waitForExistence(timeout: 10))
         selectTab("queue", fallback: "File")
         let offline = app.staticTexts["Raspberry injoignable · données précédentes"]
         XCTAssertTrue(offline.waitForExistence(timeout: 10), "Returning offline must show the cached-data banner.")

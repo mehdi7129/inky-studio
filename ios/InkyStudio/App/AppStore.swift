@@ -101,7 +101,7 @@ final class AppStore: ObservableObject {
     private var refreshID: UUID?
     private var historyRevision = UUID()
     private var pendingClient: InkyAPI?
-    private var active = true
+    @Published private var active = true
     private var requestedRefresh = false
     private var connectionError = false
     private var passwordRotating = false

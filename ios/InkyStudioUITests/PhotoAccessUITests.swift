@@ -60,7 +60,9 @@ final class PhotoAccessUITests: XCTestCase {
         selectTab("frame", label: "Cadre", title: "Inky Studio")
         let add = app.buttons["frame.add"]
         scrollTo(add, in: app.scrollViews["frame.scroll"])
-        XCTAssertTrue(add.isEnabled, "Photo access must retain the import action.")
+        let canImport = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true"), object: add)
+        XCTAssertEqual(XCTWaiter.wait(for: [canImport], timeout: 5), .completed,
+                       "Photo access must retain the import action.")
         add.tap()
         XCTAssertTrue(app.buttons["choose-photo"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["choose-photo"].isEnabled)
