@@ -8,7 +8,9 @@ import os
 import re
 import signal
 import socket
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
@@ -29,7 +31,7 @@ from inky_web.events import EventBus
 from inky_web.frontend import resolve_client_dist
 from inky_web.inky.display import DisplayController
 from inky_web.inky.errors import DisplayUnavailableError
-from inky_web.photo_access import PhotoAccessStore
+from inky_web.photo_access import PhotoAccessStore, uuid
 from inky_web.provisioning.api import CONFIRM_PATH
 from inky_web.provisioning.api import router as provisioning_router
 from inky_web.provisioning.factory_writer import FactoryWriterRefused, main_writer_guard
@@ -248,6 +250,7 @@ async def lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
 @asynccontextmanager
 async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = None, *,
                            factory=None, lan_photo: bool = False):
+    app.state.lan_photo = lan_photo
     init_db()
     photos.recover_upload_files()
     app.state.sessions = auth.SessionStore()
@@ -277,9 +280,17 @@ async def _legacy_lifespan(app: FastAPI, stop_requested: asyncio.Event | None = 
                 return verified.photo_epoch()
             except (ValueError, OSError):
                 raise OSError("Identifiants du cadre indisponibles") from None
+        lan_system_boot_id = None
+        if lan_photo and sys.platform == "linux":
+            try:
+                lan_system_boot_id = uuid(Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip())
+            except (OSError, ValueError):
+                # Keep existing credentials usable when first-pairing authority cannot be established.
+                lan_system_boot_id = ""
+                logging.warning("System boot identity unavailable; initial PHOTO pairing disabled")
         app.state.photo_access = PhotoAccessStore(
             data_dir() / "photo-access", photo_epoch, gate=app.state.auth_service._lock,
-            lan_bootstrap=lan_photo,
+            lan_bootstrap=lan_photo, lan_system_boot_id=lan_system_boot_id,
         )
         app.state.sessions.principal_validator = app.state.photo_access.valid
     app.state.bus = EventBus()

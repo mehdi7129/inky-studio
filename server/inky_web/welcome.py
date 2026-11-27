@@ -108,23 +108,27 @@ def lan_login_payload(url: str, password: str | None) -> str | None:
     return payload if len(payload.encode("utf-8")) <= 512 else None
 
 
-def _fit_font(draw, text, size, width, *, bold=False, mono=False):
+def _fit_font(draw, text, size, width, *, bold=False, mono=False, font_path=None, direction=None):
     size = max(1, int(size))
     while True:
-        font = _find_font(size, bold=bold, mono=mono)
-        bbox = draw.textbbox((0, 0), text, font=font)
+        if font_path is None:
+            font = _find_font(size, bold=bold, mono=mono)
+        else:
+            layout = ImageFont.Layout.RAQM if direction else ImageFont.Layout.BASIC
+            font = ImageFont.truetype(str(font_path), size, layout_engine=layout)
+        bbox = draw.textbbox((0, 0), text, font=font, direction=direction)
         text_width = bbox[2] - bbox[0]
         if text_width <= width or size == 1:
             return font
         size = max(1, min(size - 1, int(size * width / text_width)))
 
 
-def _draw_centered(draw, text, y, font, width, fill, *, x=0):
-    bbox = draw.textbbox((0, 0), text, font=font)
+def _draw_centered(draw, text, y, font, width, fill, *, x=0, direction=None):
+    bbox = draw.textbbox((0, 0), text, font=font, direction=direction)
     text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
     # Position the actual glyph bounds, including fonts with a nonzero bearing.
     draw.text((x + (width - text_width) // 2 - bbox[0], y - bbox[1]),
-              text, font=font, fill=fill)
+              text, font=font, fill=fill, direction=direction)
     return y + text_height
 
 

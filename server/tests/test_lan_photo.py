@@ -161,19 +161,23 @@ def test_renewal_keeps_one_qr_and_one_antireplay_receipt(lan_store):
     value.begin_lan_bootstrap(**invite)
     before, = rows(value, "invitations")
     issued = rows(value, "issued_invitations")
-    clock.wall += 240
-    clock.mono += 240
-    assert renew(value, invite) is True
+    for _ in range(4):
+        clock.wall += 60
+        clock.mono += 60
+        assert renew(value, invite) is True
     after, = rows(value, "invitations")
-    assert after["expires_at"] == clock.wall + 300
-    assert after["expires_mono"] == clock.mono + 300
-    assert after["invitation_id"] == before["invitation_id"]
-    assert after["token_hash"] == before["token_hash"]
+    assert after == before
     assert rows(value, "issued_invitations") == issued
-    # The same physically rendered QR remains usable after its original expiry.
-    clock.wall += 61
-    clock.mono += 61
-    assert value.claim(**claim(invite)).role == "media"
+    assert value.remaining_lan_bootstrap_seconds() == 60
+    clock.wall += 60
+    clock.mono += 60
+    with pytest.raises(AccessError, match="expired"):
+        renew(value, invite)
+    assert rows(value, "invitations")[0]["revoked"]
+    with pytest.raises(AccessError):
+        value.claim(**claim(invite))
+    with pytest.raises(AccessError):
+        value.begin_lan_bootstrap(**bootstrap_invitation())
 
 
 def test_renewal_stops_without_extending_the_claim_receipt(lan_store):
@@ -411,6 +415,16 @@ async def test_lan_start_renders_one_private_qr_and_stop_does_not_repaint(runtim
     assert all(task.done() for task in frame.runtime._tasks)
 
 
+async def test_lan_start_reads_the_systemd_welcome_language(runtime_frame, monkeypatch):
+    frame = runtime_frame
+    monkeypatch.setenv("INKY_STUDIO_WELCOME_LANGUAGE", "ja")
+    await frame.runtime.start()
+    image, = frame.display.images
+    raw = frame.runtime._payload
+    assert image == render_lan_welcome(800, 480, raw, language="ja")
+    assert image != render_lan_welcome(800, 480, raw)
+
+
 @pytest.mark.parametrize(("width", "height", "module_scale"), [
     (212, 104, 1), (250, 122, 1), (400, 300, 3),
 ])
@@ -470,11 +484,31 @@ async def test_renewal_keeps_printed_qr_and_stops_after_claim(runtime_frame):
     invite = json.loads(raw)
     frame.store.claim(**claim({"invitation_id": invite["i"], "invitation_token": invite["t"]}))
     claimed, = rows(frame.store, "invitations")
-    assert claimed["expires_at"] > before["expires_at"]
+    assert claimed["expires_at"] == before["expires_at"]
     assert await frame.runtime._maintenance_once() is False
     assert frame.runtime._payload is None
     assert rows(frame.store, "invitations")[0]["expires_at"] == claimed["expires_at"]
     assert len(frame.display.images) == 1
+
+
+@pytest.mark.parametrize("uncertain", [False, True])
+async def test_bootstrap_closure_replaces_qr_without_remint(runtime_frame, monkeypatch, uncertain):
+    frame = runtime_frame
+    monkeypatch.setenv("INKY_STUDIO_WELCOME_LANGUAGE", "en")
+    await frame.runtime.start()
+    raw = json.loads(frame.runtime._payload)
+    if uncertain:
+        frame.clock.wall -= 1
+    else:
+        frame.clock.mono += 300
+    assert await frame.runtime._maintenance_once() is False
+    assert frame.runtime._payload is None
+    assert len(frame.display.images) == 2
+    assert frame.display.images[-1] == lan_runtime.render_lan_expired(800, 480, language="en")
+    assert len(rows(frame.store, "issued_invitations")) == 1
+    assert rows(frame.store, "invitations")[0]["revoked"]
+    with pytest.raises(AccessError):
+        frame.store.claim(**claim({"invitation_id": raw["i"], "invitation_token": raw["t"]}))
 
 
 @pytest.mark.parametrize("reason", ["existing_photo", "associated"])
@@ -573,3 +607,39 @@ async def test_concurrent_stop_waits_for_panel_write_and_closes_further_start(ru
     assert len(frame.display.images) == 1
     assert rows(frame.store, "issued_invitations") == issued
     assert all(task.done() for task in frame.runtime._tasks)
+
+
+@pytest.mark.parametrize("uncertain", [False, True])
+def test_automatic_service_restart_cannot_reissue_qr_in_same_system_boot(tmp_path, uncertain):
+    clock = SimpleNamespace(wall=1000.0, mono=50.0, epoch="a" * 64)
+    system_boot = "01234567-2345-4567-8abc-0123456789ab"
+    next_boot = "12345678-1234-4567-8123-0123456789ab"
+
+    def start(boot_id):
+        return PhotoAccessStore(
+            tmp_path / "access", lambda: clock.epoch, clock=lambda: clock.wall,
+            monotonic=lambda: clock.mono, lan_bootstrap=True, lan_system_boot_id=boot_id,
+        )
+
+    value = start(system_boot)
+    original = bootstrap_invitation()
+    value.begin_lan_bootstrap(**original)
+    clock.wall += -1 if uncertain else 300
+    with pytest.raises(AccessError):
+        renew(value, original)
+    automatic = start(system_boot)
+    assert not automatic.lan_bootstrap_available()
+    with pytest.raises(AccessError):
+        automatic.begin_lan_bootstrap(**bootstrap_invitation())
+    with pytest.raises(AccessError):
+        automatic.claim(**claim(original))
+
+    restarted = start(next_boot)
+    assert restarted.lan_bootstrap_available()
+    fresh = bootstrap_invitation()
+    restarted.begin_lan_bootstrap(**fresh)
+    payload = claim(fresh)
+    principal = restarted.claim(**payload)
+    unknown_boot = start("")
+    assert not unknown_boot.lan_bootstrap_available()
+    assert unknown_boot.authenticate(payload["device_id"], payload["device_token"]) == principal

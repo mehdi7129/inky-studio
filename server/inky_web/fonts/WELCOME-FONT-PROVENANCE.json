@@ -1,0 +1,101 @@
+{
+  "fonttools_version": "4.60.1",
+  "licenses": "OFL-1.1",
+  "sources": {
+    "ar": {
+      "source": "https://raw.githubusercontent.com/google/fonts/5026800714d07231937d92eb4cceabf06e05d74e/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf",
+      "sha256": "63111b5b2e074dd48cc67692e0a2726d86ee94c1c37fe8598257b7b4e87e869e",
+      "license_source": "https://raw.githubusercontent.com/google/fonts/5026800714d07231937d92eb4cceabf06e05d74e/ofl/notosansarabic/OFL.txt",
+      "license_sha256": "07fc70bfeb985cc1a87a8587d0a0c80bab11c86c9dc3fd95b6f0cb332f983e96",
+      "license_file": "OFL-Welcome-ar.txt",
+      "subsets": [
+        {
+          "file": "InkyWelcome-ar-Regular.ttf",
+          "sha256": "56e8d69c57d42636dbd7035a1aaaa4dfd0c099fef977fcbc5548942f2b4abedb",
+          "bytes": 13048
+        },
+        {
+          "file": "InkyWelcome-ar-Bold.ttf",
+          "sha256": "37a3fc264c0aef6420260e97f7618d75a6062f6c104d9dce22093ac49b38a283",
+          "bytes": 12884
+        }
+      ]
+    },
+    "ja": {
+      "source": "https://raw.githubusercontent.com/google/fonts/5026800714d07231937d92eb4cceabf06e05d74e/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf",
+      "sha256": "c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f",
+      "license_source": "https://raw.githubusercontent.com/google/fonts/5026800714d07231937d92eb4cceabf06e05d74e/ofl/notosansjp/OFL.txt",
+      "license_sha256": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
+      "license_file": "OFL-Welcome-ja.txt",
+      "subsets": [
+        {
+          "file": "InkyWelcome-ja-Regular.ttf",
+          "sha256": "fa300dba7695d1cb41a8b1579c8af1542804354fc2ec1ad2abeee4877681703e",
+          "bytes": 15336
+        },
+        {
+          "file": "InkyWelcome-ja-Bold.ttf",
+          "sha256": "9663336b68743d06c986ace6fe18badb20264e78060839821367c5d385f4e789",
+          "bytes": 11400
+        }
+      ]
+    },
+    "ko": {
+      "source": "https://raw.githubusercontent.com/google/fonts/5026800714d07231937d92eb4cceabf06e05d74e/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf",
+      "sha256": "194018e6b2b293a7964f037b25c0249ce1418bc9ab3c971060a03aa57861e252",
+      "license_source": "https://raw.githubusercontent.com/google/fonts/5026800714d07231937d92eb4cceabf06e05d74e/ofl/notosanskr/OFL.txt",
+      "license_sha256": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
+      "license_file": "OFL-Welcome-ko.txt",
+      "subsets": [
+        {
+          "file": "InkyWelcome-ko-Regular.ttf",
+          "sha256": "0de2cdd969c2888da05532ea18280fa2811275b88437aa263f07ce337f808e8b",
+          "bytes": 11740
+        },
+        {
+          "file": "InkyWelcome-ko-Bold.ttf",
+          "sha256": "0fa83d13333ced6c76b7269c0f6f373b30a52d8d9c116440e3a2eb41abcb43b1",
+          "bytes": 6588
+        }
+      ]
+    },
+    "zh-Hans": {
+      "source": "https://raw.githubusercontent.com/google/fonts/5026800714d07231937d92eb4cceabf06e05d74e/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf",
+      "sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+      "license_source": "https://raw.githubusercontent.com/google/fonts/5026800714d07231937d92eb4cceabf06e05d74e/ofl/notosanssc/OFL.txt",
+      "license_sha256": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
+      "license_file": "OFL-Welcome-zh-Hans.txt",
+      "subsets": [
+        {
+          "file": "InkyWelcome-zh-Hans-Regular.ttf",
+          "sha256": "7be70fb1f50203b092e31f922ad72e333e2f8dc6e18042b3a8795e42c8d6ff90",
+          "bytes": 10828
+        },
+        {
+          "file": "InkyWelcome-zh-Hans-Bold.ttf",
+          "sha256": "926d4f925929e60070249a822a600cfe4c0ec7d709806211c11160642da45279",
+          "bytes": 6916
+        }
+      ]
+    },
+    "zh-Hant": {
+      "source": "https://raw.githubusercontent.com/google/fonts/5026800714d07231937d92eb4cceabf06e05d74e/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf",
+      "sha256": "864727d210d54f2537bbe23b3a839436c3992af72de9322af5270897246bd44f",
+      "license_source": "https://raw.githubusercontent.com/google/fonts/5026800714d07231937d92eb4cceabf06e05d74e/ofl/notosanstc/OFL.txt",
+      "license_sha256": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
+      "license_file": "OFL-Welcome-zh-Hant.txt",
+      "subsets": [
+        {
+          "file": "InkyWelcome-zh-Hant-Regular.ttf",
+          "sha256": "e265223e20e6ec5ee3f0d8a106086480864755c48f6ec65a94d0e2f599043727",
+          "bytes": 12024
+        },
+        {
+          "file": "InkyWelcome-zh-Hant-Bold.ttf",
+          "sha256": "c4279f945e6aa3e74f81b9e310e7589c1b64ab0243e77e255bbf15f4886b2350",
+          "bytes": 7860
+        }
+      ]
+    }
+  }
+}

@@ -18,6 +18,7 @@ from inky_web.services import updater
 
 @pytest.fixture(autouse=True)
 def configured_release_source(monkeypatch):
+    monkeypatch.setenv("INKY_STUDIO_UPDATER_ENABLED", "1")
     monkeypatch.setattr(updater, "REPO_SLUG", "fixture/inky")
     monkeypatch.setattr(updater, "_status_cache", {"at": 0.0, "value": None, "repo_slug": None})
 
@@ -442,3 +443,40 @@ async def test_missing_frontend_assets_is_rejected_before_backup_or_apply(tmp_pa
     backup.assert_not_called()
     apply.assert_not_called()
     assert "Incomplete release payload" in events[-1][1]
+
+
+@pytest.mark.parametrize("flag", [None, "", "0", "true"])
+async def test_missing_or_nonexplicit_opt_in_disables_every_update_entrypoint(monkeypatch, capsys, tmp_path, flag):
+    if flag is None:
+        monkeypatch.delenv("INKY_STUDIO_UPDATER_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("INKY_STUDIO_UPDATER_ENABLED", flag)
+    fetch = Mock(side_effect=AssertionError("Disabled updater contacted the release feed"))
+    monkeypatch.setattr(updater, "_fetch_latest_release", fetch)
+    app = FastAPI()
+    app.include_router(system.router, prefix="/api")
+    with TestClient(app) as client:
+        assert client.get("/api/system/update").json()["update_available"] is False
+        assert client.post("/api/system/update").status_code == 403
+    events = []
+    assert not await updater.perform_update(lambda *args: events.append(args), install_dir=tmp_path / "absent")
+    assert events == [("error", "updater_disabled")]
+    assert updater.main() == 1
+    assert "updater_disabled" in capsys.readouterr().err
+    assert not (tmp_path / "absent").exists()
+    fetch.assert_not_called()
+
+
+def test_lan_profile_rejects_http_update_even_with_legacy_opt_in(monkeypatch):
+    fetch = Mock(side_effect=AssertionError("LAN profile contacted the release feed"))
+    monkeypatch.setattr(updater, "get_status", fetch)
+    perform = AsyncMock(side_effect=AssertionError("LAN profile ran the updater"))
+    monkeypatch.setattr(updater, "perform_update", perform)
+    app = FastAPI()
+    app.state.lan_photo = True
+    app.include_router(system.router, prefix="/api")
+    with TestClient(app) as client:
+        assert client.get("/api/system/update?refresh=1").json()["update_available"] is False
+        assert client.post("/api/system/update").status_code == 403
+    fetch.assert_not_called()
+    perform.assert_not_called()

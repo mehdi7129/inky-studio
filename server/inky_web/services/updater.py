@@ -64,6 +64,14 @@ _status_cache: dict[str, Any] = {"at": 0.0, "value": None, "repo_slug": None}
 
 
 # ── version + release metadata ───────────────────────────────────────────────
+def updates_enabled() -> bool:
+    return os.environ.get("INKY_STUDIO_UPDATER_ENABLED") == "1"
+
+
+def disabled_status() -> dict[str, Any]:
+    return {"current": __version__, "latest": None, "update_available": False}
+
+
 def _repo_configuration_error() -> str | None:
     if not REPO_SLUG:
         return "Les mises à jour ne sont pas configurées pour ce cadre."
@@ -130,8 +138,8 @@ def _is_newer_release(current: str, latest: str | None) -> bool:
 
 def get_status(*, use_cache: bool = True) -> dict[str, Any]:
     """Return ``{current, latest, update_available}`` (latest may be ``None``)."""
-    if _repo_configuration_error() is not None:
-        return {"current": __version__, "latest": None, "update_available": False}
+    if not updates_enabled() or _repo_configuration_error() is not None:
+        return disabled_status()
     now = time.time()
     cached = _status_cache["value"]
     if (
@@ -317,6 +325,9 @@ async def perform_update(emit: EmitFn, *, install_dir: Path | None = None) -> bo
     except factory_runtime.FactoryRuntimeError as error:
         _emit(emit, "error", error.code)
         return False
+    if not updates_enabled():
+        _emit(emit, "error", "updater_disabled")
+        return False
     configuration_error = _repo_configuration_error()
     if configuration_error is not None:
         _emit(emit, "error", configuration_error)
@@ -434,6 +445,9 @@ def main() -> int:
     except factory_runtime.FactoryRuntimeError as error:
         print(error.code, file=sys.stderr)
         return error.exit_status
+    if not updates_enabled():
+        print("updater_disabled", file=sys.stderr)
+        return 1
     configuration_error = _repo_configuration_error()
     if configuration_error is not None:
         print(f"{configuration_error} Définissez INKY_STUDIO_REPO_SLUG=owner/repo.", file=sys.stderr)
