@@ -53,7 +53,9 @@ async def status(request: Request) -> AuthStatus:
         return AuthStatus(authenticated=True, auth_required=False, password_change_supported=False)
     sessions = request.app.state.sessions
     is_authed = sessions.validate(auth.get_session_token(request))
-    return AuthStatus(authenticated=is_authed, auth_required=True)
+    principal = sessions.principal(auth.get_session_token(request)) if is_authed else None
+    return AuthStatus(authenticated=is_authed, auth_required=True,
+                      password_change_supported=principal is None or principal.role == "owner")
 
 
 @router.post("/login")
@@ -92,10 +94,32 @@ async def change_password(request: Request, payload: PasswordChangeRequest, resp
     ip = (request.client.host if request.client else "unknown") or "unknown"
     if not request.app.state.password_change_limiter.record_and_check(ip):
         raise HTTPException(status_code=429, detail="Trop de tentatives — réessaye dans une minute")
-    token = await anyio.to_thread.run_sync(
-        request.app.state.auth_service.change_password,
-        auth.get_session_token(request), payload.current_password, payload.new_password,
-    )
+    provisioning = getattr(request.app.state, "provisioning", None)
+    if provisioning is None:
+        token = await anyio.to_thread.run_sync(
+            request.app.state.auth_service.change_password,
+            auth.get_session_token(request), payload.current_password, payload.new_password,
+        )
+    else:
+        from inky_web.provisioning.api import owner_headers
+        from inky_web.provisioning.ownership import OwnershipError
+        async with provisioning.mutation_lock:
+            actor = None
+            if "x-inky-owner-id" in request.headers or "x-inky-owner-token" in request.headers:
+                owner_id, owner_token = owner_headers(request)
+                try:
+                    actor = provisioning.authorize(owner_id, owner_token).owner_id
+                except OwnershipError:
+                    raise HTTPException(status_code=401, detail="Autorisation du téléphone invalide") from None
+            try:
+                token = await anyio.to_thread.run_sync(
+                    request.app.state.auth_service.change_password,
+                    auth.get_session_token(request), payload.current_password, payload.new_password, actor,
+                )
+            finally:
+                # Any session must reconnect/re-authenticate against the current
+                # epoch. This also covers an ambiguous committed credential write.
+                provisioning.transport.close()
     auth.set_session_cookie(response, token, secure=request.url.scheme == "https")
     return AuthStatus(authenticated=True, auth_required=True)
 

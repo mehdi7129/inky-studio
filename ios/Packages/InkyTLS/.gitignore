@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+Artifacts/
+.generated/
+Tests/InkyTLSTests/Support/Generated/
+.DS_Store

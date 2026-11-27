@@ -1,0 +1,336 @@
+{
+  "definitions": {
+    "APState": {
+      "additionalProperties": false,
+      "properties": {
+        "ap_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "boot_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "country": {
+          "const": "FR"
+        },
+        "expires_boottime_ns": {
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "host": {
+          "const": "192.168.4.1"
+        },
+        "interface": {
+          "const": "wlan0"
+        },
+        "passphrase": {
+          "pattern": "^[0-9a-f]{24}$",
+          "type": "string"
+        },
+        "port": {
+          "const": 9443
+        },
+        "ssid": {
+          "pattern": "^Inky-[0-9a-f]{8}$",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "active",
+            "stopped",
+            "expired"
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "boot_id",
+        "ap_id",
+        "country",
+        "interface",
+        "ssid",
+        "passphrase",
+        "host",
+        "port",
+        "expires_boottime_ns"
+      ],
+      "type": "object"
+    },
+    "Workflow": {
+      "additionalProperties": false,
+      "properties": {
+        "frame_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "initialization_intent": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "initialization_receipt_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "spki_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "initialization_intent",
+        "initialization_receipt_digest",
+        "frame_id",
+        "spki_sha256"
+      ],
+      "type": "object"
+    }
+  },
+  "error": {
+    "additionalProperties": false,
+    "properties": {
+      "error": {
+        "enum": [
+          "invalid_request",
+          "forbidden",
+          "unavailable",
+          "not_found",
+          "conflict",
+          "challenge_expired",
+          "session_closed",
+          "ledger_full",
+          "effect_uncertain",
+          "country_unconfirmed",
+          "cleanup_unconfirmed",
+          "network_unconfirmed",
+          "publication_conflict",
+          "origin_unavailable",
+          "expired",
+          "reconciliation_required",
+          "policy_invalid",
+          "invalid_clock",
+          "random_unavailable",
+          "closed",
+          "ap_unavailable",
+          "ap_ownership_changed",
+          "ap_timeout",
+          "ap_effect_uncertain",
+          "source_changed",
+          "writer_guard_failed",
+          "radio_unconfirmed",
+          "ap_profile_changed",
+          "ap_inventory_changed",
+          "nm_owner_changed",
+          "timeout"
+        ]
+      },
+      "id": {
+        "oneOf": [
+          {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "ok": {
+        "const": false
+      },
+      "v": {
+        "const": 1
+      }
+    },
+    "required": [
+      "v",
+      "id",
+      "ok",
+      "error"
+    ],
+    "type": "object"
+  },
+  "requests": {
+    "setup.ap.start": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "additionalProperties": false,
+          "properties": {
+            "workflow": {
+              "$ref": "#/$defs/Workflow"
+            }
+          },
+          "required": [
+            "workflow"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "op": {
+          "const": "setup.ap.start"
+        },
+        "v": {
+          "const": 1
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "args"
+      ],
+      "type": "object"
+    },
+    "setup.ap.status": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "additionalProperties": false,
+          "properties": {
+            "workflow": {
+              "$ref": "#/$defs/Workflow"
+            }
+          },
+          "required": [
+            "workflow"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "op": {
+          "const": "setup.ap.status"
+        },
+        "v": {
+          "const": 1
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "args"
+      ],
+      "type": "object"
+    },
+    "setup.ap.stop": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "additionalProperties": false,
+          "properties": {
+            "workflow": {
+              "$ref": "#/$defs/Workflow"
+            }
+          },
+          "required": [
+            "workflow"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "op": {
+          "const": "setup.ap.stop"
+        },
+        "v": {
+          "const": 1
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "args"
+      ],
+      "type": "object"
+    }
+  },
+  "responses": {
+    "setup.ap.start": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "$ref": "#/$defs/APState"
+        },
+        "v": {
+          "const": 1
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "ok",
+        "result"
+      ],
+      "type": "object"
+    },
+    "setup.ap.status": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "$ref": "#/$defs/APState"
+        },
+        "v": {
+          "const": 1
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "ok",
+        "result"
+      ],
+      "type": "object"
+    },
+    "setup.ap.stop": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "$ref": "#/$defs/APState"
+        },
+        "v": {
+          "const": 1
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "ok",
+        "result"
+      ],
+      "type": "object"
+    }
+  },
+  "source_sha256": "101d169b3eb5a1ecbfd9345e874dbf686095b304efe1db678963ceac16e81a06"
+}

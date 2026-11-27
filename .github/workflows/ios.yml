@@ -3,9 +3,9 @@ name: iOS
 on:
   push:
     branches: [main]
-    paths: ["ios/**", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "scripts/build-mbedtls-apple.sh", "scripts/test-bluetooth-channel.sh", "scripts/test-https-wire.sh", "scripts/https-wire-bench/**", "server/inky_web/**", "server/pyproject.toml", ".github/workflows/ios.yml"]
   pull_request:
-    paths: ["ios/**", ".github/workflows/ios.yml"]
+    paths: ["ios/**", "scripts/build-mbedtls-apple.sh", "scripts/test-bluetooth-channel.sh", "scripts/test-https-wire.sh", "scripts/https-wire-bench/**", "server/inky_web/**", "server/pyproject.toml", ".github/workflows/ios.yml"]
   workflow_dispatch:
 
 concurrency:
@@ -23,7 +23,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Prepare synthetic TLS fixtures
+        run: |
+          python3 -m pip install 'cryptography>=44,<51'
+          echo "INKY_TLS_TEST_PYTHON=$(command -v python3)" >> "$GITHUB_ENV"
+          echo "INKY_TLS_PYTHON=$(command -v python3)" >> "$GITHUB_ENV"
+          echo "INKY_HTTPS_PYTHON=$(command -v python3)" >> "$GITHUB_ENV"
+          INKY_TLS_TEST_PYTHON="$(command -v python3)" bash ios/Packages/InkyTLS/Tests/InkyTLSTests/Support/generate-fixtures.sh
+      - name: Build pinned TLS dependency
+        run: scripts/build-mbedtls-apple.sh
+      - name: Test TLS bridge
+        run: swift test --package-path ios/Packages/InkyTLS
+      - name: Test Bluetooth channel against Python GATT transport
+        run: scripts/test-bluetooth-channel.sh
+      - name: Install backend fixture dependencies
+        run: python3 -m pip install -e 'server[dev]'
+      - name: Test adopted HTTPS identity over real loopback sockets
+        run: scripts/test-https-wire.sh
       - name: Start isolated frame fixture
         run: |
           python3 ios/scripts/mock-server.py > /tmp/inky-fixture.log 2>&1 &
@@ -42,10 +64,31 @@ jobs:
           python3 ios/scripts/seed-simulator-photo.py "$DEVICE_ID"
       - name: Build and test
         run: |
+          fixture_dir=$(mktemp -d)
+          python3 ios/scripts/photo-access-backend-fixture.py --backend "$PWD" \
+            --expected-backend-commit "$(git rev-parse HEAD)" --output-dir "$fixture_dir" \
+            > "$fixture_dir/fixture.log" 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true; wait "$fixture_pid" || true' EXIT
+          for attempt in {1..40}; do
+            if [ -s "$fixture_dir/fixture-environment.json" ]; then break; fi
+            if ! kill -0 "$fixture_pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ ! -s "$fixture_dir/fixture-environment.json" ]; then
+            cat "$fixture_dir/fixture.log"
+            exit 1
+          fi
+          for key in INKY_PHOTO_INTEROP_{HTTP_ENDPOINT,ENDPOINT,FRAME_ID,SPKI_SHA256}; do
+            value=$(jq -er --arg key "$key" '.[$key]' "$fixture_dir/fixture-environment.json")
+            export "TEST_RUNNER_${key}=$value"
+          done
           xcodebuild -project ios/InkyStudio.xcodeproj -scheme InkyStudio \
             -destination "platform=iOS Simulator,id=$INKY_SIMULATOR_ID" \
             -parallel-testing-enabled NO -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+          jq -e '.http_proof_audit | .requests_checked == 2 and .unique_nonces == 2 and .safety_failures == 0' \
+            "$fixture_dir/backend-receipt.json"
       - name: Build iPhone release
         run: |
           xcodebuild -project ios/InkyStudio.xcodeproj -scheme InkyStudio \

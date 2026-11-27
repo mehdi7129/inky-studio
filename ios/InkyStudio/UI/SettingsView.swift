@@ -1,12 +1,14 @@
 import SwiftUI
 
 struct SettingsView: View {
+    var onShareAccess: () -> Void = {}
     @EnvironmentObject private var store: AppStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var draft = FrameSettings()
-    @State private var enableBiometric = false
-    @State private var changePassword = false
+    @State private var bluetoothSetup = false
     @State private var confirmUpdate = false
     @State private var confirmForget = false
+    @State private var gettingStarted = false
     @State private var loaded = false
     private var dirty: Bool { loaded && store.settings != draft }
     var body: some View {
@@ -15,11 +17,8 @@ struct SettingsView: View {
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 16) {
                         Label("Programmation", systemImage: "clock").font(.headline).foregroundStyle(Bento.amber)
-                        Picker("Mode de changement", selection: $draft.changeMode) {
-                            Text("Quotidien").tag(ChangeMode.daily)
-                            Text("Intervalle").tag(ChangeMode.interval)
-                            Text("Manuel").tag(ChangeMode.manual)
-                        }.pickerStyle(.segmented).accessibilityIdentifier("settings.mode")
+                        if dynamicTypeSize.isAccessibilitySize { modePicker.pickerStyle(.menu) }
+                        else { modePicker.pickerStyle(.segmented) }
                         if draft.changeMode == .daily {
                             HStack {
                                 Text("Heure d’affichage").font(.subheadline)
@@ -28,40 +27,47 @@ struct SettingsView: View {
                                     ForEach(0..<24) { hour in Text(String(format: "%02d:00", hour)).tag(hour) }
                                 }.labelsHidden().accessibilityIdentifier("settings.hour")
                             }
-                            Text("Selon l’heure locale du Raspberry.").font(.caption).foregroundStyle(.secondary)
+                            Text("Selon l’heure locale du Raspberry.").font(.caption).foregroundStyle(Bento.secondaryInk)
                         } else if draft.changeMode == .interval {
                             Stepper(value: $draft.changeIntervalMinutes, in: 1...1440) {
-                                Text("Toutes les \(draft.changeIntervalMinutes) min").font(.subheadline)
+                                Text(draft.changeIntervalMinutes == 1 ? "Toutes les minutes" : "Toutes les \(draft.changeIntervalMinutes) min").font(.subheadline)
                             }.accessibilityIdentifier("settings.interval")
                         } else {
-                            Text("Les photos changent uniquement avec les commandes du cadre.").font(.caption).foregroundStyle(.secondary)
+                            Text("Utilisez Précédente et Suivante dans l’onglet Cadre pour changer de photo.").font(.caption).foregroundStyle(Bento.secondaryInk)
                         }
                     }.bentoCard()
-                    VStack(alignment: .leading, spacing: 12) {
+                    if store.canAdminister { VStack(alignment: .leading, spacing: 12) {
                         Label("Image", systemImage: "photo").font(.headline)
-                        HStack { Text("Saturation"); Spacer(); Text(draft.saturation.formatted(.number.precision(.fractionLength(1)))).foregroundStyle(.secondary).monospacedDigit() }
+                        HStack { Text("Saturation"); Spacer(); Text(draft.saturation.formatted(.number.precision(.fractionLength(1)))).foregroundStyle(Bento.secondaryInk).monospacedDigit() }
                         Slider(value: $draft.saturation, in: 0...2, step: 0.1).accessibilityLabel("Saturation").accessibilityIdentifier("settings.saturation")
-                        Text("La couleur est adaptée au panneau lors de l’affichage.").font(.caption).foregroundStyle(.secondary)
-                    }.bentoCard()
+                        Text("Les couleurs sont adaptées à l’écran lors de l’affichage.").font(.caption).foregroundStyle(Bento.secondaryInk)
+                    }.bentoCard() }
                     Button { Task { await store.saveSettings(draft) } } label: {
                         if store.busy { ProgressView().tint(Bento.actionText) } else { Text("Enregistrer les réglages") }
                     }.buttonStyle(PrimaryButtonStyle()).disabled(!dirty || !store.canMutate).accessibilityIdentifier("settings.save")
+                        .accessibilityLabel("Enregistrer les réglages")
+                        .accessibilityValue(store.busy ? "Opération en cours" : "")
                     VStack(alignment: .leading, spacing: 12) {
-                        Label("Connexion", systemImage: "wifi").font(.headline)
-                        Toggle(isOn: Binding(get: { store.biometricEnabled }, set: { enabled in
-                            if enabled { enableBiometric = true } else { store.disableBiometrics() }
-                        })) {
-                            Label("Connexion avec \(store.biometricName)", systemImage: store.biometricName == "Face ID" ? "faceid" : "touchid")
-                        }.tint(Bento.blue).disabled(store.vault.capability == nil && !store.biometricEnabled).accessibilityIdentifier("settings.biometric")
-                        Text(store.vault.capability == nil ? "Configurez Face ID ou Touch ID dans les réglages de votre iPhone pour l’activer." : "Utiliser le mot de passe enregistré.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        if store.passwordChangeSupported {
-                            Divider()
-                            Button { changePassword = true } label: {
-                                Label("Changer le mot de passe du cadre", systemImage: "key")
+                        Label(store.photoAccessRole == .media && !store.photoAccessCanInvite ? "Accès partagé" : "Partager le cadre", systemImage: "person.2")
+                            .font(.headline)
+                        if store.photoAccessRole == .media && !store.photoAccessCanInvite {
+                            Text("Vous pouvez ajouter des photos et choisir leur programmation. Le propriétaire gère les accès et la configuration du cadre.")
+                                .font(.subheadline).foregroundStyle(Bento.secondaryInk)
+                            if let deviceID = store.photoAccessDeviceID {
+                                Text("Identifiant de cet accès : \(deviceID.uuidString.lowercased().prefix(8))")
+                                    .font(.caption.monospaced()).foregroundStyle(Bento.secondaryInk)
+                            }
+                        } else {
+                            Text("Créez un QR code à scanner avec Inky Studio sur l’autre iPhone pour lui donner accès aux photos du cadre.")
+                                .font(.subheadline).foregroundStyle(Bento.secondaryInk)
+                            Button { onShareAccess() } label: {
+                                Label("Partager l’accès", systemImage: "qrcode")
                                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            }.disabled(!store.canMutate || store.displayBusy)
-                                .accessibilityIdentifier("settings.password")
+                            }.disabled(!store.canShareAccess).accessibilityIdentifier("settings.shareAccess")
+                            if !store.canShareAccess {
+                                Text("Le partage nécessite une association sécurisée avec le cadre.")
+                                    .font(.caption).foregroundStyle(Bento.secondaryInk)
+                            }
                         }
                     }.bentoCard()
                     VStack(alignment: .leading, spacing: 14) {
@@ -69,69 +75,79 @@ struct SettingsView: View {
                         if let display = store.state?.display {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(display.model).font(.subheadline)
-                                Text("\(display.width) × \(display.height) · \(display.colors) couleurs").font(.caption).foregroundStyle(.secondary)
+                                Text("\(display.width) × \(display.height) · \(display.colors) couleurs").font(.caption).foregroundStyle(Bento.secondaryInk)
                             }
                         }
-                        Text(store.address).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        if store.canAdminister && (store.bluetoothSupported || store.hasAdoptedFrame) {
+                            Button { bluetoothSetup = true } label: {
+                                Label("Configurer le Wi-Fi du cadre", systemImage: "wifi")
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }.disabled(store.busy || store.displayBusy || store.pairingNeedsCompletion)
+                                .accessibilityIdentifier("settings.bluetooth")
+                        }
                         Divider()
-                        HStack { Text("Version du Pi"); Spacer(); Text(store.version).foregroundStyle(.secondary) }.font(.subheadline)
-                        Button { Task { await store.checkUpdate() } } label: {
+                        HStack { Text("Version du cadre"); Spacer(); Text(store.version).foregroundStyle(Bento.secondaryInk) }.font(.subheadline)
+                        if store.canAdminister { Button { Task { await store.checkUpdate() } } label: {
                             HStack { Text("Vérifier les mises à jour"); Spacer(); Image(systemName: "arrow.clockwise") }.font(.subheadline).frame(minHeight: 44)
                         }.disabled(!store.canMutate).accessibilityIdentifier("settings.checkUpdate")
                         if let update = store.availableUpdate {
                             if update.updateAvailable, let version = update.latest {
                                 Button("Installer la version \(version)") { confirmUpdate = true }.buttonStyle(OutlineButtonStyle()).disabled(!store.canMutate)
                             } else {
-                                Text(update.latest == nil ? "La dernière version n’a pas pu être vérifiée." : "Votre Raspberry est à jour.").font(.caption).foregroundStyle(.secondary)
+                                Text(update.latest == nil ? "La dernière version n’a pas pu être vérifiée." : "Votre cadre est à jour.").font(.caption).foregroundStyle(Bento.secondaryInk)
                             }
                         }
-                        if let message = store.updateMessage { Label(message, systemImage: "arrow.down.circle").font(.caption).foregroundStyle(Bento.blue) }
-                        Button("Se déconnecter", role: .destructive) { Task { await store.logout() } }
-                            .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44).accessibilityIdentifier("settings.logout")
+                        if let message = store.updateMessage { Label(message, systemImage: "arrow.down.circle").font(.caption).foregroundStyle(Bento.blue) } }
                     }.bentoCard()
                     HStack(spacing: 12) {
-                        Image(systemName: "circle.lefthalf.filled").foregroundStyle(.secondary)
+                        Image(systemName: "circle.lefthalf.filled").foregroundStyle(Bento.secondaryInk)
                         Text("Apparence")
                         Spacer()
-                        Text("Système").foregroundStyle(.secondary)
+                        Text("Système").foregroundStyle(Bento.secondaryInk)
                     }.font(.subheadline).bentoCard().accessibilityElement(children: .combine)
-                    Button("Oublier ce cadre", role: .destructive) { confirmForget = true }.font(.subheadline).frame(minHeight: 44)
+                    SupportPrivacyLinks(identifierPrefix: "settings")
+                    Button { gettingStarted = true } label: { Label("Premiers pas avec un cadre", systemImage: "questionmark.circle").frame(minHeight: 44) }
+                        .accessibilityIdentifier("settings.guide")
+                    Button("Oublier ce cadre", role: .destructive) { confirmForget = true }
+                        .font(.subheadline).frame(minHeight: 44).accessibilityIdentifier("settings.forget")
                     Text("Inky Studio pour iPhone · \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")")
-                        .font(.caption).foregroundStyle(.secondary).padding(.bottom, 16)
+                        .font(.caption).foregroundStyle(Bento.secondaryInk).padding(.bottom, 16)
                 }.padding(16).frame(maxWidth: 680).frame(maxWidth: .infinity)
-            }.navigationTitle("Réglages").screenBackground()
+            }.accessibilityIdentifier("settings.scroll")
+                .navigationTitle("Réglages").screenBackground()
                 .task { if !loaded, let settings = store.settings { draft = settings; loaded = true } }
                 .onChange(of: store.settings) { old, new in if !loaded || draft == old { if let new { draft = new; loaded = true } } }
-                .sheet(isPresented: $enableBiometric) { BiometricSetupView() }
-                .sheet(isPresented: $changePassword) { PasswordChangeView() }
-                .confirmationDialog("Mettre à jour le Raspberry ?", isPresented: $confirmUpdate) {
+                .sheet(isPresented: $gettingStarted, onDismiss: { store.completeQueuedConnection() }) { GettingStartedView(allowWiFiSetup: !store.isMediaPhotoAccess && store.hasAdoptedFrame && !store.pairingNeedsCompletion) }
+                .sheet(isPresented: $bluetoothSetup, onDismiss: {
+                    store.cancelFactorySetup()
+                    store.completeQueuedConnection()
+                }) {
+                    BluetoothSetupView(beginWindow: store.connected && store.bluetoothSupported ? {
+                        try await store.beginBluetoothAdoption()
+                    } : nil, authorize: { await store.authorizeFactorySetup() },
+                        onClose: { store.cancelFactorySetup() },
+                        routeFactoryCode: { store.queueFactorySetup($0) },
+                        routeFactoryOwner: { store.queueFactoryOwner($0) },
+                        routePhotoInvitation: { store.queuePhotoInvitation($0) },
+                        didFinishFactory: { endpoint, owner, status in
+                            await store.finishFactorySetup(endpoint: endpoint, owner: owner, status: status)
+                        }) { endpoint, owner in
+                        await store.finishBluetoothSetup(endpoint: endpoint, owner: owner)
+                    }
+                }
+                .confirmationDialog("Mettre à jour le cadre ?", isPresented: $confirmUpdate) {
                     Button("Installer la mise à jour") { Task { await store.startUpdate() } }
                 } message: { Text("Le service va redémarrer. Une reconnexion sera ensuite nécessaire.") }
                 .confirmationDialog("Oublier ce cadre sur cet iPhone ?", isPresented: $confirmForget) {
                     Button("Oublier ce cadre", role: .destructive) { Task { await store.logout(forget: true) } }
-                } message: { Text("L’adresse et le mot de passe enregistré seront supprimés de cet iPhone. Les photos du cadre seront conservées.") }
+                } message: { Text("L’accès enregistré sera supprimé de cet iPhone. Les photos du cadre seront conservées. Un nouveau scan sera nécessaire pour vous reconnecter.") }
         }
     }
-}
-
-private struct BiometricSetupView: View {
-    @EnvironmentObject private var store: AppStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var password = ""
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 24) {
-                Label("Activer \(store.biometricName)", systemImage: "faceid").font(.title2.weight(.bold))
-                Text("Confirmez le mot de passe du cadre pour l’enregistrer dans le trousseau de cet iPhone.").foregroundStyle(.secondary)
-                SecureField("Mot de passe du cadre", text: $password).textContentType(.password).textFieldStyle(.roundedBorder)
-                Button {
-                    Task { await store.enableBiometrics(password: password); if store.biometricEnabled { dismiss() } }
-                } label: { if store.busy { ProgressView().tint(Bento.actionText) } else { Text("Activer") } }
-                    .buttonStyle(PrimaryButtonStyle()).disabled(password.isEmpty || store.busy)
-                if let error = store.errorMessage { Text(error).font(.subheadline).foregroundStyle(.red) }
-                Spacer()
-            }.padding(24).background(Bento.background)
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() }.disabled(store.busy) } }
-        }.presentationDetents([.medium, .large]).interactiveDismissDisabled(store.busy)
+    private var modePicker: some View {
+        Picker("Mode de changement", selection: $draft.changeMode) {
+            Text("Quotidien").tag(ChangeMode.daily)
+            Text("Intervalle").tag(ChangeMode.interval)
+            Text("Manuel").tag(ChangeMode.manual)
+        }.accessibilityIdentifier("settings.mode")
     }
 }

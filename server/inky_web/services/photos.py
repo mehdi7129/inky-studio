@@ -3,14 +3,20 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import re
+import tempfile
 import time
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
+from sqlite3 import Connection
 
 from PIL import Image
 
-from inky_web.db import connection, photos_dir
+from inky_web.db import connection, photos_dir, transaction
 from inky_web.models import Photo
 
 logger = logging.getLogger(__name__)
@@ -81,69 +87,93 @@ def path_for(photo_id: str) -> Path:
     return photos_dir() / f"{photo_id}.png"
 
 
-def save(
-    *,
-    content: bytes,
-    original_filename: str,
-    expected_size: tuple[int, int] | None = None,
-) -> tuple[Photo, bool]:
-    """Persist a photo. Returns (photo, already_existed).
+@contextmanager
+def storage_transaction() -> Iterator[tuple[Connection, list[Path]]]:
+    """Undo filesystem additions after a transaction rollback or a failed write."""
+    created: list[Path] = []
+    try:
+        with transaction() as conn:
+            yield conn, created
+    except BaseException:
+        if created:
+            try:
+                with transaction() as conn:
+                    for path in created:
+                        if conn.execute("SELECT 1 FROM photos WHERE id = ?", (path.stem,)).fetchone() is None:
+                            path.unlink(missing_ok=True)
+            except Exception:
+                # A failed database read cannot establish that a file is unreferenced.
+                logger.warning("Photo staging cleanup deferred until restart")
+        raise
 
-    If a photo with the same sha256 already exists, no file is written and the
-    existing row is returned. The expected_size guard checks that the upload
-    matches the connected display — pass None to skip the check (useful in tests).
-    """
+
+def recover_upload_files() -> None:
+    """Called under the startup writer guard before serving frame requests."""
+    with transaction() as conn:
+        known = {row["id"] for row in conn.execute("SELECT id FROM photos")}
+        for path in photos_dir().iterdir():
+            if path.name.startswith(".inky-upload-") or (
+                re.fullmatch(r"[0-9a-f]{12}\.png", path.name) and path.stem not in known
+            ):
+                if path.is_file():
+                    path.unlink(missing_ok=True)
+
+
+def prepare(content: bytes, expected_size: tuple[int, int] | None) -> tuple[int, int, str]:
     if not content:
         raise PhotoValidationError("Empty payload")
-
     width, height, mime = _validate_image(content, expected_size)
     if mime != "image/png":
-        raise PhotoValidationError(
-            "Only PNG uploads are accepted — the browser must convert before upload"
-        )
+        raise PhotoValidationError("Only PNG uploads are accepted — the browser must convert before upload")
+    return width, height, mime
 
-    sha = hashlib.sha256(content).hexdigest()
-    existing = find_by_sha(sha)
-    if existing:
-        logger.info("Dedupe hit on sha %s — reusing photo %s", sha[:12], existing.id)
-        return existing, True
 
-    photo_id = uuid.uuid4().hex[:12]
-    path = path_for(photo_id)
-    path.write_bytes(content)
+def save_prepared(conn: Connection, created: list[Path], *, content: bytes, sha: str,
+                  original_filename: str, dimensions: tuple[int, int, str]) -> tuple[Photo, bool]:
+    row = conn.execute("SELECT * FROM photos WHERE sha256 = ?", (sha,)).fetchone()
+    if row is not None:
+        return _row_to_photo(row), True
 
-    now = time.time()
-    photo = Photo(
-        id=photo_id,
-        sha256=sha,
-        original_filename=original_filename,
-        mime=mime,
-        width=width,
-        height=height,
-        size_bytes=len(content),
-        created_at=now,
+    width, height, mime = dimensions
+    destination = path_for(uuid.uuid4().hex[:12])
+    while destination.exists() or conn.execute("SELECT 1 FROM photos WHERE id = ?", (destination.stem,)).fetchone():
+        destination = path_for(uuid.uuid4().hex[:12])
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".inky-upload-", delete=False) as file:
+            temporary = Path(file.name)
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, destination)
+        created.append(destination)
+        descriptor = os.open(destination.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+    photo = Photo(id=destination.stem, sha256=sha, original_filename=original_filename,
+                  mime=mime, width=width, height=height, size_bytes=len(content), created_at=time.time())
+    conn.execute(
+        """INSERT INTO photos
+           (id, sha256, original_filename, mime, width, height, size_bytes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (photo.id, photo.sha256, photo.original_filename, photo.mime, photo.width,
+         photo.height, photo.size_bytes, photo.created_at),
     )
-
-    with connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO photos
-                (id, sha256, original_filename, mime, width, height, size_bytes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                photo.id,
-                photo.sha256,
-                photo.original_filename,
-                photo.mime,
-                photo.width,
-                photo.height,
-                photo.size_bytes,
-                photo.created_at,
-            ),
-        )
-    logger.info("Saved photo %s (%s, %sx%s, %sB)", photo.id, original_filename, width, height, len(content))
     return photo, False
+
+
+def save(*, content: bytes, original_filename: str,
+         expected_size: tuple[int, int] | None = None) -> tuple[Photo, bool]:
+    dimensions = prepare(content, expected_size)
+    with storage_transaction() as (conn, created):
+        return save_prepared(conn, created, content=content, sha=hashlib.sha256(content).hexdigest(),
+                             original_filename=original_filename, dimensions=dimensions)
 
 
 def delete(photo_id: str) -> bool:

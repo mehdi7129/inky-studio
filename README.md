@@ -1,105 +1,43 @@
 # Inky Studio
 
-Native iPhone photo app and local PHOTO service for an InkyOS e-paper frame.
-Connect by QR, crop photos, manage the queue/history and choose manual, daily or
-interval display schedules. Photo transfer and access sharing use your local network.
+Send photos from an iPhone to an Inky e-paper frame on your local network. Scan the frame’s QR, unlock with Face ID or your iPhone passcode, then choose, crop and send a photo. You can also manage the queue, history and display schedule, and share access with another iPhone.
 
-[![CI](https://github.com/mehdi7129/inky-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/mehdi7129/inky-studio/actions/workflows/ci.yml)
-[![iOS](https://github.com/mehdi7129/inky-studio/actions/workflows/ios.yml/badge.svg)](https://github.com/mehdi7129/inky-studio/actions/workflows/ios.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[Build and fork the iPhone app](ios/README.md) · [PHOTO API](docs/PHOTO-API.md) · [Screenshots](docs/ios/screenshots/README.md) · [MIT license](LICENSE)
 
 ## Get started
 
-| Component | Current delivery | Purpose |
-|---|---|---|
-| [inkyImager 0.1.5 (.dmg)](https://github.com/mehdi7129/inkyImager/releases/download/v0.1.5/inkyImager-0.1.5-Universal.dmg) | Notarized Universal DMG, macOS 14+ on Intel and Apple Silicon | Prepare a new SD card and its Wi-Fi configuration. |
-| [InkyOS 2026.11.27-rc3](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.27-rc3) | Clean generic image, **prerelease** | Frame system with automatic Pimoroni panel detection and the compatible PHOTO service. |
-| [Inky Studio iOS 1.0.0 (19)](https://github.com/mehdi7129/inky-studio/releases/tag/ios-v1.0.0-build19) | iPhone build 19 source checkpoint | Native iPhone photo app and Xcode build instructions. |
+| Component | Download or source |
+| --- | --- |
+| iPhone app | [Inky Studio 1.0.1 (20) for Xcode](https://github.com/mehdi7129/inky-studio/releases/tag/ios-v1.0.1-build20), iOS 18 or later. Public source prerelease. |
+| Frame system | [InkyOS 2026.11.27-rc3](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.27-rc3), a Raspberry Pi image with PHOTO service 0.5.0rc4. |
+| Mac SD writer | [inkyImager 0.1.5 Universal (.dmg)](https://github.com/mehdi7129/inkyImager/releases/download/v0.1.5/inkyImager-0.1.5-Universal.dmg), macOS 14 or later, Intel and Apple Silicon. |
 
-The iPhone source is available under MIT and can be built in Xcode. The
-GitHub iOS release documents the source of build 19.
+1. For a new frame, check the [display compatibility matrix](https://github.com/mehdi7129/inkyOS/blob/main/docs/DISPLAY-COMPATIBILITY.md) and prepare an SD card with inkyImager. The writer erases the selected card.
+2. Put the frame and iPhone on the same local network. Open **Scan a QR code** and allow camera and local network access.
+3. Scan the frame’s QR within five minutes and confirm the iPhone unlock. If the initial QR has expired, restart the frame to display a new invitation. Choose a photo, crop it to the panel and add it to the display queue.
+4. To share the frame, open **Settings → Share frame** on an authorized iPhone. The invitation is single-use and expires after five minutes.
 
-InkyOS detects compatible Pimoroni Impression, Spectra 6, pHAT and wHAT
-panels by EEPROM. The latest image has been tested with simulated displays.
-First boot and optical QR scanning for this image still require hardware
-testing. See the [display compatibility matrix](https://github.com/mehdi7129/inkyOS/blob/main/docs/DISPLAY-COMPATIBILITY.md).
-A fresh flash erases the card. Keep your current card when you only need to
-update the iPhone app.
+This is a free, independent project for compatible hardware. You buy the screen and Raspberry Pi separately. Photos travel directly between the iPhone and frame on the LAN, with no cloud account.
 
-## Connect and share
+## GitHub and App Store versions
 
-1. Prepare and boot a compatible frame using the linked installation guide.
-2. Put the frame and iPhone on the same LAN. In the app choose **Scanner un QR**
-   and scan the frame QR; allow camera/local-network access.
-3. Use Face ID or your iPhone passcode to unlock saved access, then import/crop a
-   photo and add it to the queue. Wait for the physical e-paper refresh.
-4. On an authorized, unlocked phone open **Réglages → Partager le cadre →
-   Partager l’accès**. The other iPhone scans the displayed invitation in Inky Studio.
+Build 20 is the open-source release for people building with Xcode. The GitHub download contains source and a Python wheel for developers. For the separate iOS 1.0.0 distribution checkpoint, see [build 19 and its provenance](docs/releases/ios-v1.0.0-build19.md).
 
-The initial frame QR expires after five minutes. Power-cycle the frame for a
-new invitation if initial pairing has not been completed. Each invitation is
-single-use. Expiring the QR does not
-remove an already-accepted device access. On this LAN service every authorized
-photo member may invite another photo member. Photo access covers photos, queue,
-history and scheduling; it does not grant Wi-Fi or frame administration.
-Owner-authorized installations may revoke devices; guests may cancel their own
-pending invitations. Already-admitted descendants are separate device accesses.
+Build 20 follows the system language in 11 localizations. It moves password-based QR pairing to pinned HTTPS after an anonymous identity check, restores saved frame access and lets you explicitly resume an interrupted upload. The complete recovery workflow uses the companion PHOTO service **0.5.0rc5**. The links above still deliver the existing inkyImager and InkyOS packages with service **0.5.0rc4**. A frame that cannot prove its HTTPS identity prompts for a frame software update.
 
-Access is retained in the protected iPhone Keychain. The QR connection verifies
-the frame’s HTTPS identity. Build 19 resumes the connection automatically
-when the app becomes active after local authentication.
-
-## Source provenance
-
-Use the component tags to build the delivered versions.
-
-| Component | Exact source |
-|---|---|
-| iPhone build 19 | [ios-v1.0.0-build19](https://github.com/mehdi7129/inky-studio/tree/ios-v1.0.0-build19/ios) |
-| PHOTO service 0.5.0rc4 for InkyOS | [imager-backend-0.5.0rc4](https://github.com/mehdi7129/inky-studio/tree/imager-backend-0.5.0rc4/server) |
-
-See the [ecosystem guide](docs/ECOSYSTEM.md) and the
-[iPhone build provenance](docs/releases/ios-v1.0.0-build19.json). The PHOTO
-service release provides the wheel built for InkyOS. Its updater is disabled
-in that profile.
-
-## Screenshots
-
-Real app UI captured in Simulator with synthetic photo data and a fictitious QR.
-These are not physical-frame proof or live pairing credentials.
-
-[View the five current screens](docs/ios/screenshots/README.md).
+See the [build 20 release notes](docs/releases/ios-v1.0.1-build20.md) for compatibility, test results and physical checks still to run.
 
 ## Build and contribute
 
-- [Build the iPhone app or create your own client](docs/ios/CURRENT-RELEASE.md), iOS 18 minimum.
-- [PHOTO API and runtime used by the latest image](https://github.com/mehdi7129/inky-studio/blob/imager-backend-0.5.0rc4/docs/IMAGER-LAN.md) and [local backend development](server/README.md).
-- `client/` retains the earlier React interface; its legacy installer is distinct
-  from the InkyOS/inkyImager image. New frame users should follow the links above.
+- [iPhone app and pinned TLS dependency](ios/README.md). Fork the SwiftUI app with your own bundle ID and Apple signing team.
+- [PHOTO API](docs/PHOTO-API.md) for writing a new client. The [LAN runtime documentation](docs/IMAGER-LAN.md) explains the InkyOS QR, service configuration and invitation roles.
+- [Python backend](server/README.md) for a local mock display and backend tests. The earlier React web interface and its installer remain available in this repository.
+- [Ecosystem guide](docs/ECOSYSTEM.md) for source tags and licenses across all three projects.
 
-```sh
-cd server
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e ".[dev]"
-INKY_STUDIO_DISPLAY_MODE=mock inky-studio-server
-```
+Community contributions are welcome via GitHub issues and pull requests. Please test with synthetic QR and photo data.
 
-Backend CI uses mocked display I/O; driver tests inspect a pinned official wheel.
-Software/Simulator tests do not independently qualify physical display hardware.
-See [CLAUDE.md](CLAUDE.md) for contributor commands and conventions.
+## Support and license
 
-## Support and privacy
+[Support](https://inky-studio.netlify.app/support.html) · [Privacy](https://inky-studio.netlify.app/confidentialite.html) · [Security reports](SECURITY.md)
 
-[Support](https://inky-studio.netlify.app/support.html) ·
-[Privacy](https://inky-studio.netlify.app/confidentialite.html) ·
-[Issues](https://github.com/mehdi7129/inky-studio/issues).
-The public website sources are in `website/`. Do not post active frame QRs, Wi-Fi passwords,
-private keys or personal photos in public issues. Existing installations can keep
-legacy credentials; HTTPS QR photo access is the current supported LAN path.
-
-## License
-
-MIT — [LICENSE](LICENSE). Bundled iOS TLS notices are retained under
-`ios/InkyStudio/Resources/ThirdPartyNotices.txt`; third-party component licenses
-remain their own. The earlier Samba project is [inky-photo-frame](https://github.com/mehdi7129/inky-photo-frame).
+The project is [MIT licensed](LICENSE). Bundled dependencies retain their licenses and [third-party notices](ios/InkyStudio/Resources/ThirdPartyNotices.txt).

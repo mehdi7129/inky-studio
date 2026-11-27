@@ -10,6 +10,14 @@ PYTHON="${INSTALL_DIR}/server/.venv/bin/python"
 cmd="${1:-help}"
 shift || true
 
+# Refuse before lifecycle changes, credential writes, display access or update
+# discovery. The Python entry points also guard direct invocations.
+case "${cmd}" in
+  start | stop | restart | welcome | reset-password | update)
+    INKY_STUDIO_DATA_DIR="${DATA_DIR}" "${PYTHON}" -m inky_web.provisioning.factory_runtime --check-legacy
+    ;;
+esac
+
 case "${cmd}" in
   status)
     systemctl status "${SERVICE_NAME}" --no-pager

@@ -17,7 +17,9 @@ router = APIRouter(prefix="/system", tags=["system"])
 
 
 @router.get("/update", response_model=UpdateStatus)
-async def update_status(refresh: bool = False) -> UpdateStatus:
+async def update_status(request: Request, refresh: bool = False) -> UpdateStatus:
+    if getattr(request.app.state, "lan_photo", False):
+        return UpdateStatus(**updater.disabled_status())
     # ?refresh=1 bypasses the ~10 min cache (used by the explicit "check" button)
     # so a freshly published release shows up immediately.
     data = await asyncio.to_thread(updater.get_status, use_cache=not refresh)
@@ -27,6 +29,8 @@ async def update_status(refresh: bool = False) -> UpdateStatus:
 @router.post("/update", status_code=202)
 async def start_update(request: Request) -> dict[str, bool]:
     app = request.app
+    if getattr(app.state, "lan_photo", False) or not updater.updates_enabled():
+        raise HTTPException(status_code=403, detail="updater_disabled")
     if getattr(app.state, "updating", False):
         raise HTTPException(status_code=409, detail="Une mise à jour est déjà en cours")
     app.state.updating = True

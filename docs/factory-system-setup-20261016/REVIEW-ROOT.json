@@ -1,0 +1,27 @@
+{
+  "kind": "development-contract-review",
+  "reviewed_at_utc": "2026-10-16T20:02:53.689760+00:00",
+  "decision": "GO_SOURCE_IMPLEMENTATION",
+  "scope": "OS and backend source plus relevant isolated tests; iOS implementation after the matching contract relay",
+  "supersedes_draft_workflow_labels": true,
+  "runtime_authority": false,
+  "hardware_or_sd_activation": false,
+  "new_image_qualified": false,
+  "input_sha256": {
+    "wire-contract.json": "bdd7de1aefde53b2315597f0715fe9a98b7061963426fa888bf1031a38377f67",
+    "ipc-contract.json": "9ee767fbdb75250546ca950c4d1fff58c8e1d0b6b9029742b61efea9bd2a7b52",
+    "STARTUP-TRANSITION.md": "9333d1f401ce8e6b3788490bc985e4e0b4f6c5864304703dcc4d1bbd047bd070",
+    "OS-FACTS.md": "f9c7b6c9869ad9bf7fb1ac5c86ea0fb6a13a4697178f258028a62b3d22ab6eb8"
+  },
+  "reviewed_corrections": [
+    "Every-boot WLAN gate before NetworkManager; prevent late rfkill restore without blocking Bluetooth",
+    "Separate initial publication provenance from current setup recovery operation",
+    "Follow latest genuine committed helper network observation with independent NM checks and root network-head",
+    "Explicit data-only continuation; readonly status; no replay of uncertain time/country/radio",
+    "Fast applying ACK distinguishes registration from confirmed persistence; owned tasks drain",
+    "Authenticated negotiation discovers latest operation for recovery without client checkpoint",
+    "Missing verified HTTPS origin waits on readonly status before LAN confirmation or PHOTO enrollment",
+    "Mandatory iOS local authentication and new separate PHOTO credential before enrollment"
+  ],
+  "native_testing": "Root coordinates the dedicated ARM64 VM; inspect probes before execution; no physical radio, Pi or SD access"
+}

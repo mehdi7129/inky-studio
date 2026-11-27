@@ -11,14 +11,22 @@ from inky_web import auth
 
 router = APIRouter(tags=["ws"])
 logger = logging.getLogger(__name__)
+MEDIA_EVENTS = frozenset({
+    "display_changed", "display_error", "queue_updated", "settings_changed",
+    "photo_uploaded", "photo_deleted", "history_changed",
+})
 
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     token = websocket.cookies.get(auth.COOKIE_NAME)
+    principal = None if auth.auth_disabled() else websocket.app.state.sessions.principal(token)
 
     def authenticated() -> bool:
-        return auth.auth_disabled() or websocket.app.state.sessions.validate(token)
+        return auth.auth_disabled() or (
+            (principal is None or websocket.scope.get("scheme") == "wss")
+            and websocket.app.state.sessions.validate(token)
+        )
 
     if not authenticated():
         await websocket.close(code=1008)
@@ -47,7 +55,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             if not authenticated():
                 await close_unauthorized()
                 return
-            await revoked.wait()
+            if principal is None:
+                await revoked.wait()
+            else:
+                # Detect an external durable reset while idle too. The official
+                # CLI stops the service, but fail closed for direct module use.
+                try:
+                    await asyncio.wait_for(revoked.wait(), timeout=1)
+                except TimeoutError:
+                    pass
             revoked.clear()
 
     async def send_events() -> None:
@@ -56,6 +72,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             if not authenticated():
                 await close_unauthorized()
                 return
+            if principal is not None and principal.role == "media" and event["type"] not in MEDIA_EVENTS:
+                continue
             await websocket.send_json(event)
 
     async def receive_disconnect() -> None:

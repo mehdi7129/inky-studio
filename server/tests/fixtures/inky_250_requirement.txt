@@ -1,0 +1,2 @@
+# Test input only: download before pytest; never a Raspberry runtime wheelhouse.
+inky==2.5.0 --hash=sha256:8589ad753b094ec5da482c090f88d5e8560457f15502221517993dc01b021573

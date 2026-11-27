@@ -1,7 +1,14 @@
 """Tests for the /api/system/update endpoints (no real update is performed)."""
 from __future__ import annotations
 
+import pytest
+
 from inky_web.services import updater
+
+
+@pytest.fixture(autouse=True)
+def explicitly_enable_legacy_updater(monkeypatch):
+    monkeypatch.setenv("INKY_STUDIO_UPDATER_ENABLED", "1")
 
 
 def test_get_update_status(client, monkeypatch):

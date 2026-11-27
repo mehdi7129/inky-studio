@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [iOS 1.0.1 (20) / PHOTO 0.5.0rc5]
+
+- Follow the iPhone system language in 11 localizations.
+- Verify the frame before sending a password over pinned HTTPS for QR pairing.
+- Restore authorized connections after restart or address changes when a verified locator is available.
+- Keep a protected photo draft for explicit resume and a backend receipt to deduplicate retries.
+- Retire the legacy bootstrap password after reopening a previously saved owner device session.
+
+See the [release notes](docs/releases/ios-v1.0.1-build20.md) for compatibility and qualification.
+
 ## [iOS1.0.0-build19 / PHOTO0.5.0rc2] - 2026-10-29
 
 Public GitHub source prerelease; iPhone binary remains internal TestFlight.

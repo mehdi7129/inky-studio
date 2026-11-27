@@ -68,9 +68,18 @@ export class ApiError extends Error {
   }
 }
 
+async function responseError(response: Response): Promise<ApiError> {
+  const body: unknown = await response.json().catch(() => null)
+  const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null
+  const message = typeof detail === 'string' && detail.trim()
+    ? detail.trim()
+    : `La requête a échoué (HTTP ${response.status}).`
+  return new ApiError(response.status, message)
+}
+
 async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, { credentials: 'include', ...(signal ? { signal } : {}) })
-  if (!response.ok) throw new ApiError(response.status, `HTTP ${response.status} on ${path}`)
+  if (!response.ok) throw await responseError(response)
   return response.json() as Promise<T>
 }
 
@@ -81,10 +90,7 @@ async function sendJSON<T>(method: string, path: string, body?: unknown): Promis
     headers: { 'Content-Type': 'application/json' },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw new ApiError(response.status, `${method} ${path} → ${response.status}: ${detail}`)
-  }
+  if (!response.ok) throw await responseError(response)
   // Display commands return an empty 202 after completing their refresh.
   // Do not parse an empty success body as JSON, regardless of its status code.
   const content = await response.text()
@@ -182,10 +188,7 @@ export async function uploadToQueue(pngBlob: Blob, filename: string): Promise<Up
     credentials: 'include',
     body: form,
   })
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw new ApiError(response.status, `Upload failed (${response.status}): ${detail}`)
-  }
+  if (!response.ok) throw await responseError(response)
   return response.json() as Promise<UploadResponse>
 }
 

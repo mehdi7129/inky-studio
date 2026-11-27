@@ -1,0 +1,273 @@
+[
+  {
+    "file": "parcours/wifi-annulation.png",
+    "test": "BluetoothSetupUITests/testWiFiCredentialAndConfirmationFixtureNeverConnectsToAFrame()",
+    "run": "bento-after-light",
+    "name": "bluetooth-rollback-light",
+    "sha256": "5ca4469e33e9d0a62a8c3be39ba42cbe63dc65d58f434f884ba28f38b507720a"
+  },
+  {
+    "file": "parcours/wifi-confirmation.png",
+    "test": "BluetoothSetupUITests/testWiFiCredentialAndConfirmationFixtureNeverConnectsToAFrame()",
+    "run": "bento-after-light",
+    "name": "bluetooth-confirmation-light",
+    "sha256": "666b45145acd059a99bef7f33cee40abca5603c621c020e87b99898b7074f40d"
+  },
+  {
+    "file": "parcours/wifi-dark.png",
+    "test": "BluetoothSetupUITests/testWiFiNetworksLightAndDark()",
+    "run": "bento-after-light",
+    "name": "bluetooth-networks-dark",
+    "sha256": "8accb665b0fc286d01694723d67591a0939c5003f943c6b718fec762b8eeb807"
+  },
+  {
+    "file": "parcours/wifi-light.png",
+    "test": "BluetoothSetupUITests/testWiFiNetworksLightAndDark()",
+    "run": "bento-after-light",
+    "name": "bluetooth-networks-light",
+    "sha256": "a72f393eda93767a1950fd7fdf7be9ba722796ad26966c619b1b8ca9a37fd7b5"
+  },
+  {
+    "file": "parcours/mot-de-passe-identique.png",
+    "test": "InkyStudioUITests/testChangeFramePasswordAndReconnect()",
+    "run": "bento-after-light",
+    "name": "08b Mot de passe identique expliqué",
+    "sha256": "6feaa541b8ec3dfff030149409cca3e91511801517d75e333c97345b469ab756"
+  },
+  {
+    "file": "parcours/mot-de-passe.png",
+    "test": "InkyStudioUITests/testChangeFramePasswordAndReconnect()",
+    "run": "bento-after-light",
+    "name": "08a Changer le mot de passe",
+    "sha256": "bce4ddcd4e7cea549282048e9ffd1b373353a7475dde1647f7a3dae54f1d5ff1"
+  },
+  {
+    "file": "connected-light/reglages.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "run": "bento-after-light",
+    "name": "Bento arrondi — Réglages",
+    "sha256": "24dfea2780a213ed37bd361c20d8e20dd7717f5bc35c1259d8ee923e254a21f8"
+  },
+  {
+    "file": "connected-light/historique.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "run": "bento-after-light",
+    "name": "Bento arrondi — Historique",
+    "sha256": "44b3b5d8d25c47b81e165ca03c7098f08bd60f02ff577795a61d77c993c0b41f"
+  },
+  {
+    "file": "connected-light/file.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "run": "bento-after-light",
+    "name": "Bento arrondi — File",
+    "sha256": "b2a5306928f475bfd4b1fb0ba2f5eeba7529ede6cc1b6673552894b5a9d781dd"
+  },
+  {
+    "file": "connected-light/cadre.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "run": "bento-after-light",
+    "name": "Bento arrondi — Cadre",
+    "sha256": "d0b15b4946b317ac75b01c48d74a7bad0aa5264fe7386696059ef29ad8b84c3c"
+  },
+  {
+    "file": "parcours/connexion-indisponible.png",
+    "test": "InkyStudioUITests/testUnavailableFrameShowsRecoverableError()",
+    "run": "bento-after-light",
+    "name": "Offline connection result",
+    "sha256": "cebb0ce5dcbcdf266c8049c0d36a8dd872a79a5bda1db1a3cb1677dcaf85a5ce"
+  },
+  {
+    "file": "parcours/cadrage-light.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "run": "bento-recheck-light",
+    "name": "05 Cadrage local",
+    "sha256": "58a9f59ef714904a6be1db7f59ebb369f5b9a7c4cb9d2f4f71910fe73ff86263"
+  },
+  {
+    "file": "parcours/sources-light.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "run": "bento-recheck-light",
+    "name": "04b Choisir une photo",
+    "sha256": "2b545b5180aa3cc28d1cc511c5c1a27322970dd91b997207c75bd72e85b6ccb6"
+  },
+  {
+    "file": "parcours/guide.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "run": "bento-recheck-light",
+    "name": "01b Premiers pas",
+    "sha256": "19fe9b4cf598b3af5662eddb5c832530824ac0ca2b5e346cd1e2e38eaa19e55f"
+  },
+  {
+    "file": "parcours/accueil.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "run": "bento-recheck-light",
+    "name": "01 Accueil",
+    "sha256": "91a7458a4bb70d1edb6dd7df864fd5b168b078ad0c65c7097c78e06dff4e60e5"
+  },
+  {
+    "file": "parcours/camera-refusee.png",
+    "test": "InkyStudioUITests/testPhotoSourceCameraPermissionAndCancel()",
+    "run": "bento-recheck-light",
+    "name": "07 Appareil photo — permission ou indisponibilité",
+    "sha256": "a605adac79d3c9417407fd872f6e7b4d9321ce48d0e8550e5b5c89adfec04bc1"
+  },
+  {
+    "file": "parcours/sources-connectees.png",
+    "test": "InkyStudioUITests/testPhotoSourceCameraPermissionAndCancel()",
+    "run": "bento-recheck-light",
+    "name": "07a Sources de photo",
+    "sha256": "16d5cb49c4f3f096a6fa7916967e5be685a256fd9d3718e1f3127a96e398479a"
+  },
+  {
+    "file": "before/cadre-light.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "run": "bento-before-light",
+    "name": "02 Cadre démo",
+    "sha256": "81a95228c52e1be93dfa45bb5705b41a00f86772ace819d72d79168a16c6f06b",
+    "sourceCommit": "39fa57d882e80b78976c7027656537aea9b91d2e"
+  },
+  {
+    "file": "before/reglages-light.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "run": "bento-before-light",
+    "name": "06 Réglages démo",
+    "sha256": "f300ad6ad44b01d0b4e06025b43b689a012a746e7242b669580ddf36873f93bf",
+    "sourceCommit": "39fa57d882e80b78976c7027656537aea9b91d2e"
+  },
+  {
+    "file": "before/cadre-dark.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "run": "bento-before-dark",
+    "name": "02 Cadre démo",
+    "sha256": "aa8c9ffc62cb608f3778b0f2544f909cd95e766c91ab4dbf63cfa18d75b928b5",
+    "sourceCommit": "39fa57d882e80b78976c7027656537aea9b91d2e"
+  },
+  {
+    "file": "before/reglages-dark.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "run": "bento-before-dark",
+    "name": "06 Réglages démo",
+    "sha256": "229d4c76b1095be8bad8ac589cb0050aebdba6fe55d9dc504621cf8d51994911",
+    "sourceCommit": "39fa57d882e80b78976c7027656537aea9b91d2e"
+  },
+  {
+    "file": "parcours/cadrage-dark.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "run": "bento-final-dark",
+    "name": "05 Cadrage local",
+    "sha256": "d2659af804b425e6fdc4a88f832cf0b9f30600fdd9b316b3dab8fe0fb1e57bd1",
+    "sourceCommit": "a6d8e60"
+  },
+  {
+    "file": "parcours/sources-dark.png",
+    "test": "DemoModeUITests/testPublicDemoCropQueueHistorySettingsAndReset()",
+    "run": "bento-final-dark",
+    "name": "04b Choisir une photo",
+    "sha256": "39488cc12f7a9ff85b05970d226b60f70d73dd3c1e3e445724d64df6d692b635",
+    "sourceCommit": "a6d8e60"
+  },
+  {
+    "file": "connected-dark/reglages.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "run": "bento-final-dark",
+    "name": "Bento arrondi — Réglages",
+    "sha256": "fc8c8a39b5c8dcc1c688e40597b59104483d9957ad1f49c82250e7230cdba53f",
+    "sourceCommit": "a6d8e60"
+  },
+  {
+    "file": "connected-dark/historique.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "run": "bento-final-dark",
+    "name": "Bento arrondi — Historique",
+    "sha256": "df39b5a0465d7e90ea3a6b3202099f5967849da980220a30a6efead26f73ab89",
+    "sourceCommit": "a6d8e60"
+  },
+  {
+    "file": "connected-dark/file.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "run": "bento-final-dark",
+    "name": "Bento arrondi — File",
+    "sha256": "0e3a73bdd67d0ad29e940f327ffcbc8072301437b08d9608cd6926c772822b7c",
+    "sourceCommit": "a6d8e60"
+  },
+  {
+    "file": "connected-dark/cadre.png",
+    "test": "InkyStudioUITests/testRoundedTabsWithoutFilenamesAndPortrait()",
+    "run": "bento-final-dark",
+    "name": "Bento arrondi — Cadre",
+    "sha256": "5e81aa1fd5df95a61d12819fd8846505ba819cff1aa51745794ed7aaf72061db",
+    "sourceCommit": "a6d8e60"
+  },
+  {
+    "file": "before/cadrage-grand-texte.png",
+    "test": "DemoModeUITests/testAllTabsAndPhotoImportWithAccessibilityText()",
+    "run": "bento-centered-gestures",
+    "name": "16a Aperçu du cadrage grand texte",
+    "sha256": "c50075c30ce3330c2b9f29db7d1d99b62e048b0260c21bc7097dabfd300ee68e",
+    "sourceCommit": "e85e419"
+  },
+  {
+    "file": "grand-texte/cadrage-envoi.png",
+    "test": "DemoModeUITests/testAllTabsAndPhotoImportWithAccessibilityText()",
+    "run": "bento-crop-preview",
+    "name": "16c Ajouter à la file grand texte",
+    "sha256": "c524a7b45e95820815e6ab2cc600187b688bd8e490f4534d33cbe49a0fcc775e",
+    "sourceCommit": "7f9348f"
+  },
+  {
+    "file": "grand-texte/cadrage-zoom.png",
+    "test": "DemoModeUITests/testAllTabsAndPhotoImportWithAccessibilityText()",
+    "run": "bento-crop-preview",
+    "name": "16b Réglages du cadrage grand texte",
+    "sha256": "0d918f9899f9f7ed3e1d41319d1709e26b346baafc92871609feb307dc919da9",
+    "sourceCommit": "7f9348f"
+  },
+  {
+    "file": "grand-texte/cadrage-apercu.png",
+    "test": "DemoModeUITests/testAllTabsAndPhotoImportWithAccessibilityText()",
+    "run": "bento-crop-preview",
+    "name": "16a Aperçu du cadrage grand texte",
+    "sha256": "538f9a05e860d525d75fcd26b912d82c1e34508dfb5f2c1726dd4243dc366062",
+    "sourceCommit": "7f9348f"
+  },
+  {
+    "file": "grand-texte/reglages.png",
+    "test": "DemoModeUITests/testAllTabsAndPhotoImportWithAccessibilityText()",
+    "run": "bento-crop-preview",
+    "name": "14 Réglages grand texte",
+    "sha256": "e5756e1bee764092e337e412591db6a3d98547f1ef507ca2368fd76b9bf25692",
+    "sourceCommit": "7f9348f"
+  },
+  {
+    "file": "grand-texte/historique.png",
+    "test": "DemoModeUITests/testAllTabsAndPhotoImportWithAccessibilityText()",
+    "run": "bento-crop-preview",
+    "name": "13 Historique grand texte",
+    "sha256": "8e9a0211f209669d74d44ca4cca85bb952ce3c7dddd474a0d7f54126a4dfafa6",
+    "sourceCommit": "7f9348f"
+  },
+  {
+    "file": "grand-texte/file.png",
+    "test": "DemoModeUITests/testAllTabsAndPhotoImportWithAccessibilityText()",
+    "run": "bento-crop-preview",
+    "name": "12 File grand texte",
+    "sha256": "5cb69983a0dd5b71af6123b4268ad0c09d5ea3b83daf69a3bcb63d554cc8a954",
+    "sourceCommit": "7f9348f"
+  },
+  {
+    "file": "grand-texte/cadre.png",
+    "test": "DemoModeUITests/testAllTabsAndPhotoImportWithAccessibilityText()",
+    "run": "bento-crop-preview",
+    "name": "11 Cadre grand texte",
+    "sha256": "2306f44c1532dd31978f22dbf17eb4895a21b415b986a6f792dadc52a799b68a",
+    "sourceCommit": "7f9348f"
+  },
+  {
+    "file": "parcours/cadrage-photos.png",
+    "test": "InkyStudioUITests/testImportPhotoCropAndUpload()",
+    "run": "bento-crop-preview",
+    "name": "05 Cadrage",
+    "sha256": "2a90f22108e575d9b232fead47808bd3979910853eb15765ece48cf6b588cf4f",
+    "sourceCommit": "7f9348f"
+  }
+]

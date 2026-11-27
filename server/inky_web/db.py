@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS queue (
 );
 CREATE INDEX IF NOT EXISTS idx_queue_position ON queue(position);
 
+CREATE TABLE IF NOT EXISTS upload_receipts (
+    idempotency_key TEXT PRIMARY KEY,
+    sha256          TEXT NOT NULL,
+    response        TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS history (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     photo_id      TEXT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
@@ -59,12 +65,16 @@ CREATE TABLE IF NOT EXISTS settings (
 """
 
 
-def data_dir() -> Path:
+def resolve_data_dir() -> Path:
+    """Resolve the configured path without creating any application state."""
     raw = os.environ.get("INKY_STUDIO_DATA_DIR")
     if raw:
-        path = Path(raw).expanduser()
-    else:
-        path = Path(__file__).resolve().parent.parent / "data"
+        return Path(raw).expanduser()
+    return Path(__file__).resolve().parent.parent / "data"
+
+
+def data_dir() -> Path:
+    path = resolve_data_dir()
     path.mkdir(parents=True, exist_ok=True)
     (path / "photos").mkdir(exist_ok=True)
     return path
@@ -83,6 +93,7 @@ def _connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = FULL")
     return conn
 
 

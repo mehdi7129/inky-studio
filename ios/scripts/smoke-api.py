@@ -84,6 +84,30 @@ def main() -> None:
         png = request("/api/photos/c0a570000001")
         assert png.startswith(b"\x89PNG") and struct.unpack("!II", png[16:24]) == (800, 480)
         request("/api/photos/missing", expected=404)
+        request("/__test/availability", "POST", {"available": False, "mode": "invalid"}, expected=400)
+        assert request("/__test/availability", "POST", {"available": False}) == {"available": False}
+        assert request("/api/health", expected=503)["detail"] == "Fixture API temporarily unavailable"
+        request("/api/state", expected=503)
+        assert request("/__test/availability", "POST", {"available": True}) == {"available": True}
+        assert request("/api/auth/status")["authenticated"], "An HTTP outage must preserve the session"
+        assert request("/__test/availability", "POST", {"available": False, "mode": "transport"}) == {"available": False}
+        for path in ["/api/health", "/api/state", "/api/ws"]:
+            with socket.create_connection(("127.0.0.1", parsed.port or 80), timeout=5) as probe:
+                probe.sendall((f"GET {path} HTTP/1.1\r\nHost: {parsed.netloc}\r\nCookie: inky_session={cookie.value}\r\n\r\n").encode())
+                try:
+                    received = probe.recv(4096)
+                except ConnectionResetError:
+                    received = b""
+                assert received == b"", (path, "A transport outage must not send an HTTP response", received)
+                checks += 1
+        # Control requests must work during the outage and recovery must reuse
+        # the original session, queue, current photo and photo bytes.
+        assert request("/__test/availability", "POST", {"available": True}) == {"available": True}
+        assert request("/api/auth/status")["authenticated"]
+        assert next(cookie for cookie in jar if cookie.name == "inky_session").value == cookie.value
+        assert request("/api/queue") == queue
+        assert request("/api/state")["current"] == state["current"]
+        assert request("/api/photos/c0a570000001") == png
         connection = socket.create_connection(("127.0.0.1", parsed.port or 80), timeout=5)
         key = base64.b64encode(secrets.token_bytes(16)).decode()
         connection.sendall((f"GET /api/ws HTTP/1.1\r\nHost: {parsed.netloc}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: {key}\r\nCookie: inky_session={cookie.value}\r\n\r\n").encode())

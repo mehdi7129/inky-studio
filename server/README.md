@@ -1,66 +1,69 @@
-# Inky Studio — photo service
+# Inky Studio — Backend
 
-> **Current delivery —29 October2026:** use the [current release guide](../docs/releases/ios-v1.0.0-build19.md).
-> iPhone1.0.0(19) and PHOTO0.5.0rc2 are preserved in the source release tag
-> `ios-v1.0.0-build19` and separate frozen component branches.
-> **This main checkout retains the earlier implementation.** Check out the
-> matching tag/branch before following candidate build or installation instructions.
-> The older sections below retain their historical scope; they are not current
-> TestFlight availability or proof of a public AppStore release.
+FastAPI service that drives the Inky display and serves the React frontend.
 
+## Current frame service
 
-The Python/FastAPI service runs on the frame. It receives photos, maintains their queue/history and schedule, and controls display operations. The React web interface is retained for the legacy installation; the current InkyOS/Imager path is used with the native iPhone app.
+This repository publishes the **0.5.0rc5** PHOTO service source and a Python wheel
+for local qualification with iOS 1.0.1 (20). The distributed
+[InkyOS image](https://github.com/mehdi7129/inkyOS/releases/tag/2026.11.27-rc3)
+contains **0.5.0rc4** and the Pimoroni auto-detection profile.
+See [LAN configuration](../docs/IMAGER-LAN.md), the [PHOTO API](../docs/PHOTO-API.md)
+and the [release notes](../docs/releases/ios-v1.0.1-build20.md).
 
-## Select the right source and runtime
+Use InkyOS maintenance procedures for an installed frame. After a confirmed
+owner session retires an older bootstrap, reverting to a service that cannot
+read that credential format requires local recovery.
 
-| Runtime | Source / installation | Connection and updates |
-|---|---|---|
-| Legacy web/password service | Implementation retained on `main` | Local HTTP port 8000; legacy installer and updater |
-| Imager-configured LAN frame | [InkyOS](https://github.com/mehdi7129/inkyOS) image, prepared with [inkyImager](https://github.com/mehdi7129/inkyImager) | HTTPS port 8443 and QR-bound identity; maintenance follows InkyOS |
-| LAN photo-sharing candidate | [release/backend-lan-photo-sharing-20261023](https://github.com/mehdi7129/inky-studio/tree/release/backend-lan-photo-sharing-20261023), source `716104b1` | Tested/packaged, **not yet installed on the current SD** |
-
-The source branches are separate from `main`. The existing physical LAN installation uses `b75bf1e7`; iPhone beta 16 was reported working with it. Beta 17 is available through internal TestFlight and remains compatible while the service update is pending.
-
-See the [ecosystem checkpoint](../docs/ECOSYSTEM.md) and the candidate's [LAN contract](https://github.com/mehdi7129/inky-studio/blob/release/backend-lan-photo-sharing-20261023/docs/IMAGER-LAN.md).
-
-## LAN photo access and sharing
-
-The explicit Imager/LAN runtime serves photo access over HTTPS on port **8443**. It does not use the legacy HTTP listener for this flow. InkyOS supplies system/hardware configuration and the frame identity; inkyImager prepares the card and network configuration.
-
-The initial QR gives a phone a `media` photo credential, not an administrator role. In the LAN sharing candidate, validated session/claim replies advertise the Boolean `can_invite`. Each authorized member can create a short-lived, single-use photo invitation and cancel its own invitation. The recipient remains `media` and receives a separate credential. The issuer is validated again at claim time.
-
-Wi-Fi configuration, software updates and device administration remain outside the photo member's authority. Outside the explicit LAN runtime, media invitation creation remains refused. The QR envelope and photo-access database schema version **1** are unchanged.
-
-The frozen candidate passed **138 focused backend tests**, including HTTPS A → B → C sharing, a photo operation by B, expiry/cancellation, administrative refusals and credential restoration after restart. A synthetic b75 → candidate → b75 → candidate check preserves the three credentials and schema. This does not claim deployment on the real card or a completed physical two-iPhone test.
-
-## Update an existing Imager/LAN card
-
-The current installation does not offer the legacy checkout/pip/sudo updater to photo members. Follow [InkyOS maintenance](https://github.com/mehdi7129/inkyOS) for its verified offline SD procedure. Source publication or a new iPhone build alone does not update the service.
-
-The prepared delta changes three Python modules and their corresponding entries in the installed package `RECORD`. Preserve all other locally installed entries, including installer metadata; do not overwrite it with the wheel's `RECORD`. Identity/TLS material, Wi-Fi configuration, device credentials, database and photos must remain intact. No database migration or re-pairing is part of this candidate.
-
-## Legacy local development
-
-These commands are for the development/legacy service in the selected checkout, not an installation recipe for an existing Imager/LAN SD:
+## Run locally (Mac/dev)
 
 ```bash
 cd server
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-inky-studio-server
+INKY_STUDIO_DISPLAY_MODE=mock inky-studio-server
 ```
 
-The local development endpoint is `http://localhost:8000/api/health`. A successful health response proves reachability, not physical display completion.
+Then open http://localhost:8000/api/health — the response includes `status: "ok"`
+and the server version. This indicates service availability, not panel health.
 
-Off-Pi development uses a mock display. On a Raspberry, the optional `.[pi]` dependencies provide the real driver, but auto-detection or a test suite does not qualify every panel/Pi combination. Use InkyOS's admitted hardware profile for the image installation.
+`INKY_STUDIO_DISPLAY_MODE=auto` (default) selects hardware on Linux and a **mock**
+elsewhere. `mock` explicitly prevents hardware imports/access on every platform.
+`hardware` never turns an initialization/refresh failure into simulated success.
+
+## Run on the Raspberry Pi
+
+```bash
+pip install -e ".[pi]"
+```
+
+This installs the Pimoroni `inky` **2.6.0** driver. The multi-display Imager
+image selects `INKY_STUDIO_DISPLAY_MODE=hardware` and
+`INKY_STUDIO_DISPLAY_PROFILE=pimoroni-auto`. The profile checks the driver,
+EEPROM variant and native size for Impression, Spectra, wHAT and pHAT. It
+requires a readable, supported EEPROM. BUSY observation is tailored to AC073,
+UC8159 and the three Spectra driver families. Software checks use simulated
+GPIO and SPI. Physical refresh and camera scanning still need hardware tests.
+
+Hardware errors remain latched until an operator has checked the frame and
+restarted the service. `/api/state`, `/api/display`, uploads and display actions
+then return **503** with a French `detail` and a stable error `code`; queue and
+history are not acknowledged as successfully displayed. Authenticated operators
+can still read `/api/display/status`, including during a refresh.
+
+The auto profile keeps the established timed wait only for the verified
+800×480 AC073 variant 20 and EEPROM colors 4 or 5. Color 4 stays uninterpreted.
+The legacy explicit profiles remain available to the bench.
 
 ## Tests
 
 ```bash
-cd server
-ruff check .
+pip download --no-deps --require-hashes -r tests/fixtures/inky_250_requirement.txt -d .test-wheels
+pip download --no-deps --require-hashes -r tests/fixtures/inky_260_requirement.txt -d .test-wheels
 pytest
 ```
 
-Tests use temporary/synthetic state. Keep real credentials, pairing QRs, signed packages, SD images and runtime databases out of Git. Preserve dated audit reports as historical evidence rather than rewriting their original results.
+Install `.[dev]` first. For the pinned qualification environment on macOS arm64/Python 3.14, install with `pip install -c constraints-qualification.txt -e ".[dev]"`. The driver tests load the SHA-256/RECORD-verified official
+wheels from this cache, with real NumPy/Pillow and simulated GPIO/SPI ports.
+Pytest does not download dependencies or touch hardware.

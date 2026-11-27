@@ -7,4 +7,5 @@
 <key>teamID</key><string>X524H8XA4L</string>
 <key>uploadSymbols</key><true/>
 <key>manageAppVersionAndBuildNumber</key><false/>
+<key>testFlightInternalTestingOnly</key><false/>
 </dict></plist>

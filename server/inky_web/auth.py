@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import string
 import tempfile
@@ -35,7 +36,11 @@ PASSWORD_ALPHABET: Final = string.ascii_letters + string.digits
 SCRYPT_N: Final = 32768
 SCRYPT_R: Final = 8
 SCRYPT_P: Final = 1
-PUBLIC_PATHS: Final = frozenset({"/api/health", "/api/auth/login", "/api/auth/status"})
+PUBLIC_PATHS: Final = frozenset({
+    "/api/health", "/api/auth/login", "/api/auth/status",
+    "/api/auth/device-session", "/api/auth/frame-identity", "/api/auth/invitations/claim",
+    "/api/auth/legacy-tls-proof", "/api/auth/factory-device-enroll",
+})
 
 
 def auth_disabled() -> bool:
@@ -70,14 +75,34 @@ class Credentials:
     salt: bytes = field(repr=False)
     digest: bytes = field(repr=False)
     bootstrap_password: str | None = field(default=None, repr=False)
+    retired_photo_epoch: str | None = None
+    retired_owner_epoch: str | None = None
+
+    @property
+    def bootstrap_retired(self) -> bool:
+        return self.retired_photo_epoch is not None
+
+    def photo_epoch(self) -> str:
+        return self.retired_photo_epoch or hashlib.sha256(
+            b"inky-photo-epoch-v1\0" + self.salt + self.digest
+        ).hexdigest()
+
+    def owner_epoch(self) -> str:
+        from inky_web.provisioning.ownership import credential_epoch
+        return self.retired_owner_epoch or credential_epoch(self.salt, self.digest)
 
     def verify(self, password: str) -> bool:
+        if self.bootstrap_retired:
+            return False
         try:
             return secrets.compare_digest(self.digest, _derive(password, self.salt))
         except UnicodeEncodeError:
             return False
 
     def record(self) -> dict:
+        if self.bootstrap_retired:
+            return {"version": 2, "bootstrap_retired": True,
+                    "photo_epoch": self.retired_photo_epoch, "owner_epoch": self.retired_owner_epoch}
         record = {
             "version": 2, "algorithm": "scrypt", "n": SCRYPT_N, "r": SCRYPT_R,
             "p": SCRYPT_P, "salt": self.salt.hex(), "hash": self.digest.hex(),
@@ -119,6 +144,14 @@ def _parse_record(path: Path, record: dict) -> Credentials:
     if set(record) == {"password"} and _valid_password(record["password"]):
         # Migrate without changing the password or preserving old cleartext.
         return _new_credentials(path.parent, record["password"])
+    if set(record) == {"version", "bootstrap_retired", "photo_epoch", "owner_epoch"}:
+        if type(record["version"]) is not int or record["version"] != 2 or record["bootstrap_retired"] is not True:
+            raise CredentialFormatError()
+        if not all(type(record[k]) is str and re.fullmatch("[0-9a-f]{64}", record[k])
+                   for k in ("photo_epoch", "owner_epoch")):
+            raise CredentialFormatError()
+        return Credentials(path, b"", b"", retired_photo_epoch=record["photo_epoch"],
+                           retired_owner_epoch=record["owner_epoch"])
     required = {"version", "algorithm", "n", "r", "p", "salt", "hash"}
     try:
         if not required <= record.keys() or record.keys() - required - {"bootstrap_password"}:
@@ -214,19 +247,32 @@ def display_password(data_dir: Path) -> str | None:
 
 
 class SessionStore:
-    """Process-local sessions with immediate notification of revocation to WebSockets."""
+    """Process-local sessions with monotonic TTL and immediate WebSocket revocation."""
 
     def __init__(self) -> None:
         self._sessions: dict[str, float] = {}
+        self._principals: dict[str, object] = {}
+        self.principal_validator = None
         self._lock = threading.RLock()
         self._watchers: dict[asyncio.Event, asyncio.AbstractEventLoop] = {}
 
-    def create(self) -> str:
+    def create(self, principal=None) -> str:
         with self._lock:
-            now = time.time()
+            now = time.monotonic()
             self._sessions = {token: expiry for token, expiry in self._sessions.items() if expiry > now}
+            self._principals = {token: value for token, value in self._principals.items() if token in self._sessions}
             token = secrets.token_urlsafe(32)
             self._sessions[token] = now + SESSION_TTL_SECONDS
+            if principal is not None:
+                # Bound persistent-device sessions and close displaced idle WS.
+                previous = [old for old, actor in self._principals.items()
+                            if actor.device_id == principal.device_id]
+                for old in previous[:-7]:
+                    self._sessions.pop(old, None)
+                    self._principals.pop(old, None)
+                if len(previous) >= 8:
+                    self._notify()
+                self._principals[token] = principal
             return token
 
     def validate(self, token: str | None) -> bool:
@@ -236,10 +282,38 @@ class SessionStore:
             expires = self._sessions.get(token)
             if expires is None:
                 return False
-            if time.time() >= expires:
+            if time.monotonic() >= expires:
                 self._sessions.pop(token, None)
+                self._principals.pop(token, None)
                 return False
-            return True
+            principal = self._principals.get(token)
+        # Never hold the session lock while entering the durable store: password
+        # rotation/revocation holds its authorization gate before notifying us.
+        if principal is not None and (
+            self.principal_validator is None or not self.principal_validator(principal)
+        ):
+            self.invalidate(token)
+            return False
+        with self._lock:
+            return token in self._sessions
+
+    def principal(self, token: str | None):
+        with self._lock:
+            return self._principals.get(token)
+
+    def invalidate_password_sessions(self) -> None:
+        with self._lock:
+            self._sessions = {token: expiry for token, expiry in self._sessions.items() if token in self._principals}
+            self._notify()
+
+    def invalidate_device(self, device_id: str) -> None:
+        with self._lock:
+            tokens = [token for token, actor in self._principals.items() if actor.device_id == device_id]
+            for token in tokens:
+                self._sessions.pop(token, None)
+                self._principals.pop(token, None)
+            if tokens:
+                self._notify()
 
     def _notify(self) -> None:
         for event, loop in list(self._watchers.items()):
@@ -251,11 +325,13 @@ class SessionStore:
     def invalidate(self, token: str | None) -> None:
         with self._lock:
             if token and self._sessions.pop(token, None) is not None:
+                self._principals.pop(token, None)
                 self._notify()
 
     def invalidate_all(self) -> None:
         with self._lock:
             self._sessions.clear()
+            self._principals.clear()
             self._notify()
 
     def watch_revocation(self) -> asyncio.Event:
@@ -279,7 +355,8 @@ class CredentialService:
     def __init__(self, credentials: Credentials, sessions: SessionStore) -> None:
         self.credentials = credentials
         self.sessions = sessions
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self.prepare_owner_rotation = None
 
     def login(self, password: str) -> str:
         with self._lock:
@@ -287,13 +364,42 @@ class CredentialService:
                 raise HTTPException(status_code=401, detail="Mot de passe incorrect")
             return self.sessions.create()
 
-    def change_password(self, token: str | None, current_password: str, new_password: str) -> str:
+    def retire_bootstrap(self) -> None:
+        """Keep only the authority epochs and disable the legacy QR secret."""
+        with self._lock:
+            current = self.credentials
+            if current.bootstrap_password is not None:
+                replacement = Credentials(current.path, b"", b"", retired_photo_epoch=current.photo_epoch(),
+                                          retired_owner_epoch=current.owner_epoch())
+                try:
+                    _write_credentials(replacement)
+                except CredentialStorageError as exc:
+                    if exc.committed:
+                        self.credentials = replacement
+                        self.sessions.invalidate_password_sessions()
+                    raise
+                self.credentials = replacement
+                self.sessions.invalidate_password_sessions()
+                current = replacement
+            if current.bootstrap_retired:
+                for name in ("welcome_preview.png", "_welcome_tmp.png"):
+                    (current.path.parent / name).unlink(missing_ok=True)
+
+    def change_password(self, token: str | None, current_password: str, new_password: str,
+                        actor_owner_id: str | None = None) -> str:
         with self._lock:
             if not self.sessions.validate(token):
                 raise HTTPException(status_code=401, detail="Authentification requise")
             if not self.credentials.verify(current_password):
                 raise HTTPException(status_code=403, detail="Le mot de passe actuel est incorrect")
             replacement = _new_credentials(self.credentials.path.parent, new_password)
+            if self.prepare_owner_rotation is not None:
+                try:
+                    # Prepare the caller's new epoch BEFORE the atomic password
+                    # replace. All other owners remain bound to the old epoch.
+                    self.prepare_owner_rotation(replacement, actor_owner_id)
+                except Exception:
+                    raise HTTPException(status_code=503, detail="Stockage Bluetooth indisponible. Le mot de passe actuel reste valable.") from None
             try:
                 _write_credentials(replacement)
             except CredentialStorageError as exc:
@@ -354,10 +460,34 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Local application password management")
     parser.add_argument("command", choices=["password", "reset-password"])
     args = parser.parse_args()
-    # Unlike db.data_dir(), resolve the path without creating any directories.
-    raw = os.environ.get("INKY_STUDIO_DATA_DIR")
-    directory = Path(raw).expanduser() if raw else Path(__file__).resolve().parent.parent / "data"
+    from inky_web.db import resolve_data_dir
+    from inky_web.provisioning.factory_runtime import FactoryRuntimeError, guard_legacy_command
+
+    directory = resolve_data_dir()
     try:
+        guard_legacy_command(directory)
+    except FactoryRuntimeError as exc:
+        print(f"Commande indisponible pour ce cadre : {exc.code}")
+        return exc.exit_status
+    try:
+        if args.command == "reset-password" and (
+            os.environ.get("INKY_STUDIO_BLUETOOTH") == "1"
+            or (directory / "provisioning").exists()
+            or (directory / "provisioning").is_symlink()
+        ):
+            # The service wrapper has stopped GATT, but the separate helper can
+            # still finish a previously confirmed transaction. Its acknowledgement
+            # must precede the new epoch, even if service shutdown was interrupted.
+            # Persisted state detects Bluetooth when its service env is absent in
+            # this shell. Legacy frames without provisioning need no helper.
+            from inky_web.provisioning.network import NetworkClient, NetworkUnavailable
+
+            try:
+                NetworkClient().cancel_pending_sync()
+            except NetworkUnavailable:
+                print("Annulation Wi-Fi indisponible. Reset annulé ; les identifiants restent inchangés. "
+                      "Vérifie inky-network.service ; après installation Bluetooth, ouvre une nouvelle session SSH pour actualiser les groupes.")
+                return 1
         password = (reset_credentials(directory).bootstrap_password
                     if args.command == "reset-password" else display_password(directory))
     except (OSError, CredentialFormatError):

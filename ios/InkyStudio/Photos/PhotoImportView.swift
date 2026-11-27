@@ -17,7 +17,7 @@ private final class PhotoImportModel: ObservableObject {
         isLoading = true
         photo = nil
         errorMessage = nil
-        progressText = "Chargement depuis Photos…"
+        progressText = String(localized: "Chargement depuis Photos…")
         defer { if loadID == identifier { isLoading = false } }
         do {
             guard let file = try await item.loadTransferable(type: ImportedPhotoFile.self) else {
@@ -26,7 +26,7 @@ private final class PhotoImportModel: ObservableObject {
             defer { try? FileManager.default.removeItem(at: file.url) }
             try Task.checkCancellation()
             guard loadID == identifier else { return }
-            progressText = "Préparation de la photo…"
+            progressText = String(localized: "Préparation de la photo…")
             let worker = Task.detached(priority: .userInitiated) {
                 try autoreleasepool { try PhotoPipeline.decode(url: file.url) }
             }
@@ -43,7 +43,7 @@ private final class PhotoImportModel: ObservableObject {
         } catch {
             guard !Task.isCancelled, loadID == identifier else { return }
             errorMessage = (error as? PhotoPipelineError)?.errorDescription
-                ?? "La photo n’a pas pu être chargée. Si elle est sur iCloud, vérifiez la connexion puis réessayez."
+                ?? String(localized: "La photo n’a pas pu être chargée. Si elle est sur iCloud, vérifiez la connexion puis réessayez.")
         }
     }
 
@@ -53,7 +53,7 @@ private final class PhotoImportModel: ObservableObject {
         isLoading = true
         photo = nil
         errorMessage = nil
-        progressText = "Préparation de la photo…"
+        progressText = String(localized: "Préparation de la photo…")
         defer { if loadID == identifier { isLoading = false } }
         do {
             let worker = Task.detached(priority: .userInitiated) {
@@ -72,7 +72,7 @@ private final class PhotoImportModel: ObservableObject {
         } catch {
             guard !Task.isCancelled, loadID == identifier else { return }
             errorMessage = (error as? PhotoPipelineError)?.errorDescription
-                ?? "La photo n’a pas pu être préparée. Prenez une autre photo, puis réessayez."
+                ?? String(localized: "La photo n’a pas pu être préparée. Prenez une autre photo, puis réessayez.")
         }
     }
 
@@ -81,7 +81,7 @@ private final class PhotoImportModel: ObservableObject {
         guard let photo, !isUploading else { return false }
         isUploading = true
         errorMessage = nil
-        progressText = "Préparation pour le cadre…"
+        progressText = String(localized: "Préparation pour le cadre…")
         defer { isUploading = false }
         do {
             let worker = Task.detached(priority: .userInitiated) {
@@ -95,7 +95,7 @@ private final class PhotoImportModel: ObservableObject {
                 worker.cancel()
             }
             try Task.checkCancellation()
-            progressText = "Envoi vers le cadre…"
+            progressText = String(localized: "Envoi vers le cadre…")
             try await onUpload(png, "photo-\(UUID().uuidString.prefix(8).lowercased()).png")
             try Task.checkCancellation()
             return true
@@ -106,10 +106,10 @@ private final class PhotoImportModel: ObservableObject {
             if let pipelineError = error as? PhotoPipelineError {
                 errorMessage = pipelineError.errorDescription
             } else if error is URLError {
-                errorMessage = "L’envoi n’a pas pu être confirmé. Vérifiez le Wi-Fi et la file du cadre avant de réessayer."
+                errorMessage = String(localized: "L’envoi n’a pas pu être confirmé. Vérifiez le Wi-Fi et la file du cadre avant de réessayer.")
             } else {
                 errorMessage = (error as? LocalizedError)?.errorDescription
-                    ?? "L’envoi a échoué. Vérifiez la connexion au cadre, puis réessayez."
+                    ?? String(localized: "L’envoi a échoué. Vérifiez la connexion au cadre, puis réessayez.")
             }
             return false
         }
@@ -125,6 +125,8 @@ struct PhotoImportView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @EnvironmentObject private var store: AppStore
     @StateObject private var model = PhotoImportModel()
     @State private var selection: PhotosPickerItem?
     @State private var showPicker = false
@@ -138,6 +140,8 @@ struct PhotoImportView: View {
     @State private var normalizedOffset: CGSize = .zero
     @State private var viewportSize: CGSize = .zero
     @State private var uploadTask: Task<Void, Never>?
+    @State private var draftToResume: PhotoUploadDraft?
+    @State private var showDraft = false
     @GestureState private var dragTranslation: CGSize = .zero
     @GestureState private var gestureZoom: CGFloat = 1
 
@@ -172,16 +176,25 @@ struct PhotoImportView: View {
                         if let error = model.errorMessage {
                             Label(error, systemImage: "exclamationmark.circle")
                                 .font(.callout)
-                                .foregroundStyle(.red)
+                                .foregroundStyle(Bento.danger)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(16)
                                 .background(Bento.surface, in: RoundedRectangle(cornerRadius: 16))
                                 .padding(.horizontal, 16)
                                 .accessibilityIdentifier("photo-import-error")
                         }
+                        // At accessibility sizes the fixed action and its caption
+                        // would cover the crop controls. Keep the whole flow scrollable.
+                        if model.photo != nil && dynamicTypeSize.isAccessibilitySize {
+                            uploadBar
+                        }
                     }
                     .padding(.bottom, 20)
                 }
+                // A newly selected photo starts at its preview, rather than
+                // retaining the source selector's scroll position.
+                .id(model.photo.map { ObjectIdentifier($0.image) })
+                .accessibilityIdentifier("photo.scroll")
                 .background(background)
             }
             .navigationTitle(model.photo == nil ? "Ajouter une photo" : "Cadrer la photo")
@@ -213,9 +226,10 @@ struct PhotoImportView: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if model.photo != nil { uploadBar }
+                if model.photo != nil && !dynamicTypeSize.isAccessibilitySize { uploadBar }
             }
         }
+        .protectSensitiveContent()
         .tint(accent)
         .interactiveDismissDisabled(model.isUploading)
         .photosPicker(isPresented: $showPicker, selection: $selection,
@@ -225,11 +239,12 @@ struct PhotoImportView: View {
                 switch result {
                 case let .success(photo): pendingCapture = photo
                 case .failure:
-                    model.errorMessage = "La photo n’a pas pu être récupérée. Prenez une autre photo, puis réessayez."
+                    model.errorMessage = String(localized: "La photo n’a pas pu être récupérée. Prenez une autre photo, puis réessayez.")
                 case nil: break
                 }
                 showCamera = false
             }
+            .protectSensitiveContent()
             .ignoresSafeArea()
         }
         .alert(item: $cameraIssue) { issue in
@@ -248,7 +263,33 @@ struct PhotoImportView: View {
                 secondaryButton: .cancel(Text("Annuler"))
             )
         }
+        .alert("Un envoi est en attente.", isPresented: $showDraft, presenting: draftToResume) { draft in
+            Button("Reprendre l’envoi") {
+                model.isUploading = true
+                model.progressText = String(localized: "Envoi vers le cadre…")
+                uploadTask = Task {
+                    defer { model.isUploading = false }
+                    do {
+                        try await store.resumePhotoUpload(draft)
+                        draftToResume = nil
+                        dismiss()
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        model.errorMessage = String(localized: "L’envoi n’a pas pu être confirmé. Vérifiez le Wi-Fi et la file du cadre avant de réessayer.")
+                    }
+                }
+            }
+            Button("Supprimer", role: .destructive) {
+                do {
+                    try store.discardPhotoUpload(draft)
+                    draftToResume = nil
+                } catch { model.errorMessage = error.localizedDescription }
+            }
+            Button("Plus tard", role: .cancel) { dismiss() }
+        }
         .task {
+            offerPendingUpload()
             if !validPanel {
                 model.errorMessage = PhotoPipelineError.invalidPanel.errorDescription
             }
@@ -267,6 +308,15 @@ struct PhotoImportView: View {
         }
     }
 
+    private func offerPendingUpload() {
+        do {
+            draftToResume = try store.pendingPhotoUpload()
+            showDraft = draftToResume != nil
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     private var selectionPlaceholder: some View {
         VStack(spacing: 20) {
             if model.isLoading {
@@ -278,26 +328,21 @@ struct PhotoImportView: View {
                 Image(systemName: "photo.badge.plus")
                     .font(.system(size: 52, weight: .light))
                     .foregroundStyle(secondary)
+                    .accessibilityHidden(true)
                 Text("Un nouveau souvenir sur le cadre")
                     .font(.title2.weight(.semibold))
                 Text("Prenez une photo ou choisissez-en une dans Photos, puis ajustez son cadrage.")
                     .font(.body).foregroundStyle(secondary)
                 Button(action: takePhoto) {
                     Label("Prendre une photo", systemImage: "camera")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(Bento.ink, in: RoundedRectangle(cornerRadius: 14))
-                        .foregroundStyle(Bento.actionText)
                 }
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(!validPanel || isRequestingCamera)
                 .accessibilityIdentifier("take-photo")
                 Button(action: choosePhoto) {
                     Label("Choisir dans Photos", systemImage: "photo.on.rectangle")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(Bento.surface, in: RoundedRectangle(cornerRadius: 14))
-                        .foregroundStyle(Bento.ink)
                 }
+                .buttonStyle(OutlineButtonStyle())
                 .disabled(!validPanel || isRequestingCamera)
                 .accessibilityIdentifier("choose-photo")
             }
@@ -360,6 +405,7 @@ struct PhotoImportView: View {
             )
             .allowsHitTesting(!model.isUploading)
             .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("photo.crop")
             .accessibilityLabel("Cadrage de la photo")
             .accessibilityHint("Utilisez le réglage de zoom ou les actions pour déplacer la photo.")
             .accessibilityAction(named: "Déplacer la photo à gauche") { movePhoto(x: -0.1, y: 0) }
@@ -381,12 +427,12 @@ struct PhotoImportView: View {
             Text("Déplacez et pincez pour cadrer.")
                 .font(.body).foregroundStyle(secondary)
             HStack(spacing: 16) {
-                zoomButton(symbol: "minus", label: "Réduire le zoom") { zoom = max(1, zoom - 0.25) }
+                zoomButton(symbol: "minus", label: String(localized: "Réduire le zoom")) { zoom = max(1, zoom - 0.25) }
                 Slider(value: $zoom, in: 1...CropGeometry.maximumZoom)
                     .tint(Bento.ink)
                     .accessibilityLabel("Zoom de la photo")
-                    .accessibilityValue(String(format: "%.1f fois", Double(zoom)))
-                zoomButton(symbol: "plus", label: "Augmenter le zoom") {
+                    .accessibilityValue("\(Double(zoom), format: .number.precision(.fractionLength(1))) fois")
+                zoomButton(symbol: "plus", label: String(localized: "Augmenter le zoom")) {
                     zoom = min(CropGeometry.maximumZoom, zoom + 0.25)
                 }
             }
@@ -422,10 +468,14 @@ struct PhotoImportView: View {
             Button {
                 guard let photo = model.photo, viewportSize.width > 0 else { return }
                 let crop = cropGeometry(photo: photo, viewport: viewportSize).sourceRect
+                let sessionIdentity = store.sessionIdentity
                 uploadTask = Task {
-                    let succeeded = await model.upload(crop: crop, width: panelWidth, height: panelHeight,
-                                                       onUpload: onUpload)
+                    let succeeded = await model.upload(crop: crop, width: panelWidth, height: panelHeight) { data, filename in
+                        guard store.sessionIdentity == sessionIdentity else { throw CancellationError() }
+                        try await onUpload(data, filename)
+                    }
                     if succeeded { dismiss() }
+                    else if !Task.isCancelled { offerPendingUpload() }
                 }
             } label: {
                 HStack(spacing: 12) {
@@ -437,14 +487,11 @@ struct PhotoImportView: View {
                         Text("Ajouter à la file")
                     }
                 }
-                .font(.body.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .foregroundStyle(Bento.actionText)
-                .background(Bento.ink, in: RoundedRectangle(cornerRadius: 14))
             }
+            .buttonStyle(PrimaryButtonStyle())
             .disabled(model.isUploading || !validPanel || viewportSize.width <= 0)
             .accessibilityIdentifier("upload-photo")
-            Text("Elle sera affichée à son tour.")
+            Text("Affichage avec Suivante ou selon votre programmation.")
                 .font(.footnote).foregroundStyle(secondary)
         }
         .padding(.horizontal, 16)
@@ -533,19 +580,19 @@ private enum CameraIssue: String, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .denied: "Autoriser l’appareil photo"
-        case .restricted: "Appareil photo restreint"
-        case .unavailable: "Appareil photo indisponible"
+        case .denied: String(localized: "Autoriser l’appareil photo")
+        case .restricted: String(localized: "Appareil photo restreint")
+        case .unavailable: String(localized: "Appareil photo indisponible")
         }
     }
     var message: String {
         switch self {
         case .denied:
-            "Autorisez l’accès à l’appareil photo dans Réglages pour prendre une photo. Vous pouvez aussi revenir et choisir une image dans Photos."
+            String(localized: "Autorisez l’accès à l’appareil photo dans Réglages pour prendre une photo. Vous pouvez aussi revenir et choisir une image dans Photos.")
         case .restricted:
-            "Une restriction de cet appareil empêche l’accès à la caméra. Vous pouvez choisir une image dans Photos."
+            String(localized: "Une restriction de cet appareil empêche l’accès à la caméra. Vous pouvez choisir une image dans Photos.")
         case .unavailable:
-            "Cet appareil ne permet pas de prendre une photo ici. Vous pouvez choisir une image dans Photos."
+            String(localized: "Cet appareil ne permet pas de prendre une photo ici. Vous pouvez choisir une image dans Photos.")
         }
     }
 }
